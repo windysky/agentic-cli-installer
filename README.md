@@ -11,13 +11,13 @@ An interactive installer that manages multiple AI coding CLI tools from one plac
 
 ## Supported Tools
 
-- MoAI Agent Development Kit (`moai-adk`, uv)
-- Claude Code CLI (`@anthropic-ai/claude-code`, npm)
-- OpenAI Codex CLI (`@openai/codex`, npm)
-- Google Gemini CLI (`@google/gemini-cli`, npm)
-- Google Jules CLI (`@google/jules`, npm)
-- OpenCode AI CLI (`opencode-ai`, npm)
-- Mistral Vibe CLI (`mistral-vibe`, uv)
+- [MoAI Agent Development Kit](https://github.com/modu-ai/moai-adk) (`moai-adk`, uv)
+- [Claude Code CLI](https://github.com/anthropics/claude-code) (`@anthropic-ai/claude-code`, npm)
+- [OpenAI Codex CLI](https://github.com/openai/codex) (`@openai/codex`, npm)
+- [Google Gemini CLI](https://github.com/google-gemini/gemini-cli) (`@google/gemini-cli`, npm)
+- [Google Jules CLI](https://github.com/google-labs-code/jules-awesome-list) (`@google/jules`, npm)
+- [OpenCode AI CLI](https://github.com/opencode-ai/opencode) (`opencode-ai`, npm)
+- [Mistral Vibe CLI](https://github.com/mistralai/mistral-vibe) (`mistral-vibe`, uv)
 
 ## Requirements
 
