@@ -1,0 +1,8 @@
+# Ignore everything by default
+*
+
+# Keep root files we want in the repo
+!.gitignore
+!README.md
+!install_agentic_tools.sh
+!install_agentic_tools.bat
