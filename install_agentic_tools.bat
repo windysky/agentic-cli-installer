@@ -38,6 +38,13 @@ for /L %%i in (1,1,%TOOLS_COUNT%) do (
     set "ACT_%%i=0"
 )
 
+REM Cached version data to avoid repeated slow calls
+set "UV_TOOL_LIST_READY=0"
+set "UV_TOOL_LIST_CACHE="
+set "NPM_LIST_JSON_READY=0"
+set "NPM_LIST_JSON_CACHE="
+set "LATEST_CACHE_DIR="
+
 REM Load tool definitions
 set "NAME_1=MoAI Agent Development Kit"
 set "MGR_1=uv"
@@ -197,7 +204,13 @@ set "%outvar%="
 where uv >nul 2>nul
 if errorlevel 1 exit /b 0
 
-for /f "tokens=*" %%v in ('uv tool list 2^>nul ^| findstr /R "^%pkg% *"') do (
+if "%UV_TOOL_LIST_READY%"=="0" (
+    if not defined UV_TOOL_LIST_CACHE set "UV_TOOL_LIST_CACHE=%TEMP%\uv_tool_list_%RANDOM%.tmp"
+    uv tool list >"%UV_TOOL_LIST_CACHE%" 2>nul
+    set "UV_TOOL_LIST_READY=1"
+)
+
+for /f "tokens=*" %%v in ('findstr /R "^%pkg% *" "%UV_TOOL_LIST_CACHE%" 2^>nul') do (
     for /f "tokens=2" %%a in ("%%v") do set "%outvar%=%%a"
 )
 REM Remove 'v' prefix
@@ -214,10 +227,14 @@ set "%outvar%="
 where npm >nul 2>nul
 if errorlevel 1 exit /b 0
 
-for /f "tokens=*" %%v in ('npm list -g --depth=0 --json "%pkg%" 2^>nul ^| findstr /C:"\"version\""') do (
-    set "line=%%v"
-    set "line=!line:"=!"
-    for /f "tokens=2 delims=: " %%a in ("!line!") do set "%outvar%=%%a"
+if "%NPM_LIST_JSON_READY%"=="0" (
+    if not defined NPM_LIST_JSON_CACHE set "NPM_LIST_JSON_CACHE=%TEMP%\npm_list_%RANDOM%.json"
+    npm list -g --depth=0 --json >"%NPM_LIST_JSON_CACHE%" 2>nul
+    set "NPM_LIST_JSON_READY=1"
+)
+
+for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "$path='%NPM_LIST_JSON_CACHE%'; if (Test-Path $path) { $json = Get-Content -Raw $path; if ($json) { $obj = $json | ConvertFrom-Json; $dep = $obj.dependencies.'%pkg%'; if ($dep -and $dep.version) { $dep.version } } }"`) do (
+    if not "%%v"=="" set "%outvar%=%%v"
 )
 exit /b 0
 
@@ -226,7 +243,7 @@ set "pkg=%~1"
 set "outvar=%~2"
 set "%outvar%="
 set "tmpfile=%TEMP%\pypi_version_%RANDOM%.tmp"
-powershell -NoProfile -Command "$ProgressPreference = 'SilentlyContinue'; try { $result = Invoke-RestMethod -UseBasicParsing -Uri 'https://pypi.org/pypi/%pkg%/json' -TimeoutSec 10 -ErrorAction Stop; if ($result -and $result.info -and $result.info.version) { Write-Output $result.info.version } } catch { }" >"%tmpfile%" 2>nul
+powershell -NoProfile -Command "$ProgressPreference = 'SilentlyContinue'; $uri = 'https://pypi.org/pypi/%pkg%/json'; $attempt = 0; $version = $null; while ($attempt -lt 2 -and -not $version) { try { $result = Invoke-RestMethod -UseBasicParsing -Uri $uri -TimeoutSec 8 -ErrorAction Stop; if ($result -and $result.info -and $result.info.version) { $version = $result.info.version } } catch { } $attempt++ } if ($version) { Write-Output $version }" >"%tmpfile%" 2>nul
 if exist "%tmpfile%" (
     for /f "usebackq delims=" %%v in ("%tmpfile%") do (
         if not "%%v"=="" set "%outvar%=%%v"
@@ -240,7 +257,7 @@ set "pkg=%~1"
 set "outvar=%~2"
 set "%outvar%="
 set "tmpfile=%TEMP%\npm_version_%RANDOM%.tmp"
-powershell -NoProfile -Command "$ProgressPreference = 'SilentlyContinue'; try { $result = Invoke-RestMethod -UseBasicParsing -Uri 'https://registry.npmjs.org/%pkg%' -TimeoutSec 10 -ErrorAction Stop; if ($result -and $result.'dist-tags' -and $result.'dist-tags'.latest) { Write-Output $result.'dist-tags'.latest } } catch { }" >"%tmpfile%" 2>nul
+powershell -NoProfile -Command "$ProgressPreference = 'SilentlyContinue'; $uri = 'https://registry.npmjs.org/%pkg%/latest'; $attempt = 0; $version = $null; while ($attempt -lt 2 -and -not $version) { try { $result = Invoke-RestMethod -UseBasicParsing -Uri $uri -TimeoutSec 5 -ErrorAction Stop; if ($result -and $result.version) { $version = $result.version } } catch { } $attempt++ } if ($version) { Write-Output $version }" >"%tmpfile%" 2>nul
 if exist "%tmpfile%" (
     for /f "usebackq delims=" %%v in ("%tmpfile%") do (
         if not "%%v"=="" set "%outvar%=%%v"
@@ -254,8 +271,12 @@ exit /b 0
 #############################################
 
 :initialize_tools
+call :prefetch_latest_versions
 for /L %%i in (1,1,%TOOLS_COUNT%) do (
     call :init_tool %%i
+)
+if defined LATEST_CACHE_DIR (
+    rd /s /q "%LATEST_CACHE_DIR%" >nul 2>nul
 )
 REM Clear the progress line
 echo                                                                                 %NC%
@@ -272,10 +293,18 @@ REM Show progress
 
 if "!mgr!"=="uv" (
     call :get_installed_uv_version "!pkg!" INST
-    call :get_latest_pypi_version "!pkg!" LATEST
 ) else (
     call :get_installed_npm_version "!pkg!" INST
-    call :get_latest_npm_version "!pkg!" LATEST
+)
+
+set "LATEST="
+if defined LATEST_CACHE_DIR (
+    set "latest_file=!LATEST_CACHE_DIR!\latest_!idx!.txt"
+    if exist "!latest_file!" (
+        for /f "usebackq delims=" %%v in ("!latest_file!") do (
+            if not "%%v"=="" set "LATEST=%%v"
+        )
+    )
 )
 
 if not defined INST set "INST=Not Installed"
@@ -295,6 +324,21 @@ if "!INST!"=="Not Installed" (
     set "ACT_%idx%=0"
     set "SEL_%idx%=0"
 )
+exit /b 0
+
+:prefetch_latest_versions
+set "LATEST_CACHE_DIR=%TEMP%\agentic_latest_%RANDOM%"
+md "%LATEST_CACHE_DIR%" >nul 2>nul
+set "LATEST_LIST_FILE=%LATEST_CACHE_DIR%\tools.txt"
+> "%LATEST_LIST_FILE%" (
+    for /L %%i in (1,1,%TOOLS_COUNT%) do (
+        echo %%i^|!MGR_%%i!^|!PKG_%%i!
+    )
+)
+
+powershell -NoProfile -Command "$ProgressPreference = 'SilentlyContinue'; $tools = Get-Content -Path '%LATEST_LIST_FILE%'; $jobs = @(); foreach ($line in $tools) { if (-not $line) { continue } $parts = $line -split '\|', 3; $idx = $parts[0]; $mgr = $parts[1]; $pkg = $parts[2]; if ($mgr -eq 'uv') { $uri = \"https://pypi.org/pypi/$pkg/json\"; $jobs += Start-Job -ArgumentList $uri, '%LATEST_CACHE_DIR%', $idx -ScriptBlock { param($uri, $dir, $idx) $attempt = 0; $version = $null; while ($attempt -lt 2 -and -not $version) { try { $result = Invoke-RestMethod -UseBasicParsing -Uri $uri -TimeoutSec 8 -ErrorAction Stop; if ($result -and $result.info -and $result.info.version) { $version = $result.info.version } } catch { } $attempt++ } if ($version) { Set-Content -Path (Join-Path $dir (\"latest_\" + $idx + \".txt\")) -Value $version } } } else { $uri = \"https://registry.npmjs.org/$pkg/latest\"; $jobs += Start-Job -ArgumentList $uri, '%LATEST_CACHE_DIR%', $idx -ScriptBlock { param($uri, $dir, $idx) $attempt = 0; $version = $null; while ($attempt -lt 2 -and -not $version) { try { $result = Invoke-RestMethod -UseBasicParsing -Uri $uri -TimeoutSec 5 -ErrorAction Stop; if ($result -and $result.version) { $version = $result.version } } catch { } $attempt++ } if ($version) { Set-Content -Path (Join-Path $dir (\"latest_\" + $idx + \".txt\")) -Value $version } } } } Wait-Job $jobs | Out-Null; Receive-Job $jobs | Out-Null; Remove-Job $jobs | Out-Null;" >nul 2>nul
+
+if exist "%LATEST_LIST_FILE%" del "%LATEST_LIST_FILE%" >nul 2>nul
 exit /b 0
 
 #############################################
