@@ -143,15 +143,18 @@ get_latest_pypi_version() {
     if ! command -v curl >/dev/null 2>&1; then
         return 0
     fi
+    # Cache-bust to avoid stale CDN responses
+    local cache_bust
+    cache_bust=$(date +%s)
     if command -v python3 >/dev/null 2>&1; then
         {
-            curl -fsSL --connect-timeout 2 --max-time 8 --retry 1 --retry-delay 0 --retry-max-time 8 \
-                "https://pypi.org/pypi/${pkg}/json" 2>/dev/null || echo -n ""
+            curl -fsSL --connect-timeout 2 --max-time 10 --retry 1 --retry-delay 0 --retry-max-time 10 \
+                "https://pypi.org/pypi/${pkg}/json?ts=${cache_bust}" 2>/dev/null || echo -n ""
         } | python3 -c "import sys, json; data = sys.stdin.read().strip(); print(json.loads(data)['info']['version']) if data else None" 2>/dev/null || true
     elif command -v node >/dev/null 2>&1; then
         {
-            curl -fsSL --connect-timeout 2 --max-time 8 --retry 1 --retry-delay 0 --retry-max-time 8 \
-                "https://pypi.org/pypi/${pkg}/json" 2>/dev/null || echo -n ""
+            curl -fsSL --connect-timeout 2 --max-time 10 --retry 1 --retry-delay 0 --retry-max-time 10 \
+                "https://pypi.org/pypi/${pkg}/json?ts=${cache_bust}" 2>/dev/null || echo -n ""
         } | node -e "const data = require('fs').readFileSync(0, 'utf8').trim(); if(data) console.log(JSON.parse(data).info.version);" 2>/dev/null || true
     fi
 }
@@ -161,9 +164,12 @@ get_latest_npm_version() {
     if ! command -v curl >/dev/null 2>&1; then
         return 0
     fi
+    # Cache-bust to avoid stale CDN responses
+    local cache_bust
+    cache_bust=$(date +%s)
     if command -v node >/dev/null 2>&1; then
         {
-            curl -fsSL --max-time 5 "https://registry.npmjs.org/${pkg}/latest" 2>/dev/null || echo -n ""
+            curl -fsSL --max-time 10 "https://registry.npmjs.org/${pkg}/latest?ts=${cache_bust}" 2>/dev/null || echo -n ""
         } | node -e "const data = require('fs').readFileSync(0, 'utf8').trim(); if(data) console.log(JSON.parse(data).version);" 2>/dev/null || true
     fi
 }
@@ -239,14 +245,26 @@ prefetch_latest_versions() {
 
         (
             local latest=""
-            case "$manager" in
-                uv)
-                    latest=$(get_latest_pypi_version "$pkg")
-                    ;;
-                npm)
-                    latest=$(get_latest_npm_version "$pkg")
-                    ;;
-            esac
+            local attempt
+            local jitter_ms
+            local jitter_s
+            jitter_ms=$((RANDOM % 500 + 100))
+            printf -v jitter_s "0.%03d" "$jitter_ms"
+            sleep "$jitter_s"
+            for attempt in 1 2; do
+                case "$manager" in
+                    uv)
+                        latest=$(get_latest_pypi_version "$pkg")
+                        ;;
+                    npm)
+                        latest=$(get_latest_npm_version "$pkg")
+                        ;;
+                esac
+                if [[ -n "$latest" ]]; then
+                    break
+                fi
+                sleep 1
+            done
             printf "%s" "$latest" >"$out"
         ) &
         pids+=("$!")
@@ -302,10 +320,10 @@ initialize_tools() {
         latest="${LATEST_VERSION_CACHE[$i]}"
         LATEST_VERSIONS+=("${latest:-"Unknown"}")
 
-        # Set default selection: select if missing or update available
+        # Set default selection: select only if update available (not new installs)
         local status
         status=$(version_compare "$installed" "$latest")
-        if [[ "$status" == "missing" || "$status" == "update" ]]; then
+        if [[ "$status" == "update" ]]; then
             SELECTED+=(1)
             # Set action from ACTIONS array based on status
             TOOL_ACTIONS+=("${ACTIONS[1]}")  # ACTIONS[1] = "install"

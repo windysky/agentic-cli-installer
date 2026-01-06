@@ -243,7 +243,7 @@ set "pkg=%~1"
 set "outvar=%~2"
 set "%outvar%="
 set "tmpfile=%TEMP%\pypi_version_%RANDOM%.tmp"
-powershell -NoProfile -Command "$ProgressPreference = 'SilentlyContinue'; $uri = 'https://pypi.org/pypi/%pkg%/json'; $attempt = 0; $version = $null; while ($attempt -lt 2 -and -not $version) { try { $result = Invoke-RestMethod -UseBasicParsing -Uri $uri -TimeoutSec 8 -ErrorAction Stop; if ($result -and $result.info -and $result.info.version) { $version = $result.info.version } } catch { } $attempt++ } if ($version) { Write-Output $version }" >"%tmpfile%" 2>nul
+powershell -NoProfile -Command "$ProgressPreference = 'SilentlyContinue'; $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); $uri = 'https://pypi.org/pypi/%pkg%/json?ts=' + $ts; $attempt = 0; $version = $null; while ($attempt -lt 2 -and -not $version) { try { $result = Invoke-RestMethod -UseBasicParsing -Uri $uri -TimeoutSec 10 -ErrorAction Stop; if ($result -and $result.info -and $result.info.version) { $version = $result.info.version } } catch { } if (-not $version -and $attempt -lt 1) { Start-Sleep -Seconds 1 } $attempt++ } if ($version) { Write-Output $version }" >"%tmpfile%" 2>nul
 if exist "%tmpfile%" (
     for /f "usebackq delims=" %%v in ("%tmpfile%") do (
         if not "%%v"=="" set "%outvar%=%%v"
@@ -257,7 +257,7 @@ set "pkg=%~1"
 set "outvar=%~2"
 set "%outvar%="
 set "tmpfile=%TEMP%\npm_version_%RANDOM%.tmp"
-powershell -NoProfile -Command "$ProgressPreference = 'SilentlyContinue'; $uri = 'https://registry.npmjs.org/%pkg%/latest'; $attempt = 0; $version = $null; while ($attempt -lt 2 -and -not $version) { try { $result = Invoke-RestMethod -UseBasicParsing -Uri $uri -TimeoutSec 5 -ErrorAction Stop; if ($result -and $result.version) { $version = $result.version } } catch { } $attempt++ } if ($version) { Write-Output $version }" >"%tmpfile%" 2>nul
+powershell -NoProfile -Command "$ProgressPreference = 'SilentlyContinue'; $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); $uri = 'https://registry.npmjs.org/%pkg%/latest?ts=' + $ts; $attempt = 0; $version = $null; while ($attempt -lt 2 -and -not $version) { try { $result = Invoke-RestMethod -UseBasicParsing -Uri $uri -TimeoutSec 10 -ErrorAction Stop; if ($result -and $result.version) { $version = $result.version } } catch { } if (-not $version -and $attempt -lt 1) { Start-Sleep -Seconds 1 } $attempt++ } if ($version) { Write-Output $version }" >"%tmpfile%" 2>nul
 if exist "%tmpfile%" (
     for /f "usebackq delims=" %%v in ("%tmpfile%") do (
         if not "%%v"=="" set "%outvar%=%%v"
@@ -314,9 +314,10 @@ set "INST_%idx%=%INST%"
 set "LAT_%idx%=%LATEST%"
 
 REM Set default action based on status
+REM Only auto-select tools that need updates, not new installations
 if "!INST!"=="Not Installed" (
-    set "ACT_%idx%=1"
-    set "SEL_%idx%=1"
+    set "ACT_%idx%=0"
+    set "SEL_%idx%=0"
 ) else if "!INST!" neq "!LATEST!" (
     set "ACT_%idx%=1"
     set "SEL_%idx%=1"
@@ -336,7 +337,7 @@ set "LATEST_LIST_FILE=%LATEST_CACHE_DIR%\tools.txt"
     )
 )
 
-powershell -NoProfile -Command "$ProgressPreference = 'SilentlyContinue'; $tools = Get-Content -Path '%LATEST_LIST_FILE%'; $jobs = @(); foreach ($line in $tools) { if (-not $line) { continue } $parts = $line -split '\|', 3; $idx = $parts[0]; $mgr = $parts[1]; $pkg = $parts[2]; if ($mgr -eq 'uv') { $uri = \"https://pypi.org/pypi/$pkg/json\"; $jobs += Start-Job -ArgumentList $uri, '%LATEST_CACHE_DIR%', $idx -ScriptBlock { param($uri, $dir, $idx) $attempt = 0; $version = $null; while ($attempt -lt 2 -and -not $version) { try { $result = Invoke-RestMethod -UseBasicParsing -Uri $uri -TimeoutSec 8 -ErrorAction Stop; if ($result -and $result.info -and $result.info.version) { $version = $result.info.version } } catch { } $attempt++ } if ($version) { Set-Content -Path (Join-Path $dir (\"latest_\" + $idx + \".txt\")) -Value $version } } } else { $uri = \"https://registry.npmjs.org/$pkg/latest\"; $jobs += Start-Job -ArgumentList $uri, '%LATEST_CACHE_DIR%', $idx -ScriptBlock { param($uri, $dir, $idx) $attempt = 0; $version = $null; while ($attempt -lt 2 -and -not $version) { try { $result = Invoke-RestMethod -UseBasicParsing -Uri $uri -TimeoutSec 5 -ErrorAction Stop; if ($result -and $result.version) { $version = $result.version } } catch { } $attempt++ } if ($version) { Set-Content -Path (Join-Path $dir (\"latest_\" + $idx + \".txt\")) -Value $version } } } } Wait-Job $jobs | Out-Null; Receive-Job $jobs | Out-Null; Remove-Job $jobs | Out-Null;" >nul 2>nul
+powershell -NoProfile -Command "$ProgressPreference = 'SilentlyContinue'; $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); $tools = Get-Content -Path '%LATEST_LIST_FILE%'; $jobs = @(); foreach ($line in $tools) { if (-not $line) { continue } $parts = $line -split '\|', 3; $idx = $parts[0]; $mgr = $parts[1]; $pkg = $parts[2]; if ($mgr -eq 'uv') { $uri = \"https://pypi.org/pypi/$pkg/json?ts=$ts\"; $jobs += Start-Job -ArgumentList $uri, '%LATEST_CACHE_DIR%', $idx -ScriptBlock { param($uri, $dir, $idx) Start-Sleep -Milliseconds (Get-Random -Minimum 100 -Maximum 600); $attempt = 0; $version = $null; while ($attempt -lt 2 -and -not $version) { try { $result = Invoke-RestMethod -UseBasicParsing -Uri $uri -TimeoutSec 10 -ErrorAction Stop; if ($result -and $result.info -and $result.info.version) { $version = $result.info.version } } catch { } if (-not $version -and $attempt -lt 1) { Start-Sleep -Seconds 1 } $attempt++ } if ($version) { Set-Content -Path (Join-Path $dir (\"latest_\" + $idx + \".txt\")) -Value $version } } } else { $uri = \"https://registry.npmjs.org/$pkg/latest?ts=$ts\"; $jobs += Start-Job -ArgumentList $uri, '%LATEST_CACHE_DIR%', $idx -ScriptBlock { param($uri, $dir, $idx) Start-Sleep -Milliseconds (Get-Random -Minimum 100 -Maximum 600); $attempt = 0; $version = $null; while ($attempt -lt 2 -and -not $version) { try { $result = Invoke-RestMethod -UseBasicParsing -Uri $uri -TimeoutSec 10 -ErrorAction Stop; if ($result -and $result.version) { $version = $result.version } } catch { } if (-not $version -and $attempt -lt 1) { Start-Sleep -Seconds 1 } $attempt++ } if ($version) { Set-Content -Path (Join-Path $dir (\"latest_\" + $idx + \".txt\")) -Value $version } } } } Wait-Job $jobs | Out-Null; Receive-Job $jobs | Out-Null; Remove-Job $jobs | Out-Null;" >nul 2>nul
 
 if exist "%LATEST_LIST_FILE%" del "%LATEST_LIST_FILE%" >nul 2>nul
 exit /b 0
