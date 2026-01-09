@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.0.0
+# Agentic Coders Installer v1.1.0
 # Interactive installer for AI coding CLI tools
 #############################################
 
@@ -14,6 +14,7 @@ readonly BLUE='\033[0;34m'
 readonly CYAN='\033[0;36m'
 readonly BOLD='\033[1m'
 readonly NC='\033[0m' # No Color
+readonly MIN_NPM_VERSION="9.0.0"
 
 # Tool definitions: name, package manager, package name, description
 declare -a TOOLS=(
@@ -35,6 +36,7 @@ declare -a INSTALLED_VERSIONS=()
 declare -a LATEST_VERSIONS=()
 declare -a SELECTED=()
 declare -a LATEST_VERSION_CACHE=()
+declare -a UPDATE_ONLY=()  # Flag for tools that can only be updated (not installed/removed)
 
 # Cached version data to avoid repeated slow calls
 UV_TOOL_LIST_CACHE=""
@@ -86,6 +88,13 @@ clear_screen() {
     clear
 }
 
+version_ge() {
+    # Returns success if $1 >= $2 using version sort
+    local ver=$1
+    local min_ver=$2
+    [[ "$(printf '%s\n%s\n' "$min_ver" "$ver" | sort -V | head -n1)" == "$min_ver" ]]
+}
+
 require_cmd() {
     local cmd=$1
     local hint=${2:-}
@@ -114,8 +123,37 @@ get_installed_uv_version() {
     if [[ -z "$output" ]]; then
         return 0
     fi
+
     # Parse uv tool list output to find package version, strip 'v' prefix
-    echo "$output" | grep -E "^${pkg}" | awk '{print $2}' | sed 's/^v//' || true
+    # uv tool list output format: "package-name version" or "package-name v1.0.0"
+    # Example formats:
+    #   moai-adk v0.41.2
+    #   mistral-vibe 1.3.4
+    #   @anthropic-ai/claude-code 2.1.2
+
+    # Try multiple matching approaches for robustness
+    local version=""
+
+    # Method 1: Exact match with word boundary
+    version=$(echo "$output" | awk -v pkg="^${pkg}[[:space:]]" '$1 ~ pkg {
+        v = $2
+        sub(/^v/, "", v)
+        print v
+    }' | head -n1)
+
+    # Method 2: If method 1 failed, try substring match (handles escaped names)
+    if [[ -z "$version" ]]; then
+        # Escape special regex characters in package name
+        local escaped_pkg=$(printf '%s\n' "$pkg" | sed 's/[[\.*^$()+?{|]/\\&/g')
+        version=$(echo "$output" | grep -E "${escaped_pkg}[[:space:]]+v?[0-9]" | head -n1 | sed -E 's/.*[[:space:]]+v?([0-9][^[:space:]]*).*/\1/')
+    fi
+
+    # Method 3: Last resort - simple grep and extract
+    if [[ -z "$version" ]]; then
+        version=$(echo "$output" | grep "${pkg}" | head -n1 | awk '{print $2}' | sed 's/^v//')
+    fi
+
+    echo "$version"
 }
 
 get_installed_npm_version() {
@@ -174,6 +212,29 @@ get_latest_npm_version() {
     fi
 }
 
+# Get npm's own installed version
+get_installed_npm_self_version() {
+    if ! command -v npm >/dev/null 2>&1; then
+        return 0
+    fi
+    npm --version 2>/dev/null | head -n1 || true
+}
+
+# Get npm's own latest version
+get_latest_npm_self_version() {
+    if ! command -v curl >/dev/null 2>&1; then
+        return 0
+    fi
+    # Cache-bust to avoid stale CDN responses
+    local cache_bust
+    cache_bust=$(date +%s)
+    if command -v node >/dev/null 2>&1; then
+        {
+            curl -fsSL --max-time 10 "https://registry.npmjs.org/npm/latest?ts=${cache_bust}" 2>/dev/null || echo -n ""
+        } | node -e "const data = require('fs').readFileSync(0, 'utf8').trim(); if(data) console.log(JSON.parse(data).version);" 2>/dev/null || true
+    fi
+}
+
 get_tool_version() {
     local manager=$1
     local pkg=$2
@@ -185,6 +246,9 @@ get_tool_version() {
             ;;
         npm)
             installed=$(get_installed_npm_version "$pkg")
+            ;;
+        npm-self)
+            installed=$(get_installed_npm_self_version)
             ;;
     esac
 
@@ -205,6 +269,9 @@ get_latest_version() {
             ;;
         npm)
             get_latest_npm_version "$pkg"
+            ;;
+        npm-self)
+            get_latest_npm_self_version
             ;;
     esac
 }
@@ -259,6 +326,9 @@ prefetch_latest_versions() {
                     npm)
                         latest=$(get_latest_npm_version "$pkg")
                         ;;
+                    npm-self)
+                        latest=$(get_latest_npm_self_version)
+                        ;;
                 esac
                 if [[ -n "$latest" ]]; then
                     break
@@ -291,6 +361,16 @@ prefetch_latest_versions() {
 #############################################
 
 initialize_tools() {
+    # Conditionally add npm to the tool list (only if detected)
+    if command -v npm >/dev/null 2>&1; then
+        TOOL_NAMES+=("npm")
+        TOOL_MANAGERS+=("npm-self")
+        TOOL_PACKAGES+=("npm")
+        TOOL_DESCRIPTIONS+=("npm (Node Package Manager)")
+        UPDATE_ONLY+=(1)  # npm is update-only
+    fi
+
+    # Add regular tools
     for tool_info in "${TOOLS[@]}"; do
         IFS='|' read -r name manager pkg description <<< "$tool_info"
 
@@ -298,6 +378,7 @@ initialize_tools() {
         TOOL_MANAGERS+=("$manager")
         TOOL_PACKAGES+=("$pkg")
         TOOL_DESCRIPTIONS+=("$description")
+        UPDATE_ONLY+=(0)  # Regular tools can be installed/removed
     done
 
     prefetch_latest_versions
@@ -306,6 +387,7 @@ initialize_tools() {
         local manager="${TOOL_MANAGERS[$i]}"
         local pkg="${TOOL_PACKAGES[$i]}"
         local description="${TOOL_DESCRIPTIONS[$i]}"
+        local is_update_only="${UPDATE_ONLY[$i]}"
 
         # Show progress
         printf "\r${BLUE}[INFO]${NC} Checking: ${CYAN}%-35s${NC}" "$description"
@@ -320,7 +402,9 @@ initialize_tools() {
         latest="${LATEST_VERSION_CACHE[$i]}"
         LATEST_VERSIONS+=("${latest:-"Unknown"}")
 
-        # Set default selection: select only if update available (not new installs)
+        # Set default selection
+        # For update-only tools (npm): select only if update available
+        # For regular tools: select only if update available (not new installs)
         local status
         status=$(version_compare "$installed" "$latest")
         if [[ "$status" == "update" ]]; then
@@ -343,9 +427,9 @@ initialize_tools() {
 render_menu() {
     clear_screen
 
-    printf "${BOLD}${CYAN}Agentic Coders CLI Installer${NC} ${BOLD}v1.0.0${NC}\n\n"
-    printf "Toggle tools: ${CYAN}skip${NC} → ${GREEN}install${NC} → ${RED}remove${NC} (press number multiple times)\n"
-    printf "Numbers are ${BOLD}comma-separated${NC} (e.g., ${CYAN}1,3,5${NC}). Press ${BOLD}Enter${NC} to proceed, ${BOLD}Q${NC} to quit.\n\n"
+    printf "${BOLD}${CYAN}Agentic Coders CLI Installer${NC} ${BOLD}v1.1.0${NC}\n\n"
+    printf "Toggle tools: ${CYAN}skip${NC} -> ${GREEN}install${NC} -> ${RED}remove${NC} (press number multiple times)\n"
+    printf "Numbers are ${BOLD}comma-separated${NC} (e.g., ${CYAN}1,3,5${NC}). Press ${BOLD}Q${NC} to quit.\n\n"
 
     print_sep
 
@@ -430,8 +514,8 @@ parse_selection() {
         fi
 
         # Validate range
-        if [[ "$num" -lt 1 || "$num" -gt "${#TOOLS[@]}" ]]; then
-            log_error "Invalid selection: '$num' is out of range (1-${#TOOLS[@]})"
+        if [[ "$num" -lt 1 || "$num" -gt "${#TOOL_NAMES[@]}" ]]; then
+            log_error "Invalid selection: '$num' is out of range (1-${#TOOL_NAMES[@]})"
             return 1
         fi
 
@@ -441,11 +525,16 @@ parse_selection() {
         local new_action
         local installed="${INSTALLED_VERSIONS[$idx]}"
         local latest="${LATEST_VERSIONS[$idx]}"
+        local is_update_only="${UPDATE_ONLY[$idx]}"
 
         # Determine tool state and valid transitions
-        # State 1: Not Installed -> can only install or skip (no remove)
-        # State 2: Up-to-date (installed == latest) -> can only remove or skip (no install)
-        # State 3: Outdated (installed != latest) -> can install, update, or remove
+        # For update-only tools (npm):
+        #   - Can only update if outdated, otherwise skip
+        #   - Never allow remove
+        # For regular tools:
+        #   State 1: Not Installed -> can only install or skip (no remove)
+        #   State 2: Up-to-date (installed == latest) -> can only remove or skip (no install)
+        #   State 3: Outdated (installed != latest) -> can install, update, or remove
 
         local not_installed=false
         local up_to_date=false
@@ -456,65 +545,97 @@ parse_selection() {
             up_to_date=true
         fi
 
-        case "$current_action" in
-            skip)
-                if [[ "$not_installed" == true ]]; then
-                    # Not installed: skip -> install
-                    new_action="install"
-                    SELECTED[$idx]=1
-                    TOOL_ACTIONS[$idx]="install"
-                    log_info "Selected for install: ${TOOL_NAMES[$idx]}"
-                elif [[ "$up_to_date" == true ]]; then
-                    # Up-to-date: skip -> remove
-                    new_action="remove"
-                    SELECTED[$idx]=1
-                    TOOL_ACTIONS[$idx]="remove"
-                    log_info "Selected for removal: ${TOOL_NAMES[$idx]}"
-                else
-                    # Outdated: skip -> install
-                    new_action="install"
-                    SELECTED[$idx]=1
-                    TOOL_ACTIONS[$idx]="install"
-                    log_info "Selected for update: ${TOOL_NAMES[$idx]}"
-                fi
-                ;;
-            install)
-                if [[ "$not_installed" == true ]]; then
-                    # Not installed: install -> skip (no remove option)
+        # Handle update-only tools specially
+        if [[ "$is_update_only" -eq 1 ]]; then
+            case "$current_action" in
+                skip)
+                    if [[ "$not_installed" == false && "$up_to_date" == false ]]; then
+                        # Outdated: skip -> install (update)
+                        new_action="install"
+                        SELECTED[$idx]=1
+                        TOOL_ACTIONS[$idx]="install"
+                        log_info "Selected for update: ${TOOL_NAMES[$idx]}"
+                    else
+                        # Not installed or up-to-date: skip remains skip (with message)
+                        log_info "${TOOL_NAMES[$idx]} is $installed - no action available"
+                    fi
+                    ;;
+                install)
+                    # install -> skip
                     new_action="skip"
                     SELECTED[$idx]=0
                     TOOL_ACTIONS[$idx]="skip"
                     log_info "Deselected: ${TOOL_NAMES[$idx]}"
-                else
-                    # Installed (outdated): install -> remove
-                    new_action="remove"
+                    ;;
+                *)
+                    # Default to skip
+                    new_action="skip"
+                    SELECTED[$idx]=0
+                    TOOL_ACTIONS[$idx]="skip"
+                    ;;
+            esac
+        else
+            # Regular tools handling
+            case "$current_action" in
+                skip)
+                    if [[ "$not_installed" == true ]]; then
+                        # Not installed: skip -> install
+                        new_action="install"
+                        SELECTED[$idx]=1
+                        TOOL_ACTIONS[$idx]="install"
+                        log_info "Selected for install: ${TOOL_NAMES[$idx]}"
+                    elif [[ "$up_to_date" == true ]]; then
+                        # Up-to-date: skip -> remove
+                        new_action="remove"
+                        SELECTED[$idx]=1
+                        TOOL_ACTIONS[$idx]="remove"
+                        log_info "Selected for removal: ${TOOL_NAMES[$idx]}"
+                    else
+                        # Outdated: skip -> install
+                        new_action="install"
+                        SELECTED[$idx]=1
+                        TOOL_ACTIONS[$idx]="install"
+                        log_info "Selected for update: ${TOOL_NAMES[$idx]}"
+                    fi
+                    ;;
+                install)
+                    if [[ "$not_installed" == true ]]; then
+                        # Not installed: install -> skip (no remove option)
+                        new_action="skip"
+                        SELECTED[$idx]=0
+                        TOOL_ACTIONS[$idx]="skip"
+                        log_info "Deselected: ${TOOL_NAMES[$idx]}"
+                    else
+                        # Installed (outdated): install -> remove
+                        new_action="remove"
+                        SELECTED[$idx]=1
+                        TOOL_ACTIONS[$idx]="remove"
+                        log_info "Selected for removal: ${TOOL_NAMES[$idx]}"
+                    fi
+                    ;;
+                remove)
+                    # Remove always goes to skip
+                    # (remove is only valid for installed tools)
+                    new_action="skip"
+                    SELECTED[$idx]=0
+                    TOOL_ACTIONS[$idx]="skip"
+                    log_info "Deselected: ${TOOL_NAMES[$idx]}"
+                    ;;
+                *)
+                    # Default action based on tool state
+                    if [[ "$not_installed" == true ]]; then
+                        new_action="install"
+                    elif [[ "$up_to_date" == true ]]; then
+                        new_action="remove"
+                    else
+                        new_action="install"
+                    fi
                     SELECTED[$idx]=1
-                    TOOL_ACTIONS[$idx]="remove"
-                    log_info "Selected for removal: ${TOOL_NAMES[$idx]}"
-                fi
-                ;;
-            remove)
-                # Remove always goes to skip
-                # (remove is only valid for installed tools)
-                new_action="skip"
-                SELECTED[$idx]=0
-                TOOL_ACTIONS[$idx]="skip"
-                log_info "Deselected: ${TOOL_NAMES[$idx]}"
-                ;;
-            *)
-                # Default action based on tool state
-                if [[ "$not_installed" == true ]]; then
-                    new_action="install"
-                elif [[ "$up_to_date" == true ]]; then
-                    new_action="remove"
-                else
-                    new_action="install"
-                fi
-                SELECTED[$idx]=1
-                TOOL_ACTIONS[$idx]="$new_action"
-                log_info "Selected: ${TOOL_NAMES[$idx]}"
-                ;;
-        esac
+                    TOOL_ACTIONS[$idx]="$new_action"
+                    log_info "Selected: ${TOOL_NAMES[$idx]}"
+                    ;;
+            esac
+        fi
     done
 
     return 0
@@ -524,11 +645,16 @@ get_user_selection() {
     while true; do
         render_menu
 
-        printf "\n${CYAN}Enter selection (numbers, Q to quit, Enter to proceed):${NC} "
+        printf "\n${CYAN}Enter selection (numbers, Enter to proceed, P if Enter fails, Q to quit):${NC} "
         read -r input
 
         # Trim input
         input=$(echo "$input" | xargs)
+
+        # Allow explicit proceed token for terminals that cannot send an empty line
+        if [[ "${input^^}" == "P" ]]; then
+            input=""
+        fi
 
         # Check for quit
         if [[ "${input^^}" == "Q" ]]; then
@@ -620,6 +746,18 @@ install_tool() {
                 fi
             fi
             ;;
+        npm-self)
+            # npm-self should only be "update" action, never "install" from scratch
+            # If npm is not installed, this should have been handled via conda
+            printf "  Updating npm...\n"
+            if npm install -g npm@latest; then
+                log_success "Updated npm"
+                return 0
+            else
+                log_error "Failed to update npm"
+                return 1
+            fi
+            ;;
     esac
 }
 
@@ -657,6 +795,11 @@ remove_tool() {
                 log_error "Failed to remove ${name}"
                 return 1
             fi
+            ;;
+        npm-self)
+            # npm-self should never be removable (update-only tool)
+            log_error "Cannot remove npm: npm is a core tool (update-only)"
+            return 1
             ;;
     esac
 }
@@ -807,6 +950,78 @@ run_installation() {
 # DEPENDENCY CHECKS
 #############################################
 
+ensure_npm_prerequisite() {
+    local has_npm_tool=0
+    for tool in "${TOOLS[@]}"; do
+        IFS='|' read -r _ manager _ _ <<< "$tool"
+        if [[ "$manager" == "npm" ]]; then
+            has_npm_tool=1
+            break
+        fi
+    done
+
+    if [[ "$has_npm_tool" -eq 0 ]]; then
+        return 0
+    fi
+
+    if ! command -v npm >/dev/null 2>&1; then
+        # Check if we're in a conda environment
+        if [[ -n "$CONDA_DEFAULT_ENV" ]]; then
+            log_warning "npm is not installed but required for npm-managed tools."
+            printf "Attempting to install Node.js + npm via conda...\n"
+            if conda install -y -c conda-forge nodejs; then
+                # Refresh PATH to pick up newly installed npm
+                eval "$(conda shell.bash hook)"
+                conda activate "$CONDA_DEFAULT_ENV" 2>/dev/null || true
+                if command -v npm >/dev/null 2>&1; then
+                    log_success "npm installed via conda"
+                    return 0
+                else
+                    log_error "npm installation via conda appeared successful but npm is still not available."
+                    return 1
+                fi
+            else
+                log_error "Failed to install Node.js via conda."
+                printf "Install Node.js + npm manually:\n"
+                printf "  ${CYAN}macOS${NC}:           ${YELLOW}brew install node${NC}\n"
+                printf "  ${CYAN}Debian/Ubuntu${NC}:   ${YELLOW}curl -fsSL https://deb.nodesource.com/setup_current.x | sudo -E bash - && sudo apt-get install -y nodejs${NC}\n"
+                printf "  ${CYAN}Other platforms${NC}: ${YELLOW}https://docs.npmjs.com/downloading-and-installing-node-js-and-npm${NC}\n"
+                return 1
+            fi
+        else
+            log_warning "npm is not installed but required for npm-managed tools."
+            printf "Install Node.js + npm before continuing:\n"
+            printf "  ${CYAN}macOS${NC}:           ${YELLOW}brew install node${NC}\n"
+            printf "  ${CYAN}Debian/Ubuntu${NC}:   ${YELLOW}curl -fsSL https://deb.nodesource.com/setup_current.x | sudo -E bash - && sudo apt-get install -y nodejs${NC}\n"
+            printf "  ${CYAN}Other platforms${NC}: ${YELLOW}https://docs.npmjs.com/downloading-and-installing-node-js-and-npm${NC}\n"
+            return 1
+        fi
+    fi
+
+    local npm_version
+    npm_version=$(npm --version 2>/dev/null | head -n1 || true)
+    if [[ -z "$npm_version" ]]; then
+        log_error "Unable to determine npm version."
+        return 1
+    fi
+
+    if version_ge "$npm_version" "$MIN_NPM_VERSION"; then
+        printf "${BLUE}[INFO]${NC} npm version %s detected (minimum required: %s)\n" "$npm_version" "$MIN_NPM_VERSION"
+        return 0
+    fi
+
+    log_warning "npm version $npm_version is below required $MIN_NPM_VERSION. Attempting to update to latest..."
+    if npm install -g npm@latest; then
+        local updated_version
+        updated_version=$(npm --version 2>/dev/null | head -n1 || true)
+        log_success "npm updated to version ${updated_version:-unknown}."
+        return 0
+    else
+        log_error "npm update failed. Please run: npm install -g npm@latest"
+        return 1
+    fi
+}
+
 check_dependencies() {
     local missing=()
 
@@ -874,6 +1089,11 @@ check_conda_environment() {
 main() {
     # Check conda environment
     if ! check_conda_environment; then
+        exit 1
+    fi
+
+    # Ensure npm is available and recent before proceeding
+    if ! ensure_npm_prerequisite; then
         exit 1
     fi
 

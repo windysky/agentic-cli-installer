@@ -4,5 +4,5 @@
 # Keep root files we want in the repo
 !.gitignore
 !README.md
-!install_agentic_tools.sh
-!install_agentic_tools.bat
+!install_coding_tools.sh
+!install_coding_tools.bat

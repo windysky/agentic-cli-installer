@@ -30,14 +30,14 @@ An interactive installer that manages multiple AI coding CLI tools from one plac
 macOS/Linux:
 
 ```bash
-chmod +x install_agentic_tools.sh
-./install_agentic_tools.sh
+chmod +x install_coding_tools.sh
+./install_coding_tools.sh
 ```
 
 Windows (PowerShell):
 
 ```powershell
-.\install_agentic_tools.bat
+.\install_coding_tools.bat
 ```
 
 ## Notes
