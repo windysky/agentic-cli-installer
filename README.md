@@ -8,6 +8,7 @@ An interactive installer that manages multiple AI coding CLI tools from one plac
 - Detects installed versions for npm and uv tools
 - Fetches latest versions from npm and PyPI
 - Supports both macOS/Linux (`.sh`) and Windows (`.bat`)
+- **Cross-platform deployment script for easy installation**
 
 ## Supported Tools
 
@@ -25,7 +26,58 @@ An interactive installer that manages multiple AI coding CLI tools from one plac
 - For uv-managed tools: `uv`
 - For npm-managed tools: `node` + `npm`
 
-## Usage
+## Quick Start (Deployment Script)
+
+The recommended way to install the Agentic CLI Installer is using the deployment script:
+
+```bash
+# Clone or download the repository
+cd agentic-cli-installer
+
+# Run the deployment script (recommended)
+chmod +x setup.sh
+./setup.sh --configure-path
+
+# Now you can run the installer from anywhere
+install_coding_tools.sh
+```
+
+### Deployment Script Features
+
+The `setup.sh` script provides:
+- **Automatic platform detection** - WSL, Linux, macOS
+- **WSL dual-filesystem support** - Installs both Unix and Windows scripts
+- **Backup of existing files** - Preserves your current installations
+- **Executable permissions** - Automatically sets chmod +x
+- **PATH configuration** - Optional helper to add `~/.local/bin` to your PATH
+
+### Deployment Script Options
+
+```bash
+./setup.sh                           # Interactive installation
+./setup.sh --configure-path          # Install and configure PATH
+./setup.sh --force                   # Skip confirmation prompts
+./setup.sh --force --configure-path  # Non-interactive with PATH config
+./setup.sh --help                    # Show help message
+```
+
+### Platform-Specific Behavior
+
+**WSL (Windows Subsystem for Linux):**
+- Installs `install_coding_tools.sh` to `~/.local/bin/`
+- Installs `install_coding_tools.bat` to `/mnt/c/Users/<username>/.local/bin/`
+- Creates backups in `~/.local/bin.backup/`
+
+**Linux/macOS:**
+- Installs `install_coding_tools.sh` to `~/.local/bin/`
+- Creates backups in `~/.local/bin.backup/`
+
+**Windows:**
+- Run `install_coding_tools.bat` directly (no deployment script needed)
+
+## Manual Installation
+
+If you prefer not to use the deployment script:
 
 macOS/Linux:
 
@@ -44,3 +96,29 @@ Windows (PowerShell):
 
 - If a conda environment is active, the script refuses to run in `base` for safety.
 - Version checks use network calls; slow or blocked connections may show `Unknown` for latest versions.
+- The deployment script uses `~/.local/bin/` which follows the [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html).
+
+## Troubleshooting
+
+### Command not found after installation
+
+If you get `command not found: install_coding_tools.sh` after running the deployment script:
+
+```bash
+# Option 1: Re-run with PATH configuration
+./setup.sh --configure-path
+
+# Option 2: Manually add to PATH (add to your ~/.bashrc or ~/.zshrc)
+export PATH="$HOME/.local/bin:$PATH"
+
+# Option 3: Use the full path
+~/.local/bin/install_coding_tools.sh
+```
+
+### Permission denied
+
+If you get "Permission denied" when running the installer:
+
+```bash
+chmod +x ~/.local/bin/install_coding_tools.sh
+```

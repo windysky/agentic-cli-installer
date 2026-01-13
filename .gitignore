@@ -6,3 +6,136 @@
 !README.md
 !install_coding_tools.sh
 !install_coding_tools.bat
+node_modules/
+[Dd]esktop.ini
+*.jks
+*.backup/
+htmlcov/
+.turbo/
+# Build Artifacts & Distribution
+# Updated: 2026-01-10
+*.njsproj
+*.sqlite3
+.env
+*.swo
+*.db
+.firebase/
+.LSOverride
+coverage.json
+*.secret.*
+*-secret-key.*
+# Purpose: Essential patterns for user projects
+api-key-*
+*.swp
+# Python Cache & Bytecode
+*.log
+.DocumentRevisions-V100
+.next/
+.netlify/
+*.suo
+# Certificate files
+__pycache__/
+# MoAI-ADK Package Distribution .gitignore
+*-api-key.*
+dist-ssr/
+.claude/skills/*/*/*key*
+*.backup
+# Environment files
+.claude/skills/*/*/*token*
+private-key*
+.mypy_cache/
+*.pyc
+*.egg
+dist/
+.venv/
+*-secret.*
+build/
+*.bak
+# Deployment & CI/CD
+.claude/skills/*/*/*secret*
+.pytest_cache/
+.AppleDouble
+# Version: 0.33.0
+# Linux
+ehthumbs.db
+.uv-cache/
+logs/
+.VolumeIcon.icns
+.Spotlight-V100
+*.rdb
+*.tmp
+.moai-backups/
+# ============================================
+*-backup/
+.coverage
+*.pyd
+*_secret=*
+secret-*.*
+# Windows
+# Cloud provider credentials
+# FIXED: Issue #237 - Replaced overly broad *key* and *secret* patterns
+*_key.*
+# Build Tools & Frameworks
+.claude/skills/*/.env*
+*.tsbuildinfo
+# Backups
+*.p12
+*.sln
+# Claude Code Configuration
+.DS_Store
+.env/
+.fseventsd
+*.temp
+.env.*
+.idea/
+out/
+# ===========================================
+*.pyo
+*.egg-info/
+.ruff_cache/
+.vercel/
+*.sublime-workspace
+.claude/local/
+env/
+*.sqlite
+*_secret.*
+.#*
+.vscode/
+.Trashes
+# Private keys (specific patterns to avoid false positives)
+secret-key-*
+Thumbs.db
+.claude/settings.local.*.json
+# Secrets and Credentials (CRITICAL)
+*.sublime-project
+# Virtual Environments
+.claude/.env.local*
+.cursor/
+venv/
+.tscache/
+*_token=*
+*-key.*
+.claude/skills/*/secrets/
+# Skill-specific credentials
+*.pem
+.aws/credentials
+# Node.js (for docs/Nextra)
+# Logs & Temporary Files
+# Mac
+*.dbm
+*.key.*
+*.pfx
+!.env.example
+.TemporaryItems
+.nuxt/
+*.sw?
+# Credential patterns in environment files
+*_backup_*/
+# OS Files
+# Test Coverage
+.uv_cache/
+.directory
+# IDE & Editors
+.claude/settings.local.json
+*~
+.aws/config
