@@ -190,11 +190,17 @@ REM - If user presses Enter: input becomes empty and we treat it as "proceed".
 REM - If STDIN is closed/EOF (common when piped input runs out): keep a sentinel and exit safely.
 set "INPUT_SENTINEL=__EOF__%RANDOM%%RANDOM%"
 set "input=!INPUT_SENTINEL!"
-set /p input=""
+set /p "input="
 if "!input!"=="!INPUT_SENTINEL!" (
     echo %YELLOW%[WARNING]%NC% This terminal cannot submit an empty line here.
     echo %YELLOW%[WARNING]%NC% Type %CYAN%P%NC% to proceed, or %CYAN%Q%NC% to quit.
     goto menu_loop
+)
+
+REM Strip any surrounding quotes or whitespace that might interfere
+if defined input (
+    set "input=!input:"~1,-1!"
+    if "!input!"=="""" set "input="
 )
 
 REM Use the first token so trailing spaces don't break quit detection.
@@ -547,9 +553,24 @@ if "%NPM_LIST_JSON_READY%"=="0" (
     set "NPM_LIST_JSON_READY=1"
 )
 
-for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "$path='%NPM_LIST_JSON_CACHE%'; if (Test-Path $path) { $json = Get-Content -Raw $path; if ($json) { $obj = $json | ConvertFrom-Json; $dep = $obj.dependencies.'%pkg%'; if ($dep -and $dep.version) { $dep.version } } }"`) do (
+REM Use PowerShell script file for reliable parsing (avoiding complex escaping)
+set "PS_SCRIPT=%TEMP%\get_npm_ver_%RANDOM%.ps1"
+echo "$json = Get-Content -Raw '!NPM_LIST_JSON_CACHE!' | ConvertFrom-Json;" >"!PS_SCRIPT!"
+echo "$dep = $json.dependencies.'%pkg%';" >>"!PS_SCRIPT!"
+echo "if (-not $dep) {" >>"!PS_SCRIPT!"
+echo "  $keys = $json.dependencies.PSBase.Properties.Name;" >>"!PS_SCRIPT!"
+echo "  foreach ($key in $keys) {" >>"!PS_SCRIPT!"
+echo "    if ($key -eq '%pkg%') {" >>"!PS_SCRIPT!"
+echo "      $dep = $json.dependencies.$key;" >>"!PS_SCRIPT!"
+echo "      break;" >>"!PS_SCRIPT!"
+echo "    }" >>"!PS_SCRIPT!"
+echo "  }" >>"!PS_SCRIPT!"
+echo "}" >>"!PS_SCRIPT!"
+echo "if ($dep -and $dep.version) { Write-Output $dep.version }" >>"!PS_SCRIPT!"
+for /f "delims=" %%v in ('powershell -NoProfile -ExecutionPolicy Bypass -File "!PS_SCRIPT!" 2^>nul') do (
     if not "%%v"=="" set "%outvar%=%%v"
 )
+del "!PS_SCRIPT!" >nul 2>nul
 exit /b 0
 
 :get_latest_pypi_version
