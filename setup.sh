@@ -372,7 +372,7 @@ handle_wsl() {
         info "Skipping Windows filesystem installation"
 
         # Only install Unix script
-        install_unix_script "$SOURCE_SCRIPT_SH" "${TARGET_DIR}/install_agentic_tools.sh"
+        install_unix_script "$SOURCE_SCRIPT_SH" "${TARGET_DIR}/install_coding_tools.sh"
         return $?
     fi
 
@@ -391,8 +391,8 @@ handle_wsl() {
     fi
 
     info "WSL installation complete!"
-    info "Unix script: ${TARGET_DIR}/install_agentic_tools.sh"
-    info "Windows script: $windows_bin_dir/install_agentic_tools.bat"
+    info "Unix script: ${TARGET_DIR}/install_coding_tools.sh"
+    info "Windows script: $windows_bin_dir/install_coding_tools.bat"
 
     return 0
 }
@@ -472,7 +472,7 @@ main() {
             ;;
         windows)
             error "This deployment script is for Unix-like systems only"
-            error "On Windows, please run install_agentic_tools.bat directly"
+            error "On Windows, please run install_coding_tools.bat directly"
             exit 1
             ;;
     esac
