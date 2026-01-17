@@ -207,15 +207,12 @@ if defined input (
     if "!input!"=="""" set "input="
 )
 
+REM Handle empty input (treat same as 'P' for proceed)
+if not defined input set "input=P"
+
 REM Use the first token so trailing spaces don't break quit detection
 set "first="
-for /f "tokens=1" %%a in ("%input%") do set "first=%%a"
-if not defined first set "input="
-
-REM Handle empty input (treat same as 'P' for proceed)
-if "%input%"=="" (
-    set "input=P"
-)
+for /f "tokens=1" %%a in ("!input!") do set "first=%%a"
 
 REM Check for quit
 if /I "!first!"=="Q" (
@@ -225,13 +222,6 @@ if /I "!first!"=="Q" (
 
 REM Allow explicit proceed token (helps terminals that can't send an empty line).
 if /I "!first!"=="P" (
-    call :check_selected
-    if errorlevel 1 goto menu_loop
-    goto confirm_actions
-)
-
-REM Check for proceed (empty)
-if "%input%"=="" (
     call :check_selected
     if errorlevel 1 goto menu_loop
     goto confirm_actions
