@@ -186,20 +186,18 @@ call :render_menu
 echo.
 echo %CYAN%Enter selection (numbers, Enter to proceed, P if Enter fails, Q to quit):%NC%
 REM Robust input handling:
-REM - If user presses Enter: input becomes empty and we treat it as "proceed".
-REM - If STDIN is closed/EOF (common when piped input runs out): keep a sentinel and exit safely.
+REM - If user presses Enter: treat it as "proceed".
+REM - If STDIN is closed/EOF (common when piped input runs out): exit safely.
 set "INPUT_SENTINEL=__EOF__%RANDOM%%RANDOM%"
 set "input=!INPUT_SENTINEL!"
 set /p "input="
-REM Check if input received empty line (still has sentinel)
-if "!input!"=="!INPUT_SENTINEL!" (
-    REM Verify with expanded check
-    if "!input!"=="%INPUT_SENTINEL%" (
-        echo %YELLOW%[WARNING]%NC% This terminal cannot submit an empty line here.
-        echo %YELLOW%[WARNING]%NC% Type %CYAN%P%NC% to proceed, or %CYAN%Q%NC% to quit.
-        goto menu_loop
-    )
+set "INPUT_RC=%errorlevel%"
+if "%INPUT_RC%"=="1" (
+    echo %YELLOW%[WARNING]%NC% Input stream closed (EOF). Exiting without changes.
+    exit /b 0
 )
+REM Some shells keep the old value when the user presses Enter; normalize to empty.
+if "!input!"=="!INPUT_SENTINEL!" set "input="
 
 REM If we got past sentinel check, this is real input (not empty Enter)
 REM Strip leading/trailing spaces and optional surrounding quotes
