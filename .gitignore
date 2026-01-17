@@ -6,6 +6,7 @@
 !README.md
 !install_coding_tools.sh
 !install_coding_tools.bat
+!setup.bat
 node_modules/
 [Dd]esktop.ini
 *.jks
