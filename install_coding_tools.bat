@@ -188,18 +188,14 @@ echo %CYAN%Enter selection (numbers, Enter to proceed, P if Enter fails, Q to qu
 REM Robust input handling:
 REM - If user presses Enter: treat it as "proceed".
 REM - If STDIN is closed/EOF (common when piped input runs out): exit safely.
-set "INPUT_SENTINEL=__EOF__%RANDOM%%RANDOM%"
-set "input=!INPUT_SENTINEL!"
+set "input="
 set /p "input="
 set "INPUT_RC=%errorlevel%"
 if "%INPUT_RC%"=="1" (
     echo %YELLOW%[WARNING]%NC% Input stream closed (EOF). Exiting without changes.
     exit /b 0
 )
-REM Some shells keep the old value when the user presses Enter; normalize to empty.
-if "!input!"=="!INPUT_SENTINEL!" set "input="
 
-REM If we got past sentinel check, this is real input (not empty Enter)
 REM Strip leading/trailing spaces and optional surrounding quotes
 if defined input (
     for /f "tokens=* delims= " %%a in ("!input!") do set "input=%%a"
@@ -207,12 +203,14 @@ if defined input (
     if "!input!"=="""" set "input="
 )
 
-REM Handle empty input (treat same as 'P' for proceed)
-if not defined input set "input=P"
-
 REM Use the first token so trailing spaces don't break quit detection
 set "first="
 for /f "tokens=1" %%a in ("!input!") do set "first=%%a"
+REM Handle empty/whitespace-only input (treat same as 'P' for proceed)
+if not defined first (
+    set "input=P"
+    set "first=P"
+)
 
 REM Check for quit
 if /I "!first!"=="Q" (
@@ -952,9 +950,11 @@ set "num=%~1"
 if not defined num goto invalid
 echo(!num!| findstr /R "^[0-9][0-9]*$" >nul
 if errorlevel 1 goto invalid
+set "numVal="
 set /a "numVal=num" >nul 2>nul
-if %numVal% LSS 1 goto invalid
-if %numVal% GTR %TOOLS_COUNT% goto invalid
+if not defined numVal goto invalid
+if !numVal! LSS 1 goto invalid
+if !numVal! GTR %TOOLS_COUNT% goto invalid
 
 set "idx=%numVal%"
 call set "cur=%%ACT_%idx%%%"
