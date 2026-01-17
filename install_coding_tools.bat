@@ -91,6 +91,10 @@ set "NPM_ROOT_READY=0"
 set "NPM_ROOT_CACHE="
 set "LATEST_CACHE_DIR="
 set "INPUT_FAIL_COUNT=0"
+set "STDIN_REDIRECTED=0"
+for /f "delims=" %%a in ('powershell -NoProfile -Command "[Console]::IsInputRedirected" 2^>nul') do set "STDIN_REDIRECTED=%%a"
+if /I "%STDIN_REDIRECTED%"=="True" set "STDIN_REDIRECTED=1"
+if /I "%STDIN_REDIRECTED%"=="False" set "STDIN_REDIRECTED=0"
 
 REM Load tool definitions
 set "NAME_1=MoAI Agent Development Kit"
@@ -187,13 +191,15 @@ echo.
 echo %CYAN%Enter selection (numbers, Enter to proceed, P if Enter fails, Q to quit):%NC%
 REM Robust input handling:
 REM - If user presses Enter: treat it as "proceed".
-REM - If STDIN is closed/EOF (common when piped input runs out): exit safely.
+REM - If STDIN is closed/EOF and redirected (common when piped input runs out): exit safely.
 set "input="
 set /p "input="
 set "INPUT_RC=%errorlevel%"
 if "%INPUT_RC%"=="1" (
-    echo %YELLOW%[WARNING]%NC% Input stream closed (EOF). Exiting without changes.
-    exit /b 0
+    if "%STDIN_REDIRECTED%"=="1" (
+        echo %YELLOW%[WARNING]%NC% Input stream closed. Exiting without changes.
+        exit /b 0
+    )
 )
 
 REM Strip leading/trailing spaces and optional surrounding quotes
