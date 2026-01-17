@@ -3,7 +3,7 @@ setlocal EnableDelayedExpansion
 set "SCRIPT_DIR=%~dp0"
 
 REM ###############################################
-REM Agentic Coders Installer v1.1.0
+REM Agentic Coders Installer v1.1.1
 REM Interactive installer for AI coding CLI tools
 REM Windows version (run in Anaconda Prompt or CMD)
 REM ###############################################
@@ -191,15 +191,16 @@ REM - If STDIN is closed/EOF (common when piped input runs out): keep a sentinel
 set "INPUT_SENTINEL=__EOF__%RANDOM%%RANDOM%"
 set "input=!INPUT_SENTINEL!"
 set /p "input="
-if "!input!"=="!INPUT_SENTINEL!" (
+if "!input!"=="!INPUT_SENTINEL!" if "!input!"=="%INPUT_SENTINEL%" (
     echo %YELLOW%[WARNING]%NC% This terminal cannot submit an empty line here.
     echo %YELLOW%[WARNING]%NC% Type %CYAN%P%NC% to proceed, or %CYAN%Q%NC% to quit.
     goto menu_loop
 )
 
-REM Strip any surrounding quotes or whitespace that might interfere
+REM Strip leading/trailing spaces and optional surrounding quotes
 if defined input (
-    set "input=!input:"~1,-1!"
+    for /f "tokens=* delims= " %%a in ("!input!") do set "input=%%a"
+    if "!input:~0,1!"=="\"" if not "!input:~1!"=="" if "!input:~-1!"=="\"" set "input=!input:~1,-1!"
     if "!input!"=="""" set "input="
 )
 
@@ -478,9 +479,9 @@ if "%verarg%"=="" set "verarg=--version"
 call :dbg %BLUE%[DEBUG]%NC% get_semver_from_command bin="%bin%" verarg="%verarg%"
 set "semver="
 REM Run under cmd.exe (so .cmd shims work) and extract the first x.y.z from combined stdout/stderr.
-REM Use the extract_semver.ps1 script in the same directory as this batch file.
-set "SEMVER_EXTRACTOR=%~dp0extract_semver.ps1"
-for /f "delims=" %%v in ('%ComSpec% /d /c ""%bin%" %verarg% 2^>^&1" ^| powershell -NoProfile -ExecutionPolicy Bypass -File "%SEMVER_EXTRACTOR%"') do (
+REM Inline PowerShell via encoded command to avoid quoting issues or extra files.
+set "SEMVER_B64=CgAkAHQAZQB4AHQAIAA9ACAAWwBDAG8AbgBzAG8AbABlAF0AOgA6AEkAbgAuAFIAZQBhAGQAVABvAEUAbgBkACgAKQA7AAoAaQBmACAAKAAtAG4AbwB0ACAAJAB0AGUAeAB0ACkAIAB7ACAAcgBlAHQAdQByAG4AIAB9AAoAJABwAGEAdAB0AGUAcgBuAHMAIAA9ACAAQAAoACcAKAA/ADwAIQBcAGQAKQAoAFwAZAArAFwALgBcAGQAKwBcAC4AXABkACsAKAA/ADoALQBbADAALQA5AEEALQBaAGEALQB6AFwALgAtAF0AKwApAD8AKQAnACwAJwAoAD8APAAhAFwAZAApACgAXABkACsAXAAuAFwAZAArACgAPwA6AC0AWwAwAC0AOQBBAC0AWgBhAC0AegBcAC4ALQBdACsAKQA/ACkAJwApADsACgBmAG8AcgBlAGEAYwBoACAAKAAkAHAAYQB0ACAAaQBuACAAJABwAGEAdAB0AGUAcgBuAHMAKQAgAHsAIAAkAG0AIAA9ACAAWwByAGUAZwBlAHgAXQA6ADoATQBhAHQAYwBoACgAJAB0AGUAeAB0ACwAIAAkAHAAYQB0ACkAOwAgAGkAZgAgACgAJABtAC4AUwB1AGMAYwBlAHMAcwApACAAewAgAFcAcgBpAHQAZQAtAE8AdQB0AHAAdQB0ACAAJABtAC4ARwByAG8AdQBwAHMAWwAxAF0ALgBWAGEAbAB1AGUAOwAgAGIAcgBlAGEAawAgAH0AIAB9AAoA"
+for /f "delims=" %%v in ('%ComSpec% /d /c ""%bin%" %verarg% 2^>^&1" ^| powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand "%SEMVER_B64%"') do (
     if not "%%v"=="" if not defined semver set "semver=%%v"
 )
 if "%DEBUG%"=="1" if not defined semver (
@@ -553,24 +554,11 @@ if "%NPM_LIST_JSON_READY%"=="0" (
     set "NPM_LIST_JSON_READY=1"
 )
 
-REM Use PowerShell script file for reliable parsing (avoiding complex escaping)
-set "PS_SCRIPT=%TEMP%\get_npm_ver_%RANDOM%.ps1"
-echo "$json = Get-Content -Raw '!NPM_LIST_JSON_CACHE!' | ConvertFrom-Json;" >"!PS_SCRIPT!"
-echo "$dep = $json.dependencies.'%pkg%';" >>"!PS_SCRIPT!"
-echo "if (-not $dep) {" >>"!PS_SCRIPT!"
-echo "  $keys = $json.dependencies.PSBase.Properties.Name;" >>"!PS_SCRIPT!"
-echo "  foreach ($key in $keys) {" >>"!PS_SCRIPT!"
-echo "    if ($key -eq '%pkg%') {" >>"!PS_SCRIPT!"
-echo "      $dep = $json.dependencies.$key;" >>"!PS_SCRIPT!"
-echo "      break;" >>"!PS_SCRIPT!"
-echo "    }" >>"!PS_SCRIPT!"
-echo "  }" >>"!PS_SCRIPT!"
-echo "}" >>"!PS_SCRIPT!"
-echo "if ($dep -and $dep.version) { Write-Output $dep.version }" >>"!PS_SCRIPT!"
-for /f "delims=" %%v in ('powershell -NoProfile -ExecutionPolicy Bypass -File "!PS_SCRIPT!" 2^>nul') do (
+REM Parse once with inline PowerShell (no temp scripts; avoids escaping bugs)
+set "PS_CMD=$ErrorActionPreference='SilentlyContinue'; $pkg='%pkg%'; $jsonPath='%NPM_LIST_JSON_CACHE%'; if (Test-Path $jsonPath) { $jsonText = Get-Content -Raw $jsonPath; if ($jsonText) { $json = ConvertFrom-Json -InputObject $jsonText; if ($json -and $json.dependencies) { $dep = $json.dependencies.$pkg; if (-not $dep) { foreach ($p in $json.dependencies.PSObject.Properties) { if ($p.Name -eq $pkg) { $dep = $p.Value; break } } } if ($dep -and $dep.version) { Write-Output $dep.version } } } }"
+for /f "delims=" %%v in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "!PS_CMD!" 2^>nul') do (
     if not "%%v"=="" set "%outvar%=%%v"
 )
-del "!PS_SCRIPT!" >nul 2>nul
 exit /b 0
 
 :get_latest_pypi_version
@@ -860,7 +848,7 @@ if "%DEBUG%"=="1" (
     cls
 )
 echo.
-echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.1.0%NC%
+echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.1.1%NC%
 echo.
 echo Toggle tools: %CYAN%skip%NC% -^> %GREEN%install%NC% -^> %RED%remove%NC% (press number multiple times^)
 echo Numbers are %BOLD%comma-separated%NC% (e.g., %CYAN%1,3,5%NC%^). Press %BOLD%Q%NC% to quit.
@@ -1255,8 +1243,8 @@ if /I "!mgr!"=="npm-self" (
 ) else if /I "!mgr!"=="uv" (
     if /I "!inst!"=="Not Installed" (
         echo   Installing !pkg!...
-        call :dbg   %BLUE%[DEBUG]%NC% run: uv tool install "!pkg!"
-        call uv tool install "!pkg!"
+        call :dbg   %BLUE%[DEBUG]%NC% run: uv tool install "!pkg!" --force
+        call uv tool install "!pkg!" --force
     ) else (
         echo   Updating !pkg!...
         call :dbg   %BLUE%[DEBUG]%NC% run: uv tool update "!pkg!"

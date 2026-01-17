@@ -707,7 +707,7 @@ install_tool() {
         uv)
             if [[ "$installed_version" == "Not Installed" ]]; then
                 printf "  Installing ${pkg}...\n"
-                if uv tool install "$pkg"; then
+                if uv tool install "$pkg" --force; then
                     log_success "Installed ${name}"
                     return 0
                 else
