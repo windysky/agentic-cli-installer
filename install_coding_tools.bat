@@ -191,12 +191,17 @@ REM - If STDIN is closed/EOF (common when piped input runs out): keep a sentinel
 set "INPUT_SENTINEL=__EOF__%RANDOM%%RANDOM%"
 set "input=!INPUT_SENTINEL!"
 set /p "input="
-if "!input!"=="!INPUT_SENTINEL!" if "!input!"=="%INPUT_SENTINEL%" (
-    echo %YELLOW%[WARNING]%NC% This terminal cannot submit an empty line here.
-    echo %YELLOW%[WARNING]%NC% Type %CYAN%P%NC% to proceed, or %CYAN%Q%NC% to quit.
-    goto menu_loop
+REM Check if input received empty line (still has sentinel)
+if "!input!"=="!INPUT_SENTINEL!" (
+    REM Verify with expanded check
+    if "!input!"=="%INPUT_SENTINEL%" (
+        echo %YELLOW%[WARNING]%NC% This terminal cannot submit an empty line here.
+        echo %YELLOW%[WARNING]%NC% Type %CYAN%P%NC% to proceed, or %CYAN%Q%NC% to quit.
+        goto menu_loop
+    )
 )
 
+REM If we got past sentinel check, this is real input (not empty Enter)
 REM Strip leading/trailing spaces and optional surrounding quotes
 if defined input (
     for /f "tokens=* delims= " %%a in ("!input!") do set "input=%%a"
@@ -204,10 +209,15 @@ if defined input (
     if "!input!"=="""" set "input="
 )
 
-REM Use the first token so trailing spaces don't break quit detection.
+REM Use the first token so trailing spaces don't break quit detection
 set "first="
 for /f "tokens=1" %%a in ("%input%") do set "first=%%a"
 if not defined first set "input="
+
+REM Handle empty input (treat same as 'P' for proceed)
+if "%input%"=="" (
+    set "input=P"
+)
 
 REM Check for quit
 if /I "!first!"=="Q" (
