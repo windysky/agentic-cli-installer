@@ -245,6 +245,24 @@ get_installed_native_version() {
     fi
 }
 
+# Check for npm-installed Claude Code (for migration)
+check_npm_claude_code() {
+    if command -v npm >/dev/null 2>&1; then
+        local json
+        json=$(npm list -g --depth=0 --json 2>/dev/null || true)
+        if [[ -n "$json" ]]; then
+            if command -v node >/dev/null 2>&1; then
+                local has_npm_claude
+                has_npm_claude=$(node -e "const obj = JSON.parse(process.argv[1]); const dep = obj.dependencies && obj.dependencies['@anthropic-ai/claude-code']; if (dep) console.log('yes');" "$json" 2>/dev/null || true)
+                if [[ "$has_npm_claude" == "yes" ]]; then
+                    return 0  # npm version found
+                fi
+            fi
+        fi
+    fi
+    return 1  # no npm version found
+}
+
 get_tool_version() {
     local manager=$1
     local pkg=$2
@@ -776,6 +794,20 @@ install_tool() {
             ;;
         native)
             if [[ "$pkg" == "claude-code" ]]; then
+                # Check for npm-installed version and migrate
+                if check_npm_claude_code; then
+                    printf "  ${YELLOW}Detected npm-installed Claude Code (deprecated method)${NC}\n"
+                    printf "  ${YELLOW}The npm installation method is deprecated. Migrating to native installer...${NC}\n"
+                    printf "  Removing npm version...\n"
+                    if npm uninstall -g "@anthropic-ai/claude-code" 2>/dev/null; then
+                        printf "  ${GREEN}npm version removed successfully${NC}\n"
+                    else
+                        printf "  ${YELLOW}Warning: Failed to remove npm version, continuing anyway...${NC}\n"
+                    fi
+                    # Proceed with native installation
+                    installed_version="Not Installed"
+                fi
+
                 if [[ "$installed_version" == "Not Installed" ]]; then
                     printf "  Installing Claude Code (native installer)...\n"
                     if curl -fsSL https://claude.ai/install.sh | bash; then

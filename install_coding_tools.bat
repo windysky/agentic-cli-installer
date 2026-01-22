@@ -638,6 +638,22 @@ if /I "%pkg%"=="claude-code" (
 )
 exit /b 0
 
+REM Check for npm-installed Claude Code (for migration)
+:check_npm_claude_code
+set "outvar=%~1"
+set "%outvar%=0"
+where npm >nul 2>nul
+if errorlevel 1 exit /b 0
+REM Check if @anthropic-ai/claude-code is in npm list
+set "NPM_CLAUDE_CHECK="
+for /f "delims=" %%v in ('npm list -g @anthropic-ai/claude-code 2^>nul ^| findstr /C:"@anthropic-ai/claude-code"') do (
+    set "NPM_CLAUDE_CHECK=%%v"
+)
+if defined NPM_CLAUDE_CHECK (
+    set "%outvar%=1"
+)
+exit /b 0
+
 REM ###############################################
 REM INITIALIZATION
 REM ###############################################
@@ -1285,6 +1301,24 @@ if /I "!mgr!"=="npm-self" (
     )
 ) else if /I "!mgr!"=="native" (
     if /I "!pkg!"=="claude-code" (
+        REM Check for npm-installed version and migrate
+        set "HAS_NPM_CLAUDE=0"
+        call :check_npm_claude_code HAS_NPM_CLAUDE
+        if "!HAS_NPM_CLAUDE!"=="1" (
+            echo   %YELLOW%Detected npm-installed Claude Code (deprecated method)%NC%
+            echo   %YELLOW%The npm installation method is deprecated. Migrating to native installer...%NC%
+            echo   Removing npm version...
+            call :dbg   %BLUE%[DEBUG]%NC% run: npm uninstall -g "@anthropic-ai/claude-code"
+            call npm uninstall -g "@anthropic-ai/claude-code" >nul 2>nul
+            if errorlevel 1 (
+                echo   %YELLOW%Warning: Failed to remove npm version, continuing anyway...%NC%
+            ) else (
+                echo   %GREEN%npm version removed successfully%NC%
+            )
+            REM Proceed with native installation
+            set "INST=Not Installed"
+        )
+
         if /I "!inst!"=="Not Installed" (
             echo   Installing Claude Code ^(native installer^)...
             call :dbg   %BLUE%[DEBUG]%NC% run: curl -fsSL https://claude.ai/install.cmd
