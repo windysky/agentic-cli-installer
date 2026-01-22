@@ -63,7 +63,7 @@ set "MIN_NPM_VERSION=9.0.0"
 REM Tool list: name|manager|package|description
 set TOOLS_COUNT=7
 set "TOOL_1=moai-adk|uv|moai-adk|MoAI Agent Development Kit"
-set "TOOL_2=@anthropic-ai/claude-code|npm|@anthropic-ai/claude-code|Claude Code CLI"
+set "TOOL_2=claude-code|native|claude-code|Claude Code CLI"
 set "TOOL_3=@openai/codex|npm|@openai/codex|OpenAI Codex CLI"
 set "TOOL_4=@google/gemini-cli|npm|@google/gemini-cli|Google Gemini CLI"
 set "TOOL_5=@google/jules|npm|@google/jules|Google Jules CLI"
@@ -618,6 +618,26 @@ if exist "%tmpfile%" (
 )
 exit /b 0
 
+REM Get installed version for native tools (e.g., Claude Code)
+:get_installed_native_version
+set "pkg=%~1"
+set "outvar=%~2"
+set "%outvar%="
+if /I "%pkg%"=="claude-code" (
+    where claude >nul 2>nul
+    if not errorlevel 1 (
+        for /f "delims=" %%v in ('claude --version 2^>nul') do (
+            if not "%%v"=="" (
+                REM Extract version number from output
+                for /f "tokens=1-3 delims=." %%a in ("%%v") do (
+                    if "%%a" neq "" set "%outvar%=%%a.%%b.%%c"
+                )
+            )
+        )
+    )
+)
+exit /b 0
+
 REM ###############################################
 REM INITIALIZATION
 REM ###############################################
@@ -791,6 +811,8 @@ if "%DEBUG%"=="1" (
         call :get_installed_npm_version "!pkg!" INST
     ) else if /I "!mgr!"=="uv" (
         call :get_installed_uv_version "!pkg!" INST
+    ) else if /I "!mgr!"=="native" (
+        call :get_installed_native_version "!pkg!" INST
     )
 
     REM Fall back to the CLI only when manager lookup failed and the tool is on PATH (skip uv shims)
@@ -1156,6 +1178,13 @@ for /L %%i in (1,1,%TOOLS_COUNT%) do (
                 set /a missing_count+=1
                 set "missing_!missing_count!=npm (required for !name!^)"
             )
+        ) else if "!mgr!"=="native" (
+            REM Native tools use their own installer, just need curl
+            where curl >nul 2>nul
+            if errorlevel 1 (
+                set /a missing_count+=1
+                set "missing_!missing_count!=curl (required for !name!^)"
+            )
         )
     )
 )
@@ -1254,6 +1283,40 @@ if /I "!mgr!"=="npm-self" (
         call :dbg   %BLUE%[DEBUG]%NC% run: uv tool update "!pkg!"
         call uv tool update "!pkg!"
     )
+) else if /I "!mgr!"=="native" (
+    if /I "!pkg!"=="claude-code" (
+        if /I "!inst!"=="Not Installed" (
+            echo   Installing Claude Code ^(native installer^)...
+            call :dbg   %BLUE%[DEBUG]%NC% run: curl -fsSL https://claude.ai/install.cmd
+            if exist "%TEMP%\install.cmd" del "%TEMP%\install.cmd" >nul 2>nul
+            curl -fsSL https://claude.ai/install.cmd -o "%TEMP%\install.cmd"
+            if errorlevel 1 (
+                echo   %RED%[ERROR]%NC% Failed to download Claude Code installer
+                exit /b 1
+            )
+            call "%TEMP%\install.cmd"
+            set "RC=%errorlevel%"
+            del "%TEMP%\install.cmd" >nul 2>nul
+            if !RC! NEQ 0 exit /b !RC!
+        ) else (
+            echo   Updating Claude Code...
+            call :dbg   %BLUE%[DEBUG]%NC% run: claude update
+            call claude update
+            if errorlevel 1 (
+                echo   Update command failed, trying re-install...
+                if exist "%TEMP%\install.cmd" del "%TEMP%\install.cmd" >nul 2>nul
+                curl -fsSL https://claude.ai/install.cmd -o "%TEMP%\install.cmd"
+                if errorlevel 1 (
+                    echo   %RED%[ERROR]%NC% Failed to download Claude Code installer
+                    exit /b 1
+                )
+                call "%TEMP%\install.cmd"
+                set "RC=%errorlevel%"
+                del "%TEMP%\install.cmd" >nul 2>nul
+                if !RC! NEQ 0 exit /b !RC!
+            )
+        )
+    )
 ) else (
     if /I "!inst!"=="Not Installed" (
         echo   Installing !pkg!...
@@ -1296,6 +1359,22 @@ if /I "!mgr!"=="npm-self" (
     echo   Uninstalling !pkg!...
     call :dbg   %BLUE%[DEBUG]%NC% run: uv tool uninstall "!pkg!"
     call uv tool uninstall "!pkg!"
+) else if /I "!mgr!"=="native" (
+    if /I "!pkg!"=="claude-code" (
+        echo   Uninstalling Claude Code ^(native^)...
+        call :dbg   %BLUE%[DEBUG]%NC% remove: %USERPROFILE%\.local\bin\claude.exe
+        if exist "%USERPROFILE%\.local\bin\claude.exe" (
+            del "%USERPROFILE%\.local\bin\claude.exe" >nul 2>nul
+        )
+        if exist "%USERPROFILE%\.local\share\claude" (
+            rmdir /s /q "%USERPROFILE%\.local\share\claude" >nul 2>nul
+        )
+        REM Check if removal was successful
+        if exist "%USERPROFILE%\.local\bin\claude.exe" (
+            echo %RED%[ERROR]%NC% Failed to remove Claude Code binary
+            exit /b 1
+        )
+    )
 ) else (
     echo   Uninstalling !pkg!...
     call :dbg   %BLUE%[DEBUG]%NC% run: npm uninstall -g "!pkg!"

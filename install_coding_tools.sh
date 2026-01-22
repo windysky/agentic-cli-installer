@@ -19,7 +19,7 @@ readonly MIN_NPM_VERSION="9.0.0"
 # Tool definitions: name, package manager, package name, description
 declare -a TOOLS=(
     "moai-adk|uv|moai-adk|MoAI Agent Development Kit"
-    "@anthropic-ai/claude-code|npm|@anthropic-ai/claude-code|Claude Code CLI"
+    "claude-code|native|claude-code|Claude Code CLI"
     "@openai/codex|npm|@openai/codex|OpenAI Codex CLI"
     "@google/gemini-cli|npm|@google/gemini-cli|Google Gemini CLI"
     "@google/jules|npm|@google/jules|Google Jules CLI"
@@ -235,6 +235,16 @@ get_latest_npm_self_version() {
     fi
 }
 
+get_installed_native_version() {
+    local pkg=$1
+    # Check for claude binary
+    if [[ "$pkg" == "claude-code" ]]; then
+        if command -v claude >/dev/null 2>&1; then
+            claude --version 2>/dev/null | head -n1 | sed -E 's/.*([0-9]+\.[0-9]+\.[0-9]+).*/\1/' || true
+        fi
+    fi
+}
+
 get_tool_version() {
     local manager=$1
     local pkg=$2
@@ -249,6 +259,9 @@ get_tool_version() {
             ;;
         npm-self)
             installed=$(get_installed_npm_self_version)
+            ;;
+        native)
+            installed=$(get_installed_native_version "$pkg")
             ;;
     esac
 
@@ -272,6 +285,18 @@ get_latest_version() {
             ;;
         npm-self)
             get_latest_npm_self_version
+            ;;
+        native)
+            # For native Claude Code, we'll just check the GitHub releases
+            if [[ "$pkg" == "claude-code" ]] && command -v curl >/dev/null 2>&1; then
+                local cache_bust
+                cache_bust=$(date +%s)
+                if command -v python3 >/dev/null 2>&1; then
+                    {
+                        curl -fsSL --max-time 10 "https://api.github.com/repos/anthropics/claude-code/releases/latest?ts=${cache_bust}" 2>/dev/null || echo -n ""
+                    } | python3 -c "import sys, json; data = sys.stdin.read().strip(); print(json.loads(data)['tag_name'].lstrip('v')) if data else None" 2>/dev/null || true
+                fi
+            fi
             ;;
     esac
 }
@@ -328,6 +353,9 @@ prefetch_latest_versions() {
                         ;;
                     npm-self)
                         latest=$(get_latest_npm_self_version)
+                        ;;
+                    native)
+                        latest=$(get_latest_version "$pkg" "$manager")
                         ;;
                 esac
                 if [[ -n "$latest" ]]; then
@@ -746,6 +774,40 @@ install_tool() {
                 fi
             fi
             ;;
+        native)
+            if [[ "$pkg" == "claude-code" ]]; then
+                if [[ "$installed_version" == "Not Installed" ]]; then
+                    printf "  Installing Claude Code (native installer)...\n"
+                    if curl -fsSL https://claude.ai/install.sh | bash; then
+                        # Add ~/.local/bin to PATH if not already there
+                        if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+                            printf "  ${YELLOW}Note: $HOME/.local/bin should be in your PATH${NC}\n"
+                        fi
+                        log_success "Installed ${name}"
+                        return 0
+                    else
+                        log_error "Failed to install ${name}"
+                        return 1
+                    fi
+                else
+                    printf "  Updating Claude Code...\n"
+                    if claude update 2>/dev/null; then
+                        log_success "Updated ${name}"
+                        return 0
+                    else
+                        # Try running the installer again if update fails
+                        printf "  Update command failed, trying re-install...\n"
+                        if curl -fsSL https://claude.ai/install.sh | bash; then
+                            log_success "Updated ${name}"
+                            return 0
+                        else
+                            log_error "Failed to update ${name}"
+                            return 1
+                        fi
+                    fi
+                fi
+            fi
+            ;;
         npm-self)
             # npm-self should only be "update" action, never "install" from scratch
             # If npm is not installed, this should have been handled via conda
@@ -794,6 +856,29 @@ remove_tool() {
             else
                 log_error "Failed to remove ${name}"
                 return 1
+            fi
+            ;;
+        native)
+            if [[ "$pkg" == "claude-code" ]]; then
+                printf "  Uninstalling Claude Code (native)...\n"
+                local removed=false
+                # Remove the binary
+                if [[ -f "$HOME/.local/bin/claude" ]]; then
+                    rm -f "$HOME/.local/bin/claude"
+                    removed=true
+                fi
+                # Remove the data directory
+                if [[ -d "$HOME/.local/share/claude" ]]; then
+                    rm -rf "$HOME/.local/share/claude"
+                    removed=true
+                fi
+                if $removed; then
+                    log_success "Removed ${name}"
+                    return 0
+                else
+                    log_error "Failed to remove ${name}"
+                    return 1
+                fi
             fi
             ;;
         npm-self)
@@ -1040,6 +1125,12 @@ check_dependencies() {
                         missing+=("npm (required for ${TOOL_NAMES[$i]})")
                     fi
                     ;;
+                native)
+                    # Native tools use their own installer, just need curl
+                    if ! command -v curl >/dev/null 2>&1; then
+                        missing+=("curl (required for ${TOOL_NAMES[$i]})")
+                    fi
+                    ;;
             esac
         fi
     done
@@ -1053,6 +1144,7 @@ check_dependencies() {
         printf "Install missing dependencies:\n"
         printf "  ${CYAN}uv${NC}:   ${YELLOW}curl -LsSf https://astral.sh/uv/install.sh | sh${NC}\n"
         printf "  ${CYAN}npm${NC}:   ${YELLOW}https://docs.npmjs.com/downloading-and-installing-node-js-and-npm${NC}\n"
+        printf "  ${CYAN}curl${NC}: ${YELLOW}sudo apt install curl${NC} (Debian/Ubuntu)\n"
         return 1
     fi
 

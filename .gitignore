@@ -140,3 +140,4 @@ venv/
 .claude/settings.local.json
 *~
 .aws/config
+.claude/plans/
