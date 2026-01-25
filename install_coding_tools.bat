@@ -96,6 +96,10 @@ for /f "delims=" %%a in ('powershell -NoProfile -Command "[Console]::IsInputRedi
 if /I "%STDIN_REDIRECTED%"=="True" set "STDIN_REDIRECTED=1"
 if /I "%STDIN_REDIRECTED%"=="False" set "STDIN_REDIRECTED=0"
 
+REM GitHub API rate limit tracking
+set "GITHUB_RATE_LIMIT_REMAINING=60"
+set "GITHUB_RATE_LIMIT_RESET=0"
+
 REM Load tool definitions
 set "NAME_1=MoAI Agent Development Kit"
 set "MGR_1=uv"
@@ -105,8 +109,8 @@ set "BIN_1=moai-adk"
 set "VERARG_1=--version"
 
 set "NAME_2=Claude Code CLI"
-set "MGR_2=npm"
-set "PKG_2=@anthropic-ai/claude-code"
+set "MGR_2=native"
+set "PKG_2=claude-code"
 set "DESC_2=Claude Code CLI"
 set "BIN_2=claude"
 set "VERARG_2=--version"
@@ -157,14 +161,6 @@ call :check_conda_environment
 set "RC=%errorlevel%"
 if not "%RC%"=="0" (
     call :die "check_conda_environment" "%RC%"
-    exit /b %RC%
-)
-
-call :dbg %BLUE%[STEP]%NC% ensure_npm_prerequisite
-call :ensure_npm_prerequisite
-set "RC=%errorlevel%"
-if not "%RC%"=="0" (
-    call :die "ensure_npm_prerequisite" "%RC%"
     exit /b %RC%
 )
 
@@ -239,6 +235,18 @@ goto menu_loop
 call :display_action_summary
 call :confirm_removals
 if errorlevel 1 exit /b 0
+
+call :selection_requires_npm
+set "RC=%errorlevel%"
+if "%RC%"=="0" (
+    call :dbg %BLUE%[STEP]%NC% ensure_npm_prerequisite
+    call :ensure_npm_prerequisite
+    set "RC=%errorlevel%"
+    if not "%RC%"=="0" (
+        call :die "ensure_npm_prerequisite" "%RC%"
+        exit /b %RC%
+    )
+)
 
 call :dbg_step "check_dependencies"
 call :check_dependencies
@@ -418,6 +426,61 @@ if errorlevel 1 (
 )
 exit /b 0
 
+:get_sha256
+set "file=%~1"
+set "outvar=%~2"
+set "%outvar%="
+for /f "delims=" %%h in ('powershell -NoProfile -Command "try { (Get-FileHash -Algorithm SHA256 -Path ''%file%'').Hash } catch { }" 2^>nul') do (
+    if not "%%h"=="" set "%outvar%=%%h"
+)
+exit /b 0
+
+:verify_or_confirm_installer
+set "file=%~1"
+set "expected=%CLAUDE_INSTALLER_SHA256%"
+set "expected=!expected: =!"
+set "actual="
+call :get_sha256 "%file%" actual
+if not defined actual (
+    echo %YELLOW%[WARNING]%NC% Unable to compute installer SHA256.
+    echo   Installer will be executed without verification.
+    set "response="
+    set /p response="Proceed with executing the installer? [y/N]: "
+    if /I "!response!"=="y" exit /b 0
+    if /I "!response!"=="yes" exit /b 0
+    echo %YELLOW%[WARNING]%NC% Cancelled by user
+    exit /b 1
+)
+if defined expected (
+    if /I not "!actual!"=="!expected!" (
+        echo %RED%[ERROR]%NC% Installer SHA256 mismatch.
+        echo   Expected: !expected!
+        echo   Actual:   !actual!
+        exit /b 1
+    )
+    exit /b 0
+)
+
+REM No expected hash set - show user the hash and ask for confirmation
+echo %YELLOW%[WARNING]%NC% CLAUDE_INSTALLER_SHA256 is not set.
+echo   Installer SHA256: !actual!
+set "response="
+set /p response="Proceed with executing the installer? [y/N]: "
+if /I "!response!"=="y" exit /b 0
+if /I "!response!"=="yes" exit /b 0
+echo %YELLOW%[WARNING]%NC% Cancelled by user
+exit /b 1
+
+:download_claude_installer
+set "outfile=%~1"
+curl -fsSL https://claude.ai/install.cmd -o "%outfile%"
+if errorlevel 1 (
+    echo %RED%[ERROR]%NC% Failed to download Claude Code installer
+    exit /b 1
+)
+call :verify_or_confirm_installer "%outfile%"
+exit /b %errorlevel%
+
 :check_conda_environment
 REM Check if conda environment is active
 if defined CONDA_DEFAULT_ENV (
@@ -455,6 +518,21 @@ if !count!==0 (
 )
 echo %GREEN%[SUCCESS]%NC% Starting installation/upgrade of !count! tool^(s^)...
 exit /b 0
+
+:selection_requires_npm
+set "needs_npm=0"
+for /L %%i in (1,1,%TOOLS_COUNT%) do (
+    call set "act=%%ACT_%%i%%"
+    call set "act=%%act%%"
+    if not "!act!"=="0" (
+        call set "mgr=%%MGR_%%i%%"
+        call set "mgr=%%mgr%%"
+        if /I "!mgr!"=="npm" set "needs_npm=1"
+        if /I "!mgr!"=="npm-self" set "needs_npm=1"
+    )
+)
+if "%needs_npm%"=="1" exit /b 0
+exit /b 1
 
 :print_sep
 REM ASCII separator to avoid mojibake in different Windows code pages.
@@ -556,9 +634,8 @@ if "%NPM_LIST_JSON_READY%"=="0" (
     set "NPM_LIST_JSON_READY=1"
 )
 
-REM Parse once with inline PowerShell (no temp scripts; avoids escaping bugs)
-set "PS_CMD=$ErrorActionPreference='SilentlyContinue'; $pkg='%pkg%'; $jsonPath='%NPM_LIST_JSON_CACHE%'; if (Test-Path $jsonPath) { $jsonText = Get-Content -Raw $jsonPath; if ($jsonText) { $json = ConvertFrom-Json -InputObject $jsonText; if ($json -and $json.dependencies) { $dep = $json.dependencies.$pkg; if (-not $dep) { foreach ($p in $json.dependencies.PSObject.Properties) { if ($p.Name -eq $pkg) { $dep = $p.Value; break } } } if ($dep -and $dep.version) { Write-Output $dep.version } } } }"
-for /f "delims=" %%v in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "!PS_CMD!" 2^>nul') do (
+REM SAFE: Use PowerShell with parameters instead of variable interpolation
+for /f "delims=" %%v in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "param($jsonPath, $pkg); $ErrorActionPreference='SilentlyContinue'; if (Test-Path $jsonPath) { $jsonText = Get-Content -Raw $jsonPath; if ($jsonText) { $json = ConvertFrom-Json -InputObject $jsonText; if ($json -and $json.dependencies) { $dep = $json.dependencies.$pkg; if ($dep -and $dep.version) { Write-Output $dep.version } } } }" -jsonPath "!NPM_LIST_JSON_CACHE!" -pkg "!pkg!" 2^>nul') do (
     if not "%%v"=="" set "%outvar%=%%v"
 )
 exit /b 0
@@ -651,6 +728,21 @@ for /f "delims=" %%v in ('npm list -g @anthropic-ai/claude-code 2^>nul ^| findst
 )
 if defined NPM_CLAUDE_CHECK (
     set "%outvar%=1"
+)
+exit /b 0
+
+REM Helper function for semantic version comparison
+:version_compare_semver
+set "installed=%~1"
+set "latest=%~2"
+set "outvar=%~3"
+
+if "%installed%"=="Not Installed" echo missing& exit /b 0
+if "%latest%"=="" echo unknown& exit /b 0
+
+REM Use PowerShell for proper semver comparison
+for /f "delims=" %%r in ('powershell -NoProfile -Command "try { $v1 = [version]('%installed%'); $v2 = [version]('%latest%'); if ($v1 -ge $v2) { Write-Output 'current' } else { Write-Output 'update' } } catch { Write-Output 'update' }"') do (
+    set "%outvar%=%%r"
 )
 exit /b 0
 
@@ -763,6 +855,10 @@ if /I "!p_mgr!"=="uv" (
     for /f "delims=" %%v in ('powershell -NoProfile -Command "$ProgressPreference='SilentlyContinue'; try { $result=Invoke-RestMethod -UseBasicParsing -Uri 'https://registry.npmjs.org/npm/latest' -TimeoutSec 10; if($result-and$result.version){Write-Output $result.version} } catch { }" 2^>^&1') do (
         if not "%%v"=="" set "VERSION=%%v"
     )
+) else if /I "!p_mgr!"=="native" (
+    for /f "delims=" %%v in ('powershell -NoProfile -Command "$ProgressPreference='SilentlyContinue'; $ts=[DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); $uri='https://api.github.com/repos/anthropics/claude-code/releases/latest?ts=' + $ts; $maxRetry=5; $retryDelay=1; $attempt=0; $version=$null; while ($attempt -lt $maxRetry -and -not $version) { try { $response=Invoke-WebRequest -UseBasicParsing -Uri $uri -TimeoutSec 10 -ErrorAction Stop; $rateRemaining=$response.Headers['x-ratelimit-remaining']; if ($rateRemaining -and $rateRemaining -lt 5) { Write-Warning \"Rate limit low ($rateRemaining remaining). Waiting ${retryDelay}s...\"; Start-Sleep -Seconds $retryDelay; $retryDelay=$retryDelay*2 }; $result=$response.Content | ConvertFrom-Json; if($result-and$result.tag_name){ $version = $result.tag_name -replace '^v','' } } catch { if ($_.Exception.Response.StatusCode -eq 403 -and $attempt -lt ($maxRetry-1)) { Write-Warning \"GitHub API rate limited. Retrying in ${retryDelay}s...\"; Start-Sleep -Seconds $retryDelay; $retryDelay=$retryDelay*2 } }; $attempt++ } if ($version) { Write-Output $version }" 2^>^&1') do (
+        if not "%%v"=="" set "VERSION=%%v"
+    )
 ) else (
     for /f "delims=" %%v in ('powershell -NoProfile -Command "$ProgressPreference='SilentlyContinue'; try { $result=Invoke-RestMethod -UseBasicParsing -Uri 'https://registry.npmjs.org/%p_pkg%/latest' -TimeoutSec 10; if($result-and$result.version){Write-Output $result.version} } catch { }" 2^>^&1') do (
         if not "%%v"=="" set "VERSION=%%v"
@@ -867,12 +963,16 @@ if "!INST!"=="Not Installed" (
 ) else if "!LATEST!"=="Unknown" (
     set "ACT_%idx%=0"
     set "SEL_%idx%=0"
-) else if "!INST!" neq "!LATEST!" (
-    set "ACT_%idx%=1"
-    set "SEL_%idx%=1"
 ) else (
-    set "ACT_%idx%=0"
-    set "SEL_%idx%=0"
+    REM Use semantic version comparison
+    call :version_compare_semver "!INST!" "!LATEST!" VERSION_STATUS
+    if "!VERSION_STATUS!"=="update" (
+        set "ACT_%idx%=1"
+        set "SEL_%idx%=1"
+    ) else (
+        set "ACT_%idx%=0"
+        set "SEL_%idx%=0"
+    )
 )
 exit /b 0
 
@@ -1321,13 +1421,10 @@ if /I "!mgr!"=="npm-self" (
 
         if /I "!inst!"=="Not Installed" (
             echo   Installing Claude Code ^(native installer^)...
-            call :dbg   %BLUE%[DEBUG]%NC% run: curl -fsSL https://claude.ai/install.cmd
+            call :dbg   %BLUE%[DEBUG]%NC% run: download_claude_installer
             if exist "%TEMP%\install.cmd" del "%TEMP%\install.cmd" >nul 2>nul
-            curl -fsSL https://claude.ai/install.cmd -o "%TEMP%\install.cmd"
-            if errorlevel 1 (
-                echo   %RED%[ERROR]%NC% Failed to download Claude Code installer
-                exit /b 1
-            )
+            call :download_claude_installer "%TEMP%\install.cmd"
+            if errorlevel 1 exit /b 1
             call "%TEMP%\install.cmd"
             set "RC=%errorlevel%"
             del "%TEMP%\install.cmd" >nul 2>nul
@@ -1339,11 +1436,8 @@ if /I "!mgr!"=="npm-self" (
             if errorlevel 1 (
                 echo   Update command failed, trying re-install...
                 if exist "%TEMP%\install.cmd" del "%TEMP%\install.cmd" >nul 2>nul
-                curl -fsSL https://claude.ai/install.cmd -o "%TEMP%\install.cmd"
-                if errorlevel 1 (
-                    echo   %RED%[ERROR]%NC% Failed to download Claude Code installer
-                    exit /b 1
-                )
+                call :download_claude_installer "%TEMP%\install.cmd"
+                if errorlevel 1 exit /b 1
                 call "%TEMP%\install.cmd"
                 set "RC=%errorlevel%"
                 del "%TEMP%\install.cmd" >nul 2>nul

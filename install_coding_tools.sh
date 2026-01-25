@@ -105,9 +105,160 @@ require_cmd() {
     return 0
 }
 
+compute_sha256() {
+    local file=$1
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$file" | awk '{print $1}' || return 1
+        return 0
+    fi
+    if command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$file" | awk '{print $1}' || return 1
+        return 0
+    fi
+    if command -v openssl >/dev/null 2>&1; then
+        openssl dgst -sha256 "$file" | awk '{print $2}' || return 1
+        return 0
+    fi
+    return 1
+}
+
+verify_or_confirm_installer() {
+    local file=$1
+    local expected=${CLAUDE_INSTALLER_SHA256:-}
+    local actual
+    if ! actual=$(compute_sha256 "$file"); then
+        log_warning "No SHA256 tool available. Installer will be executed without verification."
+        printf "  Proceed with executing the installer? (y/N): "
+        read -r response
+        case "$response" in
+            [Yy]|[Yy][Ee][Ss])
+                return 0
+                ;;
+            *)
+                log_warning "Cancelled by user"
+                return 1
+                ;;
+        esac
+    fi
+    if [[ -n "$expected" ]]; then
+        if [[ "$actual" != "$expected" ]]; then
+            log_error "Installer SHA256 mismatch."
+            log_error "Expected: $expected"
+            log_error "Actual:   $actual"
+            return 1
+        fi
+        return 0
+    fi
+
+    # No expected hash set - show user the hash and ask for confirmation
+    log_warning "CLAUDE_INSTALLER_SHA256 is not set."
+    printf "  Installer SHA256: %s\n" "$actual"
+    printf "  Proceed with executing the installer? (y/N): "
+    read -r response
+    case "$response" in
+        [Yy]|[Yy][Ee][Ss])
+            return 0
+            ;;
+        *)
+            log_warning "Cancelled by user"
+            return 1
+            ;;
+    esac
+}
+
+run_claude_installer() {
+    local tmp
+    if ! tmp=$(mktemp); then
+        log_error "Failed to create temporary file for installer."
+        return 1
+    fi
+
+    if ! curl -fsSL --proto '=https' --tlsv1.2 https://claude.ai/install.sh -o "$tmp"; then
+        log_error "Failed to download Claude Code installer."
+        rm -f "$tmp"
+        return 1
+    fi
+
+    if ! verify_or_confirm_installer "$tmp"; then
+        rm -f "$tmp"
+        return 1
+    fi
+
+    if bash "$tmp"; then
+        rm -f "$tmp"
+        return 0
+    fi
+
+    local rc=$?
+    rm -f "$tmp"
+    return "$rc"
+}
+
 #############################################
 # VERSION QUERY FUNCTIONS
 #############################################
+
+# GitHub API rate limit tracking
+GITHUB_RATE_LIMIT_REMAINING=60
+GITHUB_RATE_LIMIT_RESET=0
+
+check_github_rate_limit() {
+    local response_headers=$1
+
+    # Extract rate limit info from headers
+    local remaining
+    local reset
+
+    remaining=$(echo "$response_headers" | grep -i "x-ratelimit-remaining:" | awk '{print $2}' | tr -d '\r')
+    reset=$(echo "$response_headers" | grep -i "x-ratelimit-reset:" | awk '{print $2}' | tr -d '\r')
+
+    if [[ -n "$remaining" ]]; then
+        GITHUB_RATE_LIMIT_REMAINING=$remaining
+    fi
+
+    if [[ -n "$reset" ]]; then
+        GITHUB_RATE_LIMIT_RESET=$reset
+    fi
+}
+
+github_api_get_with_retry() {
+    local url=$1
+    local max_retries=5
+    local retry_delay=1
+
+    for attempt in $(seq 1 $max_retries); do
+        local response
+        local http_code
+
+        # Make request with headers captured
+        response=$(curl -fsSL -i --max-time 10 "$url" 2>/dev/null)
+        http_code=$(echo "$response" | grep -i "^HTTP/" | awk '{print $2}')
+
+        # Check rate limit from headers
+        check_github_rate_limit "$response"
+
+        # Handle rate limiting
+        if [[ "$http_code" == "403" ]] && [[ "$GITHUB_RATE_LIMIT_REMAINING" -lt 5 ]]; then
+            if [[ $attempt -lt $max_retries ]]; then
+                log_warning "GitHub API rate limit low ($GITHUB_RATE_LIMIT_REMAINING remaining). Retrying in ${retry_delay}s..."
+                sleep "$retry_delay"
+                retry_delay=$((retry_delay * 2))
+                continue
+            else
+                log_error "GitHub API rate limit exceeded. Please try again later."
+                return 1
+            fi
+        fi
+
+        # Extract body and return
+        local body
+        body=$(echo "$response" | sed -n '/^{/,$p')
+        echo "$body"
+        return 0
+    done
+
+    return 1
+}
 
 get_installed_uv_version() {
     local pkg=$1
@@ -170,9 +321,15 @@ get_installed_npm_version() {
     if [[ -z "$json" ]]; then
         return 0
     fi
-    # Parse npm JSON output
+    # SAFE: Pass package name as CLI argument instead of interpolating into code
     if command -v node >/dev/null 2>&1; then
-        node -e "const obj = JSON.parse(process.argv[1]); const dep = obj.dependencies && obj.dependencies['${pkg}']; if (dep && dep.version) console.log(dep.version);" "$json" 2>/dev/null || true
+        node -e "
+            const obj = JSON.parse(process.argv[1]);
+            const pkg = process.argv[2];
+            if (obj && obj.dependencies && obj.dependencies[pkg] && obj.dependencies[pkg].version) {
+                console.log(obj.dependencies[pkg].version);
+            }
+        " "$json" "$pkg" 2>/dev/null || true
     fi
 }
 
@@ -251,12 +408,9 @@ check_npm_claude_code() {
         local json
         json=$(npm list -g --depth=0 --json 2>/dev/null || true)
         if [[ -n "$json" ]]; then
-            if command -v node >/dev/null 2>&1; then
-                local has_npm_claude
-                has_npm_claude=$(node -e "const obj = JSON.parse(process.argv[1]); const dep = obj.dependencies && obj.dependencies['@anthropic-ai/claude-code']; if (dep) console.log('yes');" "$json" 2>/dev/null || true)
-                if [[ "$has_npm_claude" == "yes" ]]; then
-                    return 0  # npm version found
-                fi
+            # SAFE: Use grep instead of JavaScript code interpolation
+            if echo "$json" | grep -q "@anthropic-ai/claude-code"; then
+                return 0  # npm version found
             fi
         fi
     fi
@@ -305,18 +459,32 @@ get_latest_version() {
             get_latest_npm_self_version
             ;;
         native)
-            # For native Claude Code, we'll just check the GitHub releases
+            # For native Claude Code, check the GitHub releases with rate limit handling
             if [[ "$pkg" == "claude-code" ]] && command -v curl >/dev/null 2>&1; then
                 local cache_bust
                 cache_bust=$(date +%s)
                 if command -v python3 >/dev/null 2>&1; then
-                    {
-                        curl -fsSL --max-time 10 "https://api.github.com/repos/anthropics/claude-code/releases/latest?ts=${cache_bust}" 2>/dev/null || echo -n ""
-                    } | python3 -c "import sys, json; data = sys.stdin.read().strip(); print(json.loads(data)['tag_name'].lstrip('v')) if data else None" 2>/dev/null || true
+                    local response
+                    if response=$(github_api_get_with_retry "https://api.github.com/repos/anthropics/claude-code/releases/latest?ts=${cache_bust}"); then
+                        echo "$response" | python3 -c "import sys, json; data = sys.stdin.read().strip(); print(json.loads(data)['tag_name'].lstrip('v')) if data else None" 2>/dev/null || true
+                    fi
                 fi
             fi
             ;;
     esac
+}
+
+version_parse() {
+    local version=$1
+    # Remove 'v' prefix
+    version="${version#v}"
+    # Extract major, minor, patch
+    local major minor patch
+    IFS='.' read -r major minor patch <<< "$version"
+    # Strip pre-release tags (everything after hyphen)
+    minor="${minor%%-*}"
+    patch="${patch%%-*}"
+    echo "$major $minor $patch"
 }
 
 version_compare() {
@@ -335,8 +503,41 @@ version_compare() {
         return
     fi
 
-    # Compare versions
-    if [[ "$installed" == "$latest" ]]; then
+    # Parse versions into components
+    local installed_major installed_minor installed_patch
+    local latest_major latest_minor latest_patch
+
+    read -r installed_major installed_minor installed_patch <<< "$(version_parse "$installed")"
+    read -r latest_major latest_minor latest_patch <<< "$(version_parse "$latest")"
+
+    # Handle empty components (default to 0)
+    installed_major=${installed_major:-0}
+    installed_minor=${installed_minor:-0}
+    installed_patch=${installed_patch:-0}
+    latest_major=${latest_major:-0}
+    latest_minor=${latest_minor:-0}
+    latest_patch=${latest_patch:-0}
+
+    # Compare major version
+    if [[ "$installed_major" -gt "$latest_major" ]]; then
+        echo "current"
+        return
+    elif [[ "$installed_major" -lt "$latest_major" ]]; then
+        echo "update"
+        return
+    fi
+
+    # Compare minor version
+    if [[ "$installed_minor" -gt "$latest_minor" ]]; then
+        echo "current"
+        return
+    elif [[ "$installed_minor" -lt "$latest_minor" ]]; then
+        echo "update"
+        return
+    fi
+
+    # Compare patch version
+    if [[ "$installed_patch" -ge "$latest_patch" ]]; then
         echo "current"
     else
         echo "update"
@@ -373,7 +574,7 @@ prefetch_latest_versions() {
                         latest=$(get_latest_npm_self_version)
                         ;;
                     native)
-                        latest=$(get_latest_version "$pkg" "$manager")
+                        latest=$(get_latest_version "$manager" "$pkg")
                         ;;
                 esac
                 if [[ -n "$latest" ]]; then
@@ -810,7 +1011,7 @@ install_tool() {
 
                 if [[ "$installed_version" == "Not Installed" ]]; then
                     printf "  Installing Claude Code (native installer)...\n"
-                    if curl -fsSL https://claude.ai/install.sh | bash; then
+                    if run_claude_installer; then
                         # Add ~/.local/bin to PATH if not already there
                         if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
                             printf "  ${YELLOW}Note: $HOME/.local/bin should be in your PATH${NC}\n"
@@ -829,7 +1030,7 @@ install_tool() {
                     else
                         # Try running the installer again if update fails
                         printf "  Update command failed, trying re-install...\n"
-                        if curl -fsSL https://claude.ai/install.sh | bash; then
+                        if run_claude_installer; then
                             log_success "Updated ${name}"
                             return 0
                         else
@@ -1183,6 +1384,19 @@ check_dependencies() {
     return 0
 }
 
+selection_requires_npm() {
+    for i in "${!TOOL_NAMES[@]}"; do
+        if [[ "${SELECTED[$i]}" -eq 1 ]]; then
+            case "${TOOL_MANAGERS[$i]}" in
+                npm|npm-self)
+                    return 0
+                    ;;
+            esac
+        fi
+    done
+    return 1
+}
+
 #############################################
 # CONDA ENVIRONMENT CHECK
 #############################################
@@ -1216,11 +1430,6 @@ main() {
         exit 1
     fi
 
-    # Ensure npm is available and recent before proceeding
-    if ! ensure_npm_prerequisite; then
-        exit 1
-    fi
-
     # Check for curl
     if ! command -v curl >/dev/null 2>&1; then
         log_error "curl is required but not installed."
@@ -1240,6 +1449,13 @@ main() {
 
     # Confirm removals if any
     confirm_removals
+
+    # Ensure npm is available and recent if any npm tools are selected
+    if selection_requires_npm; then
+        if ! ensure_npm_prerequisite; then
+            exit 1
+        fi
+    fi
 
     # Check dependencies
     if ! check_dependencies; then
