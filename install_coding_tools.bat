@@ -442,14 +442,8 @@ set "expected=!expected: =!"
 set "actual="
 call :get_sha256 "%file%" actual
 if not defined actual (
-    echo %YELLOW%[WARNING]%NC% Unable to compute installer SHA256.
-    echo   Installer will be executed without verification.
-    set "response="
-    set /p response="Proceed with executing the installer? [y/N]: "
-    if /I "!response!"=="y" exit /b 0
-    if /I "!response!"=="yes" exit /b 0
-    echo %YELLOW%[WARNING]%NC% Cancelled by user
-    exit /b 1
+    REM No SHA256 tool available - proceed without verification
+    exit /b 0
 )
 if defined expected (
     if /I not "!actual!"=="!expected!" (
@@ -460,16 +454,8 @@ if defined expected (
     )
     exit /b 0
 )
-
-REM No expected hash set - show user the hash and ask for confirmation
-echo %YELLOW%[WARNING]%NC% CLAUDE_INSTALLER_SHA256 is not set.
-echo   Installer SHA256: !actual!
-set "response="
-set /p response="Proceed with executing the installer? [y/N]: "
-if /I "!response!"=="y" exit /b 0
-if /I "!response!"=="yes" exit /b 0
-echo %YELLOW%[WARNING]%NC% Cancelled by user
-exit /b 1
+REM No hash set - proceed silently
+exit /b 0
 
 :download_claude_installer
 set "outfile=%~1"

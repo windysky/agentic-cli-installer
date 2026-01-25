@@ -127,18 +127,8 @@ verify_or_confirm_installer() {
     local expected=${CLAUDE_INSTALLER_SHA256:-}
     local actual
     if ! actual=$(compute_sha256 "$file"); then
-        log_warning "No SHA256 tool available. Installer will be executed without verification."
-        printf "  Proceed with executing the installer? (y/N): "
-        read -r response
-        case "$response" in
-            [Yy]|[Yy][Ee][Ss])
-                return 0
-                ;;
-            *)
-                log_warning "Cancelled by user"
-                return 1
-                ;;
-        esac
+        # No SHA256 tool available - proceed without verification
+        return 0
     fi
     if [[ -n "$expected" ]]; then
         if [[ "$actual" != "$expected" ]]; then
@@ -147,23 +137,9 @@ verify_or_confirm_installer() {
             log_error "Actual:   $actual"
             return 1
         fi
-        return 0
     fi
-
-    # No expected hash set - show user the hash and ask for confirmation
-    log_warning "CLAUDE_INSTALLER_SHA256 is not set."
-    printf "  Installer SHA256: %s\n" "$actual"
-    printf "  Proceed with executing the installer? (y/N): "
-    read -r response
-    case "$response" in
-        [Yy]|[Yy][Ee][Ss])
-            return 0
-            ;;
-        *)
-            log_warning "Cancelled by user"
-            return 1
-            ;;
-    esac
+    # No hash set - proceed silently
+    return 0
 }
 
 run_claude_installer() {
