@@ -426,37 +426,6 @@ if errorlevel 1 (
 )
 exit /b 0
 
-:get_sha256
-set "file=%~1"
-set "outvar=%~2"
-set "%outvar%="
-for /f "delims=" %%h in ('powershell -NoProfile -Command "try { (Get-FileHash -Algorithm SHA256 -Path ''%file%'').Hash } catch { }" 2^>nul') do (
-    if not "%%h"=="" set "%outvar%=%%h"
-)
-exit /b 0
-
-:verify_or_confirm_installer
-set "file=%~1"
-set "expected=%CLAUDE_INSTALLER_SHA256%"
-set "expected=!expected: =!"
-set "actual="
-call :get_sha256 "%file%" actual
-if not defined actual (
-    REM No SHA256 tool available - proceed without verification
-    exit /b 0
-)
-if defined expected (
-    if /I not "!actual!"=="!expected!" (
-        echo %RED%[ERROR]%NC% Installer SHA256 mismatch.
-        echo   Expected: !expected!
-        echo   Actual:   !actual!
-        exit /b 1
-    )
-    exit /b 0
-)
-REM No hash set - proceed silently
-exit /b 0
-
 :download_claude_installer
 set "outfile=%~1"
 curl -fsSL https://claude.ai/install.cmd -o "%outfile%"
@@ -464,8 +433,7 @@ if errorlevel 1 (
     echo %RED%[ERROR]%NC% Failed to download Claude Code installer
     exit /b 1
 )
-call :verify_or_confirm_installer "%outfile%"
-exit /b %errorlevel%
+exit /b 0
 
 :check_conda_environment
 REM Check if conda environment is active

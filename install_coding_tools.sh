@@ -105,43 +105,6 @@ require_cmd() {
     return 0
 }
 
-compute_sha256() {
-    local file=$1
-    if command -v sha256sum >/dev/null 2>&1; then
-        sha256sum "$file" | awk '{print $1}' || return 1
-        return 0
-    fi
-    if command -v shasum >/dev/null 2>&1; then
-        shasum -a 256 "$file" | awk '{print $1}' || return 1
-        return 0
-    fi
-    if command -v openssl >/dev/null 2>&1; then
-        openssl dgst -sha256 "$file" | awk '{print $2}' || return 1
-        return 0
-    fi
-    return 1
-}
-
-verify_or_confirm_installer() {
-    local file=$1
-    local expected=${CLAUDE_INSTALLER_SHA256:-}
-    local actual
-    if ! actual=$(compute_sha256 "$file"); then
-        # No SHA256 tool available - proceed without verification
-        return 0
-    fi
-    if [[ -n "$expected" ]]; then
-        if [[ "$actual" != "$expected" ]]; then
-            log_error "Installer SHA256 mismatch."
-            log_error "Expected: $expected"
-            log_error "Actual:   $actual"
-            return 1
-        fi
-    fi
-    # No hash set - proceed silently
-    return 0
-}
-
 run_claude_installer() {
     local tmp
     if ! tmp=$(mktemp); then
@@ -151,11 +114,6 @@ run_claude_installer() {
 
     if ! curl -fsSL --proto '=https' --tlsv1.2 https://claude.ai/install.sh -o "$tmp"; then
         log_error "Failed to download Claude Code installer."
-        rm -f "$tmp"
-        return 1
-    fi
-
-    if ! verify_or_confirm_installer "$tmp"; then
         rm -f "$tmp"
         return 1
     fi
