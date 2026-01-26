@@ -40,6 +40,7 @@ This release contains important security improvements.
 - GitHub API rate limit errors causing installation failures
 - Code injection vulnerability in package name handling
 - Incorrect version comparison leading to wrong update decisions
+- Windows batch parsing errors during prefetch/install (avoids `... was unexpected at this time.`)
 
 ### References
 

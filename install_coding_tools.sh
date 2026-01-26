@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.1.0
+# Agentic Coders Installer v1.2.0
 # Interactive installer for AI coding CLI tools
 #############################################
 
@@ -608,7 +608,7 @@ initialize_tools() {
 render_menu() {
     clear_screen
 
-    printf "${BOLD}${CYAN}Agentic Coders CLI Installer${NC} ${BOLD}v1.1.0${NC}\n\n"
+    printf "${BOLD}${CYAN}Agentic Coders CLI Installer${NC} ${BOLD}v1.2.0${NC}\n\n"
     printf "Toggle tools: ${CYAN}skip${NC} -> ${GREEN}install${NC} -> ${RED}remove${NC} (press number multiple times)\n"
     printf "Numbers are ${BOLD}comma-separated${NC} (e.g., ${CYAN}1,3,5${NC}). Press ${BOLD}Q${NC} to quit.\n\n"
 

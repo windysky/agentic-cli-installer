@@ -3,7 +3,7 @@ setlocal EnableDelayedExpansion
 set "SCRIPT_DIR=%~dp0"
 
 REM ###############################################
-REM Agentic Coders Installer v1.1.1
+REM Agentic Coders Installer v1.2.0
 REM Interactive installer for AI coding CLI tools
 REM Windows version (run in Anaconda Prompt or CMD)
 REM ###############################################
@@ -635,12 +635,31 @@ exit /b 0
 
 REM Get npm's own latest version
 :get_latest_npm_self_version
-set "outvar=%~1"
+	set "outvar=%~1"
+	set "%outvar%="
+	where curl >nul 2>nul
+	if errorlevel 1 exit /b 0
+	set "tmpfile=%TEMP%\npm_self_version_%RANDOM%.tmp"
+	powershell -NoProfile -Command "$ProgressPreference = 'SilentlyContinue'; $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); $uri = 'https://registry.npmjs.org/npm/latest?ts=' + $ts; $attempt = 0; $version = $null; while ($attempt -lt 2 -and -not $version) { try { $result = Invoke-RestMethod -UseBasicParsing -Uri $uri -TimeoutSec 10 -ErrorAction Stop; if ($result -and $result.version) { $version = $result.version } } catch { } if (-not $version -and $attempt -lt 1) { Start-Sleep -Seconds 1 } $attempt++ } if ($version) { Write-Output $version }" >"%tmpfile%" 2>nul
+	if exist "%tmpfile%" (
+	    for /f "usebackq delims=" %%v in ("%tmpfile%") do (
+	        if not "%%v"=="" set "%outvar%=%%v"
+	    )
+	    del "%tmpfile%" >nul 2>nul
+	)
+	exit /b 0
+
+REM Get latest version for native tools (e.g., Claude Code)
+:get_latest_native_version
+set "pkg=%~1"
+set "outvar=%~2"
 set "%outvar%="
-where curl >nul 2>nul
-if errorlevel 1 exit /b 0
-set "tmpfile=%TEMP%\npm_self_version_%RANDOM%.tmp"
-powershell -NoProfile -Command "$ProgressPreference = 'SilentlyContinue'; $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); $uri = 'https://registry.npmjs.org/npm/latest?ts=' + $ts; $attempt = 0; $version = $null; while ($attempt -lt 2 -and -not $version) { try { $result = Invoke-RestMethod -UseBasicParsing -Uri $uri -TimeoutSec 10 -ErrorAction Stop; if ($result -and $result.version) { $version = $result.version } } catch { } if (-not $version -and $attempt -lt 1) { Start-Sleep -Seconds 1 } $attempt++ } if ($version) { Write-Output $version }" >"%tmpfile%" 2>nul
+if /I "%pkg%"=="claude-code" goto get_latest_native_claude
+exit /b 0
+
+:get_latest_native_claude
+set "tmpfile=%TEMP%\claude_code_version_%RANDOM%.tmp"
+powershell -NoProfile -Command "$ProgressPreference = 'SilentlyContinue'; $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); $uri = 'https://api.github.com/repos/anthropics/claude-code/releases/latest?ts=' + $ts; $headers = @{ 'User-Agent'='agentic-cli-installer'; 'Accept'='application/vnd.github+json' }; try { $result = Invoke-RestMethod -UseBasicParsing -Uri $uri -Headers $headers -TimeoutSec 10 -ErrorAction Stop; if ($result -and $result.tag_name) { Write-Output ($result.tag_name -replace '^v','') } } catch { }" >"%tmpfile%" 2>nul
 if exist "%tmpfile%" (
     for /f "usebackq delims=" %%v in ("%tmpfile%") do (
         if not "%%v"=="" set "%outvar%=%%v"
@@ -721,17 +740,18 @@ if not errorlevel 1 (
         call set "BIN_!new_idx!=%%BIN_%%i%%"
         call set "VERARG_!new_idx!=%%VERARG_%%i%%"
     )
-    REM Now increment TOOLS_COUNT after shifting
-    set /a TOOLS_COUNT+=1
-    REM Add npm as tool 1
-    set "NAME_1=npm (Node Package Manager)"
-    set "MGR_1=npm-self"
-    set "PKG_1=npm"
-    set "DESC_1=npm (Node Package Manager)"
-    set "BIN_1=npm"
-    set "VERARG_1=--version"
-    set "UPDATE_ONLY_1=1"
-)
+	    REM Now increment TOOLS_COUNT after shifting
+	    set /a TOOLS_COUNT+=1
+	    REM Add npm as tool 1
+	    REM Avoid parentheses in tool names; they can break parsing inside parenthesized blocks.
+	    set "NAME_1=npm - Node Package Manager"
+	    set "MGR_1=npm-self"
+	    set "PKG_1=npm"
+	    set "DESC_1=npm - Node Package Manager"
+	    set "BIN_1=npm"
+	    set "VERARG_1=--version"
+	    set "UPDATE_ONLY_1=1"
+	)
 
 call :dbg %BLUE%[STEP]%NC% prefetch_latest_versions
 if "%NO_PREFETCH%"=="1" (
@@ -795,33 +815,26 @@ echo.
 exit /b 0
 
 :prefetch_one_tool
-set "p_idx=%~1"
-set "p_mgr=%~2"
-set "p_pkg=%~3"
-set "VERSION="
+	set "p_idx=%~1"
+	set "p_mgr=%~2"
+	set "p_pkg=%~3"
+	set "VERSION="
 
-REM Use PowerShell with built-in timeout (no external process killing)
-if /I "!p_mgr!"=="uv" (
-    for /f "delims=" %%v in ('powershell -NoProfile -Command "$ProgressPreference='SilentlyContinue'; try { $result=Invoke-RestMethod -UseBasicParsing -Uri 'https://pypi.org/pypi/%p_pkg%/json' -TimeoutSec 10; if($result-and$result.info-and$result.info.version){Write-Output $result.info.version} } catch { }" 2^>^&1') do (
-        if not "%%v"=="" set "VERSION=%%v"
-    )
-) else if /I "!p_mgr!"=="npm-self" (
-    for /f "delims=" %%v in ('powershell -NoProfile -Command "$ProgressPreference='SilentlyContinue'; try { $result=Invoke-RestMethod -UseBasicParsing -Uri 'https://registry.npmjs.org/npm/latest' -TimeoutSec 10; if($result-and$result.version){Write-Output $result.version} } catch { }" 2^>^&1') do (
-        if not "%%v"=="" set "VERSION=%%v"
-    )
-) else if /I "!p_mgr!"=="native" (
-    for /f "delims=" %%v in ('powershell -NoProfile -Command "$ProgressPreference='SilentlyContinue'; $ts=[DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); $uri='https://api.github.com/repos/anthropics/claude-code/releases/latest?ts=' + $ts; $maxRetry=5; $retryDelay=1; $attempt=0; $version=$null; while ($attempt -lt $maxRetry -and -not $version) { try { $response=Invoke-WebRequest -UseBasicParsing -Uri $uri -TimeoutSec 10 -ErrorAction Stop; $rateRemaining=$response.Headers['x-ratelimit-remaining']; if ($rateRemaining -and $rateRemaining -lt 5) { Write-Warning \"Rate limit low ($rateRemaining remaining). Waiting ${retryDelay}s...\"; Start-Sleep -Seconds $retryDelay; $retryDelay=$retryDelay*2 }; $result=$response.Content | ConvertFrom-Json; if($result-and$result.tag_name){ $version = $result.tag_name -replace '^v','' } } catch { if ($_.Exception.Response.StatusCode -eq 403 -and $attempt -lt ($maxRetry-1)) { Write-Warning \"GitHub API rate limited. Retrying in ${retryDelay}s...\"; Start-Sleep -Seconds $retryDelay; $retryDelay=$retryDelay*2 } }; $attempt++ } if ($version) { Write-Output $version }" 2^>^&1') do (
-        if not "%%v"=="" set "VERSION=%%v"
-    )
-) else (
-    for /f "delims=" %%v in ('powershell -NoProfile -Command "$ProgressPreference='SilentlyContinue'; try { $result=Invoke-RestMethod -UseBasicParsing -Uri 'https://registry.npmjs.org/%p_pkg%/latest' -TimeoutSec 10; if($result-and$result.version){Write-Output $result.version} } catch { }" 2^>^&1') do (
-        if not "%%v"=="" set "VERSION=%%v"
-    )
-)
-if defined VERSION if defined LATEST_CACHE_DIR (
-    echo !VERSION!>"!LATEST_CACHE_DIR!\latest_!p_idx!.txt"
-)
-exit /b 0
+	REM NOTE: Avoid `for /f ('powershell ...')` here. Parentheses in the PowerShell
+	REM snippets can break cmd.exe parsing inside blocks, causing ". was unexpected at this time."
+	if /I "!p_mgr!"=="uv" (
+	    call :get_latest_pypi_version "!p_pkg!" VERSION
+	) else if /I "!p_mgr!"=="npm-self" (
+	    call :get_latest_npm_self_version VERSION
+	) else if /I "!p_mgr!"=="npm" (
+	    call :get_latest_npm_version "!p_pkg!" VERSION
+	) else if /I "!p_mgr!"=="native" (
+	    call :get_latest_native_version "!p_pkg!" VERSION
+	)
+	if defined VERSION if defined LATEST_CACHE_DIR (
+	    echo !VERSION!>"!LATEST_CACHE_DIR!\latest_!p_idx!.txt"
+	)
+	exit /b 0
 
 :init_tool
 set "idx=%~1"
@@ -942,7 +955,7 @@ if "%DEBUG%"=="1" (
     cls
 )
 echo.
-echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.1.1%NC%
+echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.2.0%NC%
 echo.
 echo Toggle tools: %CYAN%skip%NC% -^> %GREEN%install%NC% -^> %RED%remove%NC% (press number multiple times^)
 echo Numbers are %BOLD%comma-separated%NC% (e.g., %CYAN%1,3,5%NC%^). Press %BOLD%Q%NC% to quit.
@@ -1324,98 +1337,127 @@ if !remove_fail! GTR 0 exit /b 1
 exit /b 0
 
 :install_tool
-set "idx=%~1"
-call set "name=%%NAME_%idx%%%"
-call set "name=%%name%%"
-call set "mgr=%%MGR_%idx%%%"
-call set "mgr=%%mgr%%"
-call set "pkg=%%PKG_%idx%%%"
-call set "pkg=%%pkg%%"
-call set "inst=%%INST_%idx%%%"
-call set "inst=%%inst%%"
+	set "idx=%~1"
+	call set "name=%%NAME_%idx%%%"
+	call set "name=%%name%%"
+	call set "mgr=%%MGR_%idx%%%"
+	call set "mgr=%%mgr%%"
+	call set "pkg=%%PKG_%idx%%%"
+	call set "pkg=%%pkg%%"
+	call set "inst=%%INST_%idx%%%"
+	call set "inst=%%inst%%"
+	
+	echo.
+	echo %CYAN%Processing: !name!%NC%
+	call :dbg   %BLUE%[DEBUG]%NC% mgr=!mgr! pkg=!pkg! installed=!inst!
 
-echo.
-echo %CYAN%Processing: !name!%NC%
-call :dbg   %BLUE%[DEBUG]%NC% mgr=!mgr! pkg=!pkg! installed=!inst!
+	REM Avoid nested parenthesized blocks here; unescaped parentheses from tool output or paths
+	REM can break cmd.exe parsing and produce "... was unexpected at this time."
+	if /I "!mgr!"=="npm-self" goto install_tool_npm_self
+	if /I "!mgr!"=="uv" goto install_tool_uv
+	if /I "!mgr!"=="native" goto install_tool_native
+	goto install_tool_npm
 
-if /I "!mgr!"=="npm-self" (
-    REM npm can only be updated, not installed from scratch
-    echo   Updating npm to latest version...
-    call :dbg   %BLUE%[DEBUG]%NC% run: npm install -g npm@latest
-    call npm install -g npm@latest
-) else if /I "!mgr!"=="uv" (
-    if /I "!inst!"=="Not Installed" (
-        echo   Installing !pkg!...
-        call :dbg   %BLUE%[DEBUG]%NC% run: uv tool install "!pkg!" --force
-        call uv tool install "!pkg!" --force
-    ) else (
-        echo   Updating !pkg!...
-        call :dbg   %BLUE%[DEBUG]%NC% run: uv tool update "!pkg!"
-        call uv tool update "!pkg!"
-    )
-) else if /I "!mgr!"=="native" (
-    if /I "!pkg!"=="claude-code" (
-        REM Check for npm-installed version and migrate
-        set "HAS_NPM_CLAUDE=0"
-        call :check_npm_claude_code HAS_NPM_CLAUDE
-        if "!HAS_NPM_CLAUDE!"=="1" (
-            echo   %YELLOW%Detected npm-installed Claude Code (deprecated method)%NC%
-            echo   %YELLOW%The npm installation method is deprecated. Migrating to native installer...%NC%
-            echo   Removing npm version...
-            call :dbg   %BLUE%[DEBUG]%NC% run: npm uninstall -g "@anthropic-ai/claude-code"
-            call npm uninstall -g "@anthropic-ai/claude-code" >nul 2>nul
-            if errorlevel 1 (
-                echo   %YELLOW%Warning: Failed to remove npm version, continuing anyway...%NC%
-            ) else (
-                echo   %GREEN%npm version removed successfully%NC%
-            )
-            REM Proceed with native installation
-            set "INST=Not Installed"
-        )
+:install_tool_npm_self
+	REM npm can only be updated, not installed from scratch
+	echo   Updating npm to latest version...
+	call :dbg   %BLUE%[DEBUG]%NC% run: npm install -g npm@latest
+	call npm install -g npm@latest
+	exit /b %errorlevel%
 
-        if /I "!inst!"=="Not Installed" (
-            echo   Installing Claude Code ^(native installer^)...
-            call :dbg   %BLUE%[DEBUG]%NC% run: download_claude_installer
-            if exist "%TEMP%\install.cmd" del "%TEMP%\install.cmd" >nul 2>nul
-            call :download_claude_installer "%TEMP%\install.cmd"
-            if errorlevel 1 exit /b 1
-            call "%TEMP%\install.cmd"
-            set "RC=%errorlevel%"
-            del "%TEMP%\install.cmd" >nul 2>nul
-            if !RC! NEQ 0 exit /b !RC!
-        ) else (
-            echo   Updating Claude Code...
-            call :dbg   %BLUE%[DEBUG]%NC% run: claude update
-            call claude update
-            if errorlevel 1 (
-                echo   Update command failed, trying re-install...
-                if exist "%TEMP%\install.cmd" del "%TEMP%\install.cmd" >nul 2>nul
-                call :download_claude_installer "%TEMP%\install.cmd"
-                if errorlevel 1 exit /b 1
-                call "%TEMP%\install.cmd"
-                set "RC=%errorlevel%"
-                del "%TEMP%\install.cmd" >nul 2>nul
-                if !RC! NEQ 0 exit /b !RC!
-            )
-        )
-    )
-) else (
-    if /I "!inst!"=="Not Installed" (
-        echo   Installing !pkg!...
-        call :dbg   %BLUE%[DEBUG]%NC% run: npm install -g "!pkg!"
-        call npm install -g "!pkg!"
-    ) else (
-        echo   Updating !pkg!...
-        call :dbg   %BLUE%[DEBUG]%NC% run: npm install -g "!pkg!@latest"
-        call npm install -g "!pkg!@latest"
-    )
-)
-exit /b %errorlevel%
+:install_tool_uv
+	if /I "!inst!"=="Not Installed" goto install_tool_uv_install
+	goto install_tool_uv_update
 
+:install_tool_uv_install
+	echo   Installing !pkg!...
+	call :dbg   %BLUE%[DEBUG]%NC% run: uv tool install "!pkg!" --force
+	call uv tool install "!pkg!" --force
+	exit /b %errorlevel%
+
+:install_tool_uv_update
+	echo   Updating !pkg!...
+	call :dbg   %BLUE%[DEBUG]%NC% run: uv tool update "!pkg!"
+	call uv tool update "!pkg!"
+	exit /b %errorlevel%
+
+:install_tool_native
+	if /I not "!pkg!"=="claude-code" exit /b 0
+	set "HAS_NPM_CLAUDE=0"
+	call :check_npm_claude_code HAS_NPM_CLAUDE
+	if "!HAS_NPM_CLAUDE!"=="1" goto install_tool_native_migrate
+	goto install_tool_native_post_migrate
+
+:install_tool_native_migrate
+	echo   %YELLOW%Detected npm-installed Claude Code (deprecated method)%NC%
+	echo   %YELLOW%The npm installation method is deprecated. Migrating to native installer...%NC%
+	echo   Removing npm version...
+	call :dbg   %BLUE%[DEBUG]%NC% run: npm uninstall -g "@anthropic-ai/claude-code"
+	call npm uninstall -g "@anthropic-ai/claude-code" >nul 2>nul
+	if errorlevel 1 goto install_tool_native_migrate_warn
+	echo   %GREEN%npm version removed successfully%NC%
+	goto install_tool_native_migrate_done
+
+:install_tool_native_migrate_warn
+	echo   %YELLOW%Warning: Failed to remove npm version, continuing anyway...%NC%
+
+:install_tool_native_migrate_done
+	set "inst=Not Installed"
+
+:install_tool_native_post_migrate
+	if /I "!inst!"=="Not Installed" goto install_tool_native_install
+	goto install_tool_native_update
+
+:install_tool_native_install
+	echo   Installing Claude Code ^(native installer^)...
+	call :dbg   %BLUE%[DEBUG]%NC% run: download_claude_installer
+	if exist "%TEMP%\install.cmd" del "%TEMP%\install.cmd" >nul 2>nul
+	call :download_claude_installer "%TEMP%\install.cmd"
+	if errorlevel 1 exit /b 1
+	call "%TEMP%\install.cmd"
+	set "RC=%errorlevel%"
+	del "%TEMP%\install.cmd" >nul 2>nul
+	if %RC% NEQ 0 exit /b %RC%
+	exit /b 0
+
+:install_tool_native_update
+	echo   Updating Claude Code...
+	call :dbg   %BLUE%[DEBUG]%NC% run: claude update
+	call claude update
+	if errorlevel 1 goto install_tool_native_reinstall
+	exit /b 0
+
+:install_tool_native_reinstall
+	echo   Update command failed, trying re-install...
+	if exist "%TEMP%\install.cmd" del "%TEMP%\install.cmd" >nul 2>nul
+	call :download_claude_installer "%TEMP%\install.cmd"
+	if errorlevel 1 exit /b 1
+	call "%TEMP%\install.cmd"
+	set "RC=%errorlevel%"
+	del "%TEMP%\install.cmd" >nul 2>nul
+	if %RC% NEQ 0 exit /b %RC%
+	exit /b 0
+
+:install_tool_npm
+	if /I "!inst!"=="Not Installed" goto install_tool_npm_install
+	goto install_tool_npm_update
+
+:install_tool_npm_install
+	echo   Installing !pkg!...
+	call :dbg   %BLUE%[DEBUG]%NC% run: npm install -g "!pkg!"
+	call npm install -g "!pkg!"
+	exit /b %errorlevel%
+
+:install_tool_npm_update
+	echo   Updating !pkg!...
+	call :dbg   %BLUE%[DEBUG]%NC% run: npm install -g "!pkg!@latest"
+	call npm install -g "!pkg!@latest"
+	exit /b %errorlevel%
+	
 :remove_tool
-set "idx=%~1"
-call set "name=%%NAME_%idx%%%"
-call set "name=%%name%%"
+	set "idx=%~1"
+	call set "name=%%NAME_%idx%%%"
+	call set "name=%%name%%"
 call set "mgr=%%MGR_%idx%%%"
 call set "mgr=%%mgr%%"
 call set "pkg=%%PKG_%idx%%%"
