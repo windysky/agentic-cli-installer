@@ -29,6 +29,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_SCRIPT_SH="${SCRIPT_DIR}/install_coding_tools.sh"
 SOURCE_SCRIPT_BAT="${SCRIPT_DIR}/install_coding_tools.bat"
+SOURCE_SCRIPT_AUTO="${SCRIPT_DIR}/auto_install_coding_tools"
 TARGET_DIR="${HOME}/.local/bin"
 BACKUP_DIR="${HOME}/.local/bin.backup"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
@@ -383,6 +384,13 @@ handle_wsl() {
     # Install Unix script to Linux filesystem
     install_unix_script "$SOURCE_SCRIPT_SH" "${TARGET_DIR}/install_coding_tools.sh" || return $?
 
+    # Install auto install script to Linux filesystem
+    if [[ -f "$SOURCE_SCRIPT_AUTO" ]]; then
+        install_unix_script "$SOURCE_SCRIPT_AUTO" "${TARGET_DIR}/auto_install_coding_tools" || return $?
+    else
+        info "Auto install script not found, skipping: $SOURCE_SCRIPT_AUTO"
+    fi
+
     # Install Windows script to Windows filesystem
     if [[ -f "$SOURCE_SCRIPT_BAT" ]]; then
         install_windows_script "$SOURCE_SCRIPT_BAT" "$windows_bin_dir" || return $?
@@ -469,6 +477,12 @@ main() {
             ;;
         linux|macos)
             install_unix_script "$SOURCE_SCRIPT_SH" "${TARGET_DIR}/install_coding_tools.sh" || exit 1
+            # Install auto install script to Linux filesystem
+            if [[ -f "$SOURCE_SCRIPT_AUTO" ]]; then
+                install_unix_script "$SOURCE_SCRIPT_AUTO" "${TARGET_DIR}/auto_install_coding_tools" || exit 1
+            else
+                info "Auto install script not found, skipping: $SOURCE_SCRIPT_AUTO"
+            fi
             ;;
         windows)
             error "This deployment script is for Unix-like systems only"
@@ -491,6 +505,9 @@ main() {
     echo ""
     echo "Installed scripts:"
     echo "  Unix:   ${TARGET_DIR}/install_coding_tools.sh"
+    if [[ -f "$SOURCE_SCRIPT_AUTO" ]]; then
+        echo "  Auto:   ${TARGET_DIR}/auto_install_coding_tools"
+    fi
     if [[ "$platform" == "wsl" ]] && [[ -f "$SOURCE_SCRIPT_BAT" ]]; then
         local windows_username
         windows_username=$(get_windows_username)
