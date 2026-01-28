@@ -1,4 +1,6 @@
-# Agentic CLI Installer
+# Agentic CLI Installer v1.3.0
+
+**Last Modified:** January 28, 2026
 
 An interactive installer that manages multiple AI coding CLI tools from one place. It detects installed versions, fetches latest versions, and lets you install, update, or remove tools in a single run.
 
@@ -29,6 +31,11 @@ An interactive installer that manages multiple AI coding CLI tools from one plac
 ## Quick Start (Deployment Script)
 
 The recommended way to install the Agentic CLI Installer is using the deployment script:
+
+### What's New in v1.3.0
+
+- **Auto Install Script**: Added `auto_install_coding_tools` script that automatically processes all conda environments
+- **Enhanced Deployment**: The `setup.sh` script now installs both `install_coding_tools.sh` and `auto_install_coding_tools`
 
 ```bash
 # Clone or download the repository
@@ -65,15 +72,39 @@ The `setup.sh` script provides:
 
 **WSL (Windows Subsystem for Linux):**
 - Installs `install_coding_tools.sh` to `~/.local/bin/`
+- Installs `auto_install_coding_tools` to `~/.local/bin/`
 - Installs `install_coding_tools.bat` to `/mnt/c/Users/<username>/.local/bin/`
 - Creates backups in `~/.local/bin.backup/`
 
 **Linux/macOS:**
 - Installs `install_coding_tools.sh` to `~/.local/bin/`
+- Installs `auto_install_coding_tools` to `~/.local/bin/`
 - Creates backups in `~/.local/bin.backup/`
 
 **Windows:**
 - Run `install_coding_tools.bat` directly (no deployment script needed)
+
+## Auto Install Script
+
+The `auto_install_coding_tools` script automates the installation process across multiple conda environments:
+
+```bash
+# Run the auto installer (processes all conda environments except base)
+auto_install_coding_tools
+```
+
+### Features
+
+- **Multi-environment support**: Automatically processes all conda environments (excluding `base`)
+- **Seamless integration**: Uses the same installation logic as `install_coding_tools.sh`
+- **Conda environment detection**: Finds conda installations in standard locations
+- **Safety first**: Skips the `base` environment to avoid conflicts
+
+### Requirements
+
+- Conda or Miniconda installed
+- Multiple conda environments set up
+- Same requirements as `install_coding_tools.sh` (curl, uv, npm)
 
 ## Manual Installation
 
@@ -121,4 +152,22 @@ If you get "Permission denied" when running the installer:
 
 ```bash
 chmod +x ~/.local/bin/install_coding_tools.sh
+chmod +x ~/.local/bin/auto_install_coding_tools
+```
+
+### Installation Summary
+
+After successful installation, you should see output similar to:
+
+```
+=== Installation Summary ===
+
+[SUCCESS] Deployment completed successfully!
+
+Installed scripts:
+  Unix:   ~/.local/bin/install_coding_tools.sh
+  Auto:   ~/.local/bin/auto_install_coding_tools
+  Windows: /mnt/c/Users/username/.local/bin/install_coding_tools.bat (WSL only)
+
+Backup location: ~/.local/bin.backup
 ```
