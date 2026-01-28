@@ -6,6 +6,31 @@ set -euo pipefail
 # Interactive installer for AI coding CLI tools
 #############################################
 
+# Non-interactive mode flag
+AUTO_YES=false
+
+# Parse command-line arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --yes|-y)
+            AUTO_YES=true
+            shift
+            ;;
+        --help|-h)
+            printf "Usage: %s [--yes|-y] [--help|-h]\n" "$0"
+            printf "\nOptions:\n"
+            printf "  --yes, -y        Non-interactive mode (auto-proceed with defaults)\n"
+            printf "  --help, -h       Show this help message\n"
+            exit 0
+            ;;
+        *)
+            printf "Unknown option: %s\n" "$1"
+            printf "Use --help for usage information\n"
+            exit 1
+            ;;
+    esac
+done
+
 # Color codes for output
 readonly RED='\033[0;31m'
 readonly GREEN='\033[0;32m'
@@ -823,6 +848,44 @@ parse_selection() {
 }
 
 get_user_selection() {
+    # Non-interactive mode: use defaults and proceed
+    if [[ "$AUTO_YES" == true ]]; then
+        printf "${BLUE}[INFO]${NC} Non-interactive mode: using default selections\n"
+
+        # Check if any tools selected
+        local selected_count=0
+        for sel in "${SELECTED[@]}"; do
+            selected_count=$((selected_count + sel))
+        done
+
+        if [[ "$selected_count" -eq 0 ]]; then
+            log_warning "No tools selected by default (all tools up-to-date). Nothing to do."
+            exit 0
+        fi
+
+        # Show what will be installed
+        printf "\n"
+        for i in "${!TOOL_NAMES[@]}"; do
+            if [[ "${SELECTED[$i]}" -eq 1 ]]; then
+                local action="${TOOL_ACTIONS[$i]}"
+                local name="${TOOL_NAMES[$i]}"
+                case "$action" in
+                    install)
+                        printf "  ${GREEN}[INSTALL]${NC} %s\n" "$name"
+                        ;;
+                    remove)
+                        printf "  ${RED}[REMOVE]${NC} %s\n" "$name"
+                        ;;
+                esac
+            fi
+        done
+        printf "\n"
+
+        log_success "Auto-proceeding with $selected_count tool(s)..."
+        return 0
+    fi
+
+    # Interactive mode: show menu and get user input
     while true; do
         render_menu
 
@@ -1127,6 +1190,11 @@ confirm_removals() {
     done
 
     if [[ "$has_removals" == true ]]; then
+        if [[ "$AUTO_YES" == true ]]; then
+            printf "${YELLOW}[AUTO-YES]${NC} Proceeding with removals in non-interactive mode\n"
+            return 0
+        fi
+
         printf "Proceed? (y/N): "
         read -r response
         case "$response" in
@@ -1331,6 +1399,30 @@ selection_requires_npm() {
     return 1
 }
 
+selection_requires_uv() {
+    for i in "${!TOOL_NAMES[@]}"; do
+        if [[ "${SELECTED[$i]}" -eq 1 ]]; then
+            case "${TOOL_MANAGERS[$i]}" in
+                uv)
+                    return 0
+                    ;;
+            esac
+        fi
+    done
+    return 1
+}
+
+ensure_uv_prerequisite() {
+    if command -v uv >/dev/null 2>&1; then
+        return 0
+    fi
+
+    log_error "uv is not installed but required for uv-managed tools."
+    printf "Install uv with conda:\n"
+    printf "  ${CYAN}conda install -c conda-forge uv${NC}\n"
+    return 1
+}
+
 #############################################
 # CONDA ENVIRONMENT CHECK
 #############################################
@@ -1387,6 +1479,13 @@ main() {
     # Ensure npm is available and recent if any npm tools are selected
     if selection_requires_npm; then
         if ! ensure_npm_prerequisite; then
+            exit 1
+        fi
+    fi
+
+    # Ensure uv is available if any uv tools are selected
+    if selection_requires_uv; then
+        if ! ensure_uv_prerequisite; then
             exit 1
         fi
     fi

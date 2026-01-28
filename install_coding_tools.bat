@@ -9,18 +9,21 @@ REM Windows version (run in Anaconda Prompt or CMD)
 REM ###############################################
 
 REM Runtime flags (also configurable via env vars):
+REM   --yes, -y       Non-interactive mode (auto-proceed with defaults)
 REM   --debug         Enable verbose tracing and write a log file
 REM   --log <path>    Write debug log to a specific file
 REM   --color         Force-enable ANSI colors
 REM   --no-color      Disable ANSI colors
 REM   --no-prefetch   Skip latest-version prefetch (faster, fewer moving parts)
 set "DEBUG=0"
+set "AUTO_YES=0"
 REM Default to color; if ANSI detection fails we fall back to no-color automatically.
 set "NO_COLOR=0"
 set "NO_PREFETCH=0"
 set "LOGFILE="
 
 if /I "%AGENTIC_DEBUG%"=="1" set "DEBUG=1"
+if /I "%AGENTIC_YES%"=="1" set "AUTO_YES=1"
 if /I "%AGENTIC_COLOR%"=="1" set "NO_COLOR=0"
 if /I "%AGENTIC_NO_COLOR%"=="1" set "NO_COLOR=1"
 if /I "%AGENTIC_NO_PREFETCH%"=="1" set "NO_PREFETCH=1"
@@ -180,6 +183,20 @@ if not "%RC%"=="0" (
     exit /b %RC%
 )
 
+REM Non-interactive mode: skip menu and proceed with defaults
+if "%AUTO_YES%"=="1" (
+    echo %BLUE%[INFO]%NC% Non-interactive mode: using default selections
+    call :check_selected
+    if errorlevel 1 (
+        echo %YELLOW%[WARNING]%NC% No tools selected by default ^(all tools up-to-date^). Nothing to do.
+        exit /b 0
+    )
+    call :show_selected_tools
+    echo.
+    echo %GREEN%[SUCCESS]%NC% Auto-proceeding with selected tools...
+    goto confirm_actions
+)
+
 :menu_loop
 call :render_menu
 
@@ -248,6 +265,18 @@ if "%RC%"=="0" (
     )
 )
 
+call :selection_requires_uv
+set "RC=%errorlevel%"
+if "%RC%"=="0" (
+    call :dbg %BLUE%[STEP]%NC% ensure_uv_prerequisite
+    call :ensure_uv_prerequisite
+    set "RC=%errorlevel%"
+    if not "%RC%"=="0" (
+        call :die "ensure_uv_prerequisite" "%RC%"
+        exit /b %RC%
+    )
+)
+
 call :dbg_step "check_dependencies"
 call :check_dependencies
 set "RC=%errorlevel%"
@@ -275,6 +304,16 @@ REM ###############################################
 
 :parse_args
 if "%~1"=="" exit /b 0
+if /I "%~1"=="--yes" (
+    set "AUTO_YES=1"
+    shift
+    goto parse_args
+)
+if /I "%~1"=="-y" (
+    set "AUTO_YES=1"
+    shift
+    goto parse_args
+)
 if /I "%~1"=="--debug" (
     set "DEBUG=1"
     shift
@@ -417,6 +456,18 @@ if not defined NPM_VERSION (
 	)
 	exit /b 0
 
+:ensure_uv_prerequisite
+call :dbg %BLUE%[DEBUG]%NC% enter ensure_uv_prerequisite
+call :dbg %BLUE%[DEBUG]%NC% checking `where uv`
+where uv >nul 2>nul
+if errorlevel 1 (
+    echo %RED%[ERROR]%NC% uv is not installed but required for uv-managed tools.
+    echo Install uv with conda:
+    echo   %CYAN%conda install -c conda-forge uv%NC%
+    exit /b 1
+)
+exit /b 0
+
 :check_curl
 where curl >nul 2>nul
 if errorlevel 1 (
@@ -486,6 +537,20 @@ for /L %%i in (1,1,%TOOLS_COUNT%) do (
     )
 )
 if "%needs_npm%"=="1" exit /b 0
+exit /b 1
+
+:selection_requires_uv
+set "needs_uv=0"
+for /L %%i in (1,1,%TOOLS_COUNT%) do (
+    call set "act=%%ACT_%%i%%"
+    call set "act=%%act%%"
+    if not "!act!"=="0" (
+        call set "mgr=%%MGR_%%i%%"
+        call set "mgr=%%mgr%%"
+        if /I "!mgr!"=="uv" set "needs_uv=1"
+    )
+)
+if "%needs_uv%"=="1" exit /b 0
 exit /b 1
 
 :print_sep
@@ -1215,6 +1280,22 @@ if !remove_count! GTR 0 (
 )
 exit /b 0
 
+:show_selected_tools
+for /L %%i in (1,1,%TOOLS_COUNT%) do (
+    call set "act=%%ACT_%%i%%"
+    call set "act=%%act%%"
+    if not "!act!"=="0" (
+        call set "name=%%NAME_%%i%%"
+        call set "name=%%name%%"
+        if "!act!"=="1" (
+            echo   %GREEN%[INSTALL]%NC% !name!
+        ) else if "!act!"=="2" (
+            echo   %RED%[REMOVE]%NC% !name!
+        )
+    )
+)
+exit /b 0
+
 :confirm_removals
 set "has_removals=0"
 for /L %%i in (1,1,%TOOLS_COUNT%) do (
@@ -1224,6 +1305,10 @@ for /L %%i in (1,1,%TOOLS_COUNT%) do (
 )
 
 if "!has_removals!"=="1" (
+    if "%AUTO_YES%"=="1" (
+        echo %YELLOW%[AUTO-YES]%NC% Proceeding with removals in non-interactive mode
+        exit /b 0
+    )
     set "response="
     REM Avoid parentheses in prompt text; they can break parsing inside parenthesized blocks.
     set /p response="Proceed with removals? [y/N]: "
