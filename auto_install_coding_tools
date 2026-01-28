@@ -1,0 +1,30 @@
+#!/usr/bin/bash
+
+# Initialize conda for this shell
+# Try to find conda.sh and activate it
+if [ -f "$HOME/miniconda3/etc/profile.d/conda.sh" ]; then
+    source "$HOME/miniconda3/etc/profile.d/conda.sh"
+elif [ -f "$HOME/anaconda3/etc/profile.d/conda.sh" ]; then
+    source "$HOME/anaconda3/etc/profile.d/conda.sh"
+elif [ -f "$(dirname "$(which conda)")/../etc/profile.d/conda.sh" ]; then
+    source "$(dirname "$(which conda)")/../etc/profile.d/conda.sh"
+else
+    echo "Error: Could not find conda.sh to initialize conda"
+    exit 1
+fi
+
+# Get list of conda environments, excluding 'base'
+envs=$(conda env list | grep -v "^#" | awk '{print $1}' | grep -v "^$" | grep -v "base")
+
+# Loop through each environment and run install_coding_tools.sh
+for env in $envs; do
+    echo "Activating environment: $env"
+    conda activate "$env"
+    install_coding_tools.sh --yes
+    conda deactivate
+    echo "Finished processing: $env"
+    echo ""
+done
+
+echo "All environments processed."
+
