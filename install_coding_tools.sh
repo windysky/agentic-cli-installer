@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.3.0
+# Agentic Coders Installer v1.4.0
 # Interactive installer for AI coding CLI tools
 #############################################
 

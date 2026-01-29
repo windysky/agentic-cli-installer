@@ -1,6 +1,6 @@
-# Agentic CLI Installer v1.3.0
+# Agentic CLI Installer v1.4.0
 
-**Last Modified:** January 28, 2026
+**Last Modified:** January 29, 2026
 
 An interactive installer that manages multiple AI coding CLI tools from one place. It detects installed versions, fetches latest versions, and lets you install, update, or remove tools in a single run.
 
@@ -26,11 +26,19 @@ An interactive installer that manages multiple AI coding CLI tools from one plac
 
 - `curl`
 - For uv-managed tools: `uv`
-- For npm-managed tools: `node` + `npm`
+- For npm-managed tools: `node` >= 22.9.0 (includes npm >= 10.0.0)
+  - If in conda environment, Node.js will be automatically installed if needed
 
 ## Quick Start (Deployment Script)
 
 The recommended way to install the Agentic CLI Installer is using the deployment script:
+
+### What's New in v1.4.0
+
+- **Non-Interactive Mode**: Added `--yes`/`-y` flag for automatic installation with default selections
+- **Node.js/npm Requirements**: Now requires Node.js 22.9.0+ (includes npm 10+ for modern tool compatibility)
+- **Fixed uv Updates**: uv tools now properly update to latest versions using `--force` flag
+- **Version Verification**: Improved npm/Node.js version detection in conda environments
 
 ### What's New in v1.3.0
 
@@ -114,13 +122,25 @@ macOS/Linux:
 
 ```bash
 chmod +x install_coding_tools.sh
+# Interactive mode
 ./install_coding_tools.sh
+
+# Non-interactive mode (auto-proceed with defaults)
+./install_coding_tools.sh --yes
+# or
+./install_coding_tools.sh -y
 ```
 
 Windows (PowerShell):
 
 ```powershell
+# Interactive mode
 .\install_coding_tools.bat
+
+# Non-interactive mode
+.\install_coding_tools.bat --yes
+# or
+.\install_coding_tools.bat -y
 ```
 
 ## Notes
