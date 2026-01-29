@@ -403,6 +403,20 @@ for /L %%i in (1,1,%TOOLS_COUNT%) do (
 call :dbg %BLUE%[DEBUG]%NC% has_npm_tool=!has_npm_tool!
 if "!has_npm_tool!"=="0" exit /b 0
 
+REM Helper to get conda npm path directly
+set "CONDA_NPM="
+if defined CONDA_PREFIX (
+    set "CONDA_NPM=!CONDA_PREFIX!\Scripts\npm.cmd"
+) else if defined CONDA_DEFAULT_ENV (
+    REM Try to find conda environments
+    for /f "delims=" %%p in ('conda info --base 2^>nul') do set "CONDA_ROOT=%%p"
+    if defined CONDA_ROOT (
+        set "CONDA_NPM=!CONDA_ROOT!\envs\!CONDA_DEFAULT_ENV!\Scripts\npm.cmd"
+    )
+)
+
+call :dbg %BLUE%[DEBUG]%NC% CONDA_NPM=!CONDA_NPM!
+
 call :dbg %BLUE%[DEBUG]%NC% checking `where npm`
 where npm >nul 2>nul
 if errorlevel 1 (
@@ -418,19 +432,17 @@ if errorlevel 1 (
             echo   %CYAN%Via winget%NC%: %YELLOW%winget install OpenJS.NodeJS%NC%
             exit /b 1
         )
-        REM Refresh PATH to pick up newly installed npm
-        call :dbg %BLUE%[DEBUG]%NC% checking `where npm` after conda install
-        where npm >nul 2>nul
-        if errorlevel 1 (
-            echo %RED%[ERROR]%NC% npm installation via conda appeared successful but npm is still not available.
-            exit /b 1
+        REM Verify using the conda npm directly
+        call :dbg %BLUE%[DEBUG]%NC% checking conda npm at: !CONDA_NPM!
+        if defined CONDA_NPM if exist "!CONDA_NPM!" (
+            for /f "delims=" %%v in ('"!CONDA_NPM!" --version 2^>nul') do (
+                if not "%%v"=="" set "NPM_VERSION=%%v"
+            )
+            echo %GREEN%[SUCCESS]%NC% Node.js + npm !NPM_VERSION! installed via conda
+            exit /b 0
         )
-        REM Get the installed version
-        for /f "delims=" %%v in ('npm --version 2^>nul') do (
-            if not "%%v"=="" set "NPM_VERSION=%%v"
-        )
-        echo %GREEN%[SUCCESS]%NC% Node.js + npm !NPM_VERSION! installed via conda
-        exit /b 0
+        echo %RED%[ERROR]%NC% npm installation via conda appeared successful but npm is still not available.
+        exit /b 1
     ) else (
         echo Install Node.js %MIN_NPM_VERSION%+ before continuing:
         echo   %CYAN%Windows%NC%: %YELLOW%https://nodejs.org/en/download%NC%
@@ -454,16 +466,22 @@ if not defined NPM_VERSION (
 	if errorlevel 1 (
 	    echo %YELLOW%[WARNING]%NC% npm version %NPM_VERSION% is below required %MIN_NPM_VERSION%.
 	    REM Try to update via conda if available
-	    if defined CONDA_DEFAULT_ENV (
+	    if defined CONDA_DEFAULT_ENV if defined CONDA_NPM (
 	        echo Attempting to update Node.js via conda...
 	        call conda install -y -c conda-forge "nodejs=%MIN_NPM_VERSION%" --force-reinstall
 	        if not errorlevel 1 (
-	            REM Refresh PATH and check new version
-	            for /f "delims=" %%v in ('npm --version 2^>nul') do (
+	            REM Verify using the conda npm directly
+	            for /f "delims=" %%v in ('"!CONDA_NPM!" --version 2^>nul') do (
 	                if not "%%v"=="" set "NPM_VERSION=%%v"
 	            )
-	            echo %GREEN%[SUCCESS]%NC% Node.js + npm updated to !NPM_VERSION! via conda
-	            exit /b 0
+	            REM Verify the version meets requirements
+	            powershell -NoProfile -Command "try { if ([version]'%NPM_VERSION%' -ge [version]'%MIN_NPM_VERSION%') { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>nul
+	            if not errorlevel 1 (
+	                echo %GREEN%[SUCCESS]%NC% Node.js + npm updated to !NPM_VERSION! via conda
+	                exit /b 0
+	            )
+	            echo %RED%[ERROR]%NC% Conda update completed but version is still insufficient: !NPM_VERSION!
+	            exit /b 1
 	        )
 	        echo Conda update failed, trying npm self-update...
 	    )

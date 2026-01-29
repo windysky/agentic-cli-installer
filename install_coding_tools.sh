@@ -1286,22 +1286,47 @@ ensure_npm_prerequisite() {
         return 0
     fi
 
+    # Helper function to get npm from conda environment directly
+    get_conda_npm_path() {
+        if [[ -n "$CONDA_PREFIX" ]]; then
+            echo "$CONDA_PREFIX/bin/npm"
+        elif [[ -n "$CONDA_DEFAULT_ENV" ]]; then
+            # Try to find conda prefix from environment name
+            local conda_root
+            conda_root=$(conda info --base 2>/dev/null || true)
+            if [[ -n "$conda_root" ]]; then
+                echo "$conda_root/envs/$CONDA_DEFAULT_ENV/bin/npm"
+            fi
+        fi
+    }
+
+    # Helper function to get npm version from specific path
+    get_npm_version_from_path() {
+        local npm_path=$1
+        if [[ -x "$npm_path" ]]; then
+            "$npm_path" --version 2>/dev/null | head -n1 || true
+        fi
+    }
+
+    local conda_npm
+    conda_npm=$(get_conda_npm_path)
+
     if ! command -v npm >/dev/null 2>&1; then
         # Check if we're in a conda environment
-        if [[ -n "$CONDA_DEFAULT_ENV" ]]; then
+        if [[ -n "$CONDA_DEFAULT_ENV" && -n "$conda_npm" ]]; then
             log_warning "npm is not installed but required for npm-managed tools."
             printf "Attempting to install Node.js ${MIN_NPM_VERSION}+ via conda...\n"
             if conda install -y -c conda-forge "nodejs>=${MIN_NPM_VERSION}"; then
-                # Refresh PATH to pick up newly installed npm
-                eval "$(conda shell.bash hook)"
-                conda activate "$CONDA_DEFAULT_ENV" 2>/dev/null || true
-                if command -v npm >/dev/null 2>&1; then
+                # Clear any command hash cache
+                hash -r npm 2>/dev/null || true
+                # Verify using the conda npm directly
+                if [[ -x "$conda_npm" ]]; then
                     local npm_version
-                    npm_version=$(npm --version 2>/dev/null | head -n1 || true)
+                    npm_version=$(get_npm_version_from_path "$conda_npm")
                     log_success "Node.js + npm ${npm_version} installed via conda"
                     return 0
                 else
-                    log_error "npm installation via conda appeared successful but npm is still not available."
+                    log_error "npm installation via conda appeared successful but npm is still not available at: $conda_npm"
                     return 1
                 fi
             else
@@ -1335,22 +1360,27 @@ ensure_npm_prerequisite() {
     fi
 
     # Version is too old, try to update via conda if available
-    if [[ -n "$CONDA_DEFAULT_ENV" ]]; then
+    if [[ -n "$CONDA_DEFAULT_ENV" && -n "$conda_npm" ]]; then
         log_warning "npm version $npm_version is below required $MIN_NPM_VERSION. Updating via conda..."
         if conda install -y -c conda-forge "nodejs=${MIN_NPM_VERSION}" --force-reinstall; then
-            # Refresh PATH to pick up updated npm
-            eval "$(conda shell.bash hook)"
-            conda activate "$CONDA_DEFAULT_ENV" 2>/dev/null || true
+            # Clear command hash cache
+            hash -r npm 2>/dev/null || true
+            # Verify using the conda npm directly
             local updated_version
-            updated_version=$(npm --version 2>/dev/null | head -n1 || true)
-            log_success "Node.js + npm updated to version ${updated_version:-unknown} via conda"
-            return 0
+            updated_version=$(get_npm_version_from_path "$conda_npm")
+            if [[ -n "$updated_version" ]] && version_ge "$updated_version" "$MIN_NPM_VERSION"; then
+                log_success "Node.js + npm updated to version ${updated_version} via conda"
+                return 0
+            else
+                log_error "Conda update completed but version is still insufficient: ${updated_version:-unknown}"
+                return 1
+            fi
         else
             log_warning "Conda update failed, trying npm self-update..."
         fi
     fi
 
-    # Fallback to npm self-update
+    # Fallback to npm self-update (only if we have a compatible node version)
     log_warning "npm version $npm_version is below required $MIN_NPM_VERSION. Attempting to update via npm..."
     if npm install -g npm@latest; then
         local updated_version
