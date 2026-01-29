@@ -39,7 +39,11 @@ readonly BLUE='\033[0;34m'
 readonly CYAN='\033[0;36m'
 readonly BOLD='\033[1m'
 readonly NC='\033[0m' # No Color
-readonly MIN_NPM_VERSION="25.2.1"
+# Minimum versions (npm has its own versioning, separate from Node.js)
+# Node.js 22.9.0+ is required for modern npm (npm 11.x)
+# npm 10+ is sufficient for most modern tools
+readonly MIN_NODEJS_VERSION="22.9.0"
+readonly MIN_NPM_VERSION="10.0.0"
 
 # Tool definitions: name, package manager, package name, description
 declare -a TOOLS=(
@@ -1315,8 +1319,8 @@ ensure_npm_prerequisite() {
         # Check if we're in a conda environment
         if [[ -n "$CONDA_DEFAULT_ENV" && -n "$conda_npm" ]]; then
             log_warning "npm is not installed but required for npm-managed tools."
-            printf "Attempting to install Node.js ${MIN_NPM_VERSION}+ via conda...\n"
-            if conda install -y -c conda-forge "nodejs>=${MIN_NPM_VERSION}"; then
+            printf "Attempting to install Node.js ${MIN_NODEJS_VERSION}+ via conda...\n"
+            if conda install -y -c conda-forge "nodejs>=${MIN_NODEJS_VERSION}"; then
                 # Clear any command hash cache
                 hash -r npm 2>/dev/null || true
                 # Verify using the conda npm directly
@@ -1362,7 +1366,7 @@ ensure_npm_prerequisite() {
     # Version is too old, try to update via conda if available
     if [[ -n "$CONDA_DEFAULT_ENV" && -n "$conda_npm" ]]; then
         log_warning "npm version $npm_version is below required $MIN_NPM_VERSION. Updating via conda..."
-        if conda install -y -c conda-forge "nodejs=${MIN_NPM_VERSION}" --force-reinstall; then
+        if conda install -y -c conda-forge "nodejs>=${MIN_NODEJS_VERSION}" --force-reinstall; then
             # Clear command hash cache
             hash -r npm 2>/dev/null || true
             # Verify using the conda npm directly

@@ -61,7 +61,11 @@ if "%NO_COLOR%"=="1" (
     set "BOLD=%ESC%[1m"
     set "NC=%ESC%[0m"
 )
-set "MIN_NPM_VERSION=25.2.1"
+REM Minimum versions (npm has its own versioning, separate from Node.js)
+REM Node.js 22.9.0+ is required for modern npm (npm 11.x)
+REM npm 10+ is sufficient for most modern tools
+set "MIN_NODEJS_VERSION=22.9.0"
+set "MIN_NPM_VERSION=10.0.0"
 
 REM Tool list: name|manager|package|description
 set TOOLS_COUNT=7
@@ -423,8 +427,8 @@ if errorlevel 1 (
     echo %YELLOW%[WARNING]%NC% npm is not installed but required for npm-managed tools.
     REM Check if we're in a conda environment
     if defined CONDA_DEFAULT_ENV (
-        echo Attempting to install Node.js %MIN_NPM_VERSION%+ via conda...
-        call conda install -y -c conda-forge "nodejs>=%MIN_NPM_VERSION%"
+        echo Attempting to install Node.js %MIN_NODEJS_VERSION%+ via conda...
+        call conda install -y -c conda-forge "nodejs>=%MIN_NODEJS_VERSION%"
         if errorlevel 1 (
             echo %RED%[ERROR]%NC% Failed to install Node.js via conda.
             echo Install Node.js + npm manually:
@@ -468,7 +472,7 @@ if not defined NPM_VERSION (
 	    REM Try to update via conda if available
 	    if defined CONDA_DEFAULT_ENV if defined CONDA_NPM (
 	        echo Attempting to update Node.js via conda...
-	        call conda install -y -c conda-forge "nodejs=%MIN_NPM_VERSION%" --force-reinstall
+	        call conda install -y -c conda-forge "nodejs>=%MIN_NODEJS_VERSION%" --force-reinstall
 	        if not errorlevel 1 (
 	            REM Verify using the conda npm directly
 	            for /f "delims=" %%v in ('"!CONDA_NPM!" --version 2^>nul') do (
