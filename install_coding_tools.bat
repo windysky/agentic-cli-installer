@@ -61,7 +61,7 @@ if "%NO_COLOR%"=="1" (
     set "BOLD=%ESC%[1m"
     set "NC=%ESC%[0m"
 )
-set "MIN_NPM_VERSION=9.0.0"
+set "MIN_NPM_VERSION=25.2.1"
 
 REM Tool list: name|manager|package|description
 set TOOLS_COUNT=7
@@ -409,8 +409,8 @@ if errorlevel 1 (
     echo %YELLOW%[WARNING]%NC% npm is not installed but required for npm-managed tools.
     REM Check if we're in a conda environment
     if defined CONDA_DEFAULT_ENV (
-        echo Attempting to install Node.js + npm via conda...
-        call conda install -y -c conda-forge nodejs
+        echo Attempting to install Node.js %MIN_NPM_VERSION%+ via conda...
+        call conda install -y -c conda-forge "nodejs>=%MIN_NPM_VERSION%"
         if errorlevel 1 (
             echo %RED%[ERROR]%NC% Failed to install Node.js via conda.
             echo Install Node.js + npm manually:
@@ -425,9 +425,14 @@ if errorlevel 1 (
             echo %RED%[ERROR]%NC% npm installation via conda appeared successful but npm is still not available.
             exit /b 1
         )
-        echo %GREEN%[SUCCESS]%NC% npm installed via conda
+        REM Get the installed version
+        for /f "delims=" %%v in ('npm --version 2^>nul') do (
+            if not "%%v"=="" set "NPM_VERSION=%%v"
+        )
+        echo %GREEN%[SUCCESS]%NC% Node.js + npm !NPM_VERSION! installed via conda
+        exit /b 0
     ) else (
-        echo Install Node.js + npm before continuing:
+        echo Install Node.js %MIN_NPM_VERSION%+ before continuing:
         echo   %CYAN%Windows%NC%: %YELLOW%https://nodejs.org/en/download%NC%
         echo   %CYAN%Via winget%NC%: %YELLOW%winget install OpenJS.NodeJS%NC%
         exit /b 1
@@ -447,10 +452,34 @@ if not defined NPM_VERSION (
 
 	powershell -NoProfile -Command "try { if ([version]'%NPM_VERSION%' -ge [version]'%MIN_NPM_VERSION%') { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>nul
 	if errorlevel 1 (
-	    echo %RED%[ERROR]%NC% npm version %NPM_VERSION% is below required %MIN_NPM_VERSION%.
-	    echo Please update npm and re-run:
-	    echo   %CYAN%npm install -g npm@latest%NC%
-	    exit /b 1
+	    echo %YELLOW%[WARNING]%NC% npm version %NPM_VERSION% is below required %MIN_NPM_VERSION%.
+	    REM Try to update via conda if available
+	    if defined CONDA_DEFAULT_ENV (
+	        echo Attempting to update Node.js via conda...
+	        call conda install -y -c conda-forge "nodejs=%MIN_NPM_VERSION%" --force-reinstall
+	        if not errorlevel 1 (
+	            REM Refresh PATH and check new version
+	            for /f "delims=" %%v in ('npm --version 2^>nul') do (
+	                if not "%%v"=="" set "NPM_VERSION=%%v"
+	            )
+	            echo %GREEN%[SUCCESS]%NC% Node.js + npm updated to !NPM_VERSION! via conda
+	            exit /b 0
+	        )
+	        echo Conda update failed, trying npm self-update...
+	    )
+	    REM Fallback to npm self-update
+	    echo Attempting to update npm via npm itself...
+	    call npm install -g npm@latest
+	    if errorlevel 1 (
+	        echo %RED%[ERROR]%NC% npm update failed. Please run: npm install -g npm@latest
+	        exit /b 1
+	    )
+	    REM Get updated version
+	    for /f "delims=" %%v in ('npm --version 2^>nul') do (
+	        if not "%%v"=="" set "NPM_VERSION=%%v"
+	    )
+	    echo %GREEN%[SUCCESS]%NC% npm updated to !NPM_VERSION!
+	    exit /b 0
 	) else (
 	    echo %BLUE%[INFO]%NC% npm version %NPM_VERSION% detected. Minimum required: %MIN_NPM_VERSION%.
 	)

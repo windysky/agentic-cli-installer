@@ -39,7 +39,7 @@ readonly BLUE='\033[0;34m'
 readonly CYAN='\033[0;36m'
 readonly BOLD='\033[1m'
 readonly NC='\033[0m' # No Color
-readonly MIN_NPM_VERSION="9.0.0"
+readonly MIN_NPM_VERSION="25.2.1"
 
 # Tool definitions: name, package manager, package name, description
 declare -a TOOLS=(
@@ -1288,13 +1288,15 @@ ensure_npm_prerequisite() {
         # Check if we're in a conda environment
         if [[ -n "$CONDA_DEFAULT_ENV" ]]; then
             log_warning "npm is not installed but required for npm-managed tools."
-            printf "Attempting to install Node.js + npm via conda...\n"
-            if conda install -y -c conda-forge nodejs; then
+            printf "Attempting to install Node.js ${MIN_NPM_VERSION}+ via conda...\n"
+            if conda install -y -c conda-forge "nodejs>=${MIN_NPM_VERSION}"; then
                 # Refresh PATH to pick up newly installed npm
                 eval "$(conda shell.bash hook)"
                 conda activate "$CONDA_DEFAULT_ENV" 2>/dev/null || true
                 if command -v npm >/dev/null 2>&1; then
-                    log_success "npm installed via conda"
+                    local npm_version
+                    npm_version=$(npm --version 2>/dev/null | head -n1 || true)
+                    log_success "Node.js + npm ${npm_version} installed via conda"
                     return 0
                 else
                     log_error "npm installation via conda appeared successful but npm is still not available."
@@ -1310,7 +1312,7 @@ ensure_npm_prerequisite() {
             fi
         else
             log_warning "npm is not installed but required for npm-managed tools."
-            printf "Install Node.js + npm before continuing:\n"
+            printf "Install Node.js ${MIN_NPM_VERSION}+ before continuing:\n"
             printf "  ${CYAN}macOS${NC}:           ${YELLOW}brew install node${NC}\n"
             printf "  ${CYAN}Debian/Ubuntu${NC}:   ${YELLOW}curl -fsSL https://deb.nodesource.com/setup_current.x | sudo -E bash - && sudo apt-get install -y nodejs${NC}\n"
             printf "  ${CYAN}Other platforms${NC}: ${YELLOW}https://docs.npmjs.com/downloading-and-installing-node-js-and-npm${NC}\n"
@@ -1330,7 +1332,24 @@ ensure_npm_prerequisite() {
         return 0
     fi
 
-    log_warning "npm version $npm_version is below required $MIN_NPM_VERSION. Attempting to update to latest..."
+    # Version is too old, try to update via conda if available
+    if [[ -n "$CONDA_DEFAULT_ENV" ]]; then
+        log_warning "npm version $npm_version is below required $MIN_NPM_VERSION. Updating via conda..."
+        if conda install -y -c conda-forge "nodejs=${MIN_NPM_VERSION}" --force-reinstall; then
+            # Refresh PATH to pick up updated npm
+            eval "$(conda shell.bash hook)"
+            conda activate "$CONDA_DEFAULT_ENV" 2>/dev/null || true
+            local updated_version
+            updated_version=$(npm --version 2>/dev/null | head -n1 || true)
+            log_success "Node.js + npm updated to version ${updated_version:-unknown} via conda"
+            return 0
+        else
+            log_warning "Conda update failed, trying npm self-update..."
+        fi
+    fi
+
+    # Fallback to npm self-update
+    log_warning "npm version $npm_version is below required $MIN_NPM_VERSION. Attempting to update via npm..."
     if npm install -g npm@latest; then
         local updated_version
         updated_version=$(npm --version 2>/dev/null | head -n1 || true)
