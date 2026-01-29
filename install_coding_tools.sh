@@ -960,7 +960,9 @@ install_tool() {
                 fi
             else
                 printf "  Updating ${pkg}...\n"
-                if uv tool update "$pkg"; then
+                # Use install --force instead of update to get the latest version
+                # uv tool update only updates within original version constraints
+                if uv tool install "$pkg" --force; then
                     log_success "Updated ${name}"
                     return 0
                 else

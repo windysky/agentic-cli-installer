@@ -1491,8 +1491,10 @@ exit /b 0
 
 :install_tool_uv_update
 	echo   Updating !pkg!...
-	call :dbg   %BLUE%[DEBUG]%NC% run: uv tool update "!pkg!"
-	call uv tool update "!pkg!"
+	REM Use install --force instead of update to get the latest version
+	REM uv tool update only updates within original version constraints
+	call :dbg   %BLUE%[DEBUG]%NC% run: uv tool install "!pkg!" --force
+	call uv tool install "!pkg!" --force
 	exit /b %errorlevel%
 
 :install_tool_native
