@@ -69,12 +69,12 @@ set "MIN_NPM_VERSION=10.0.0"
 
 REM Tool list: name|manager|package|description
 set TOOLS_COUNT=7
-set "TOOL_1=moai-adk|uv|moai-adk|MoAI Agent Development Kit"
+set "TOOL_1=moai-adk|native|moai-adk|MoAI Agent Development Kit"
 set "TOOL_2=claude-code|native|claude-code|Claude Code CLI"
 set "TOOL_3=@openai/codex|npm|@openai/codex|OpenAI Codex CLI"
 set "TOOL_4=@google/gemini-cli|npm|@google/gemini-cli|Google Gemini CLI"
 set "TOOL_5=@google/jules|npm|@google/jules|Google Jules CLI"
-set "TOOL_6=opencode-ai|npm|opencode-ai|OpenCode AI CLI"
+set "TOOL_6=opencode-ai|native|opencode-ai|OpenCode AI CLI"
 set "TOOL_7=mistral-vibe|uv|mistral-vibe|Mistral Vibe CLI"
 
 REM Action states: 0=skip, 1=install, 2=remove
@@ -109,7 +109,7 @@ set "GITHUB_RATE_LIMIT_RESET=0"
 
 REM Load tool definitions
 set "NAME_1=MoAI Agent Development Kit"
-set "MGR_1=uv"
+set "MGR_1=native"
 set "PKG_1=moai-adk"
 set "DESC_1=MoAI Agent Development Kit"
 set "BIN_1=moai-adk"
@@ -144,7 +144,7 @@ set "BIN_5=jules"
 set "VERARG_5=version"
 
 set "NAME_6=OpenCode AI CLI"
-set "MGR_6=npm"
+set "MGR_6=native"
 set "PKG_6=opencode-ai"
 set "DESC_6=OpenCode AI CLI"
 set "BIN_6=opencode"
@@ -770,7 +770,22 @@ REM Get latest version for native tools (e.g., Claude Code)
 set "pkg=%~1"
 set "outvar=%~2"
 set "%outvar%="
+if /I "%pkg%"=="moai-adk" goto get_latest_native_moai
 if /I "%pkg%"=="claude-code" goto get_latest_native_claude
+if /I "%pkg%"=="opencode-ai" goto get_latest_native_opencode
+exit /b 0
+
+:get_latest_native_moai
+set "tmpfile=%TEMP%\moai_adk_version_%RANDOM%.tmp"
+if exist curl (
+    curl -s https://api.github.com/repos/modu-ai/moai-adk/releases/latest >"%tmpfile%" 2>nul
+)
+if exist "%tmpfile%" (
+    for /f "usebackq delims=" %%v in ("%tmpfile%") do (
+        if not "%%v"=="" set "%outvar%=%%v"
+    )
+    del "%tmpfile%" >nul 2>nul
+)
 exit /b 0
 
 :get_latest_native_claude
@@ -784,6 +799,12 @@ if exist "%tmpfile%" (
 )
 exit /b 0
 
+:get_latest_native_opencode
+REM For opencode-ai, we don't have a reliable API to check the latest version
+REM The installer handles this internally, so we return Unknown
+set "%outvar%=Unknown"
+exit /b 0
+
 REM Get installed version for native tools (e.g., Claude Code)
 :get_installed_native_version
 set "pkg=%~1"
@@ -793,6 +814,42 @@ if /I "%pkg%"=="claude-code" (
     where claude >nul 2>nul
     if not errorlevel 1 (
         for /f "delims=" %%v in ('claude --version 2^>nul') do (
+            if not "%%v"=="" (
+                REM Extract version number from output
+                for /f "tokens=1-3 delims=." %%a in ("%%v") do (
+                    if "%%a" neq "" set "%outvar%=%%a.%%b.%%c"
+                )
+            )
+        )
+    )
+) else if /I "%pkg%"=="moai-adk" (
+    where moai-adk >nul 2>nul
+    if not errorlevel 1 (
+        for /f "delims=" %%v in ('moai-adk --version 2^>nul') do (
+            if not "%%v"=="" (
+                REM Extract version number from output
+                for /f "tokens=1-3 delims=." %%a in ("%%v") do (
+                    if "%%a" neq "" set "%outvar%=%%a.%%b.%%c"
+                )
+            )
+        )
+    )
+) else if /I "%pkg%"=="opencode-ai" (
+    where opencode >nul 2>nul
+    if not errorlevel 1 (
+        for /f "delims=" %%v in ('opencode --version 2^>nul') do (
+            if not "%%v"=="" (
+                REM Extract version number from output
+                for /f "tokens=1-3 delims=." %%a in ("%%v") do (
+                    if "%%a" neq "" set "%outvar%=%%a.%%b.%%c"
+                )
+            )
+        )
+    )
+) else if /I "%pkg%"=="opencode-ai" (
+    where opencode >nul 2>nul
+    if not errorlevel 1 (
+        for /f "delims=" %%v in ('opencode --version 2^>nul') do (
             if not "%%v"=="" (
                 REM Extract version number from output
                 for /f "tokens=1-3 delims=." %%a in ("%%v") do (
@@ -1507,8 +1564,9 @@ exit /b 0
 
 :install_tool_uv_install
 	echo   Installing !pkg!...
-	call :dbg   %BLUE%[DEBUG]%NC% run: uv tool install "!pkg!" --force
-	call uv tool install "!pkg!" --force
+	REM For initial install, do not use --force (recommended method)
+	call :dbg   %BLUE%[DEBUG]%NC% run: uv tool install "!pkg!"
+	call uv tool install "!pkg!"
 	exit /b %errorlevel%
 
 :install_tool_uv_update
@@ -1520,33 +1578,49 @@ exit /b 0
 	exit /b %errorlevel%
 
 :install_tool_native
-	if /I not "!pkg!"=="claude-code" exit /b 0
+	if /I "!pkg!"=="moai-adk" goto install_tool_moai
+	if /I "!pkg!"=="claude-code" goto install_tool_claude
+	if /I "!pkg!"=="opencode-ai" goto install_tool_opencode
+	exit /b 0
+
+:install_tool_moai
+	echo   Installing MoAI-ADK (using official installer)...
+	call :dbg   %BLUE%[DEBUG]%NC% run: curl -LsSf https://modu-ai.github.io/moai-adk/install.sh ^| bash
+	curl -LsSf https://modu-ai.github.io/moai-adk/install.sh | bash
+	if errorlevel 1 (
+	    echo %RED%[ERROR]%NC% Failed to install MoAI-ADK
+	    exit /b 1
+	)
+	echo   %GREEN%[SUCCESS]%NC% Installed MoAI-ADK
+	exit /b 0
+
+:install_tool_claude
 	set "HAS_NPM_CLAUDE=0"
 	call :check_npm_claude_code HAS_NPM_CLAUDE
-	if "!HAS_NPM_CLAUDE!"=="1" goto install_tool_native_migrate
-	goto install_tool_native_post_migrate
+	if "!HAS_NPM_CLAUDE!"=="1" goto install_tool_claude_migrate
+	goto install_tool_claude_post_migrate
 
-:install_tool_native_migrate
+:install_tool_claude_migrate
 	echo   %YELLOW%Detected npm-installed Claude Code (deprecated method)%NC%
 	echo   %YELLOW%The npm installation method is deprecated. Migrating to native installer...%NC%
 	echo   Removing npm version...
 	call :dbg   %BLUE%[DEBUG]%NC% run: npm uninstall -g "@anthropic-ai/claude-code"
 	call npm uninstall -g "@anthropic-ai/claude-code" >nul 2>nul
-	if errorlevel 1 goto install_tool_native_migrate_warn
+	if errorlevel 1 goto install_tool_claude_migrate_warn
 	echo   %GREEN%npm version removed successfully%NC%
-	goto install_tool_native_migrate_done
+	goto install_tool_claude_migrate_done
 
-:install_tool_native_migrate_warn
+:install_tool_claude_migrate_warn
 	echo   %YELLOW%Warning: Failed to remove npm version, continuing anyway...%NC%
 
-:install_tool_native_migrate_done
+:install_tool_claude_migrate_done
 	set "inst=Not Installed"
 
-:install_tool_native_post_migrate
-	if /I "!inst!"=="Not Installed" goto install_tool_native_install
-	goto install_tool_native_update
+:install_tool_claude_post_migrate
+	if /I "!inst!"=="Not Installed" goto install_tool_claude_install
+	goto install_tool_claude_update
 
-:install_tool_native_install
+:install_tool_claude_install
 	echo   Installing Claude Code ^(native installer^)...
 	call :dbg   %BLUE%[DEBUG]%NC% run: download_claude_installer
 	if exist "%TEMP%\install.cmd" del "%TEMP%\install.cmd" >nul 2>nul
@@ -1558,14 +1632,14 @@ exit /b 0
 	if %RC% NEQ 0 exit /b %RC%
 	exit /b 0
 
-:install_tool_native_update
+:install_tool_claude_update
 	echo   Updating Claude Code...
 	call :dbg   %BLUE%[DEBUG]%NC% run: claude update
 	call claude update
-	if errorlevel 1 goto install_tool_native_reinstall
+	if errorlevel 1 goto install_tool_claude_reinstall
 	exit /b 0
 
-:install_tool_native_reinstall
+:install_tool_claude_reinstall
 	echo   Update command failed, trying re-install...
 	if exist "%TEMP%\install.cmd" del "%TEMP%\install.cmd" >nul 2>nul
 	call :download_claude_installer "%TEMP%\install.cmd"
@@ -1575,6 +1649,13 @@ exit /b 0
 	del "%TEMP%\install.cmd" >nul 2>nul
 	if %RC% NEQ 0 exit /b %RC%
 	exit /b 0
+
+:install_tool_opencode
+	REM OpenCode AI CLI installation using the recommended install script
+	echo   Installing OpenCode AI CLI ^(using official installer^)...
+	call :dbg   %BLUE%[DEBUG]%NC% run: curl -fsSL https://opencode.ai/install | bash
+	curl -fsSL https://opencode.ai/install | bash
+	exit /b %errorlevel%
 
 :install_tool_npm
 	if /I "!inst!"=="Not Installed" goto install_tool_npm_install
@@ -1634,6 +1715,40 @@ if /I "!mgr!"=="npm-self" (
         REM Check if removal was successful
         if exist "%USERPROFILE%\.local\bin\claude.exe" (
             echo %RED%[ERROR]%NC% Failed to remove Claude Code binary
+            exit /b 1
+        )
+    ) else if /I "!pkg!"=="moai-adk" (
+        echo   Uninstalling MoAI-ADK...
+        call :dbg   %BLUE%[DEBUG]%NC% remove: moai-adk
+        REM First try using uv tool uninstall if available
+        where uv >nul 2>nul
+        if not errorlevel 1 (
+            call uv tool uninstall moai-adk 2>nul
+            if not errorlevel 1 (
+                echo %GREEN%[SUCCESS]%NC% Removed MoAI-ADK
+                exit /b 0
+            )
+        )
+        REM Fallback: remove binary directly if it exists
+        call :dbg   %BLUE%[DEBUG]%NC% remove: %USERPROFILE%\.local\bin\moai-adk.exe
+        if exist "%USERPROFILE%\.local\bin\moai-adk.exe" (
+            del "%USERPROFILE%\.local\bin\moai-adk.exe" >nul 2>nul
+        )
+        if exist "%USERPROFILE%\.local\bin\moai-adk.exe" (
+            echo %RED%[ERROR]%NC% Failed to remove MoAI-ADK binary
+            exit /b 1
+        )
+        echo %GREEN%[SUCCESS]%NC% Removed MoAI-ADK
+        exit /b 0
+    ) else if /I "!pkg!"=="opencode-ai" (
+        echo   Uninstalling OpenCode AI CLI...
+        call :dbg   %BLUE%[DEBUG]%NC% remove: %USERPROFILE%\.local\bin\opencode.exe
+        if exist "%USERPROFILE%\.local\bin\opencode.exe" (
+            del "%USERPROFILE%\.local\bin\opencode.exe" >nul 2>nul
+        )
+        REM Check if removal was successful
+        if exist "%USERPROFILE%\.local\bin\opencode.exe" (
+            echo %RED%[ERROR]%NC% Failed to remove OpenCode AI CLI binary
             exit /b 1
         )
     )

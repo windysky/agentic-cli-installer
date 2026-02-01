@@ -47,12 +47,12 @@ readonly MIN_NPM_VERSION="10.0.0"
 
 # Tool definitions: name, package manager, package name, description
 declare -a TOOLS=(
-    "moai-adk|uv|moai-adk|MoAI Agent Development Kit"
+    "moai-adk|native|moai-adk|MoAI Agent Development Kit"
     "claude-code|native|claude-code|Claude Code CLI"
     "@openai/codex|npm|@openai/codex|OpenAI Codex CLI"
     "@google/gemini-cli|npm|@google/gemini-cli|Google Gemini CLI"
     "@google/jules|npm|@google/jules|Google Jules CLI"
-    "opencode-ai|npm|opencode-ai|OpenCode AI CLI"
+    "opencode-ai|native|opencode-ai|OpenCode AI CLI"
     "mistral-vibe|uv|mistral-vibe|Mistral Vibe CLI"
 )
 
@@ -362,6 +362,14 @@ get_installed_native_version() {
         if command -v claude >/dev/null 2>&1; then
             claude --version 2>/dev/null | head -n1 | sed -E 's/.*([0-9]+\.[0-9]+\.[0-9]+).*/\1/' || true
         fi
+    elif [[ "$pkg" == "moai-adk" ]]; then
+        if command -v moai-adk >/dev/null 2>&1; then
+            moai-adk --version 2>/dev/null | head -n1 | sed -E 's/.*([0-9]+\.[0-9]+\.[0-9]+).*/\1/' || true
+        fi
+    elif [[ "$pkg" == "opencode-ai" ]]; then
+        if command -v opencode >/dev/null 2>&1; then
+            opencode --version 2>/dev/null | head -n1 | sed -E 's/.*([0-9]+\.[0-9]+\.[0-9]+).*/\1/' || true
+        fi
     fi
 }
 
@@ -433,6 +441,8 @@ get_latest_version() {
                     fi
                 fi
             fi
+            # For opencode-ai, we don't have a reliable API to check the latest version
+            # The installer handles this internally
             ;;
     esac
 }
@@ -955,7 +965,8 @@ install_tool() {
         uv)
             if [[ "$installed_version" == "Not Installed" ]]; then
                 printf "  Installing ${pkg}...\n"
-                if uv tool install "$pkg" --force; then
+                # For initial install, do not use --force (recommended method)
+                if uv tool install "$pkg"; then
                     log_success "Installed ${name}"
                     return 0
                 else
@@ -1042,6 +1053,30 @@ install_tool() {
                         fi
                     fi
                 fi
+            elif [[ "$pkg" == "moai-adk" ]]; then
+                # MoAI-ADK installation using the recommended curl install script
+                printf "  Installing MoAI-ADK (using official installer)...\n"
+                if curl -LsSf https://modu-ai.github.io/moai-adk/install.sh | bash; then
+                    # Add ~/.local/bin to PATH if not already there
+                    if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+                        printf "  ${YELLOW}Note: $HOME/.local/bin should be in your PATH${NC}\n"
+                    fi
+                    log_success "Installed ${name}"
+                    return 0
+                else
+                    log_error "Failed to install ${name}"
+                    return 1
+                fi
+            elif [[ "$pkg" == "opencode-ai" ]]; then
+                # OpenCode AI CLI installation using the recommended curl install script
+                printf "  Installing OpenCode AI CLI (using official installer)...\n"
+                if curl -fsSL https://opencode.ai/install | bash; then
+                    log_success "Installed ${name}"
+                    return 0
+                else
+                    log_error "Failed to install ${name}"
+                    return 1
+                fi
             fi
             ;;
         npm-self)
@@ -1106,6 +1141,47 @@ remove_tool() {
                 # Remove the data directory
                 if [[ -d "$HOME/.local/share/claude" ]]; then
                     rm -rf "$HOME/.local/share/claude"
+                    removed=true
+                fi
+                if $removed; then
+                    log_success "Removed ${name}"
+                    return 0
+                else
+                    log_error "Failed to remove ${name}"
+                    return 1
+                fi
+            elif [[ "$pkg" == "moai-adk" ]]; then
+                printf "  Uninstalling MoAI-ADK...\n"
+                # MoAI-ADK typically installs via uv tool, so use uv to uninstall
+                if command -v uv >/dev/null 2>&1; then
+                    if uv tool uninstall moai-adk 2>/dev/null; then
+                        log_success "Removed ${name}"
+                        return 0
+                    else
+                        # Fallback: remove binary directly if it exists
+                        local removed=false
+                        if [[ -f "$HOME/.local/bin/moai-adk" ]]; then
+                            rm -f "$HOME/.local/bin/moai-adk"
+                            removed=true
+                        fi
+                        if $removed; then
+                            log_success "Removed ${name}"
+                            return 0
+                        else
+                            log_error "Failed to remove ${name}"
+                            return 1
+                        fi
+                    fi
+                else
+                    log_error "uv is not installed, cannot remove moai-adk"
+                    return 1
+                fi
+            elif [[ "$pkg" == "opencode-ai" ]]; then
+                printf "  Uninstalling OpenCode AI CLI...\n"
+                # OpenCode AI CLI typically installs to ~/.local/bin
+                local removed=false
+                if [[ -f "$HOME/.local/bin/opencode" ]]; then
+                    rm -f "$HOME/.local/bin/opencode"
                     removed=true
                 fi
                 if $removed; then
