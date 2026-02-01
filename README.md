@@ -7,26 +7,27 @@ An interactive installer that manages multiple AI coding CLI tools from one plac
 ## Features
 
 - Interactive TUI with per-tool actions (install, update, remove, skip)
-- Detects installed versions for npm and uv tools
-- Fetches latest versions from npm and PyPI
+- Detects installed versions for npm, uv, and native tools
+- Fetches latest versions from npm, PyPI, and GitHub releases
 - Supports both macOS/Linux (`.sh`) and Windows (`.bat`)
 - **Cross-platform deployment script for easy installation**
 
 ## Supported Tools
 
-- [MoAI Agent Development Kit](https://github.com/modu-ai/moai-adk) (`moai-adk`, uv)
-- [Claude Code CLI](https://github.com/anthropics/claude-code) (`@anthropic-ai/claude-code`, npm)
+- [MoAI Agent Development Kit](https://github.com/modu-ai/moai-adk) (`moai-adk`, native) - [Official installer](https://modu-ai.github.io/moai-adk/install.sh)
+- [Claude Code CLI](https://github.com/anthropics/claude-code) (`claude-code`, native) - [Official installer](https://claude.ai/install.sh)
 - [OpenAI Codex CLI](https://github.com/openai/codex) (`@openai/codex`, npm)
 - [Google Gemini CLI](https://github.com/google-gemini/gemini-cli) (`@google/gemini-cli`, npm)
-- [Google Jules CLI](https://github.com/google-labs-code/jules-awesome-list) (`@google/jules`, npm)
-- [OpenCode AI CLI](https://github.com/opencode-ai/opencode) (`opencode-ai`, npm)
+- [Google Jules CLI](https://jules.google) (`@google/jules`, npm)
+- [OpenCode AI CLI](https://github.com/opencode-ai/opencode) (`opencode-ai`, native) - [Official installer](https://opencode.ai/install)
 - [Mistral Vibe CLI](https://github.com/mistralai/mistral-vibe) (`mistral-vibe`, uv)
 
 ## Requirements
 
 - `curl`
-- For uv-managed tools: `uv`
+- For uv-managed tools: `uv` (mistral-vibe)
 - For npm-managed tools: `node` >= 22.9.0 (includes npm >= 10.0.0)
+- For native tools: No additional package manager required
   - If in conda environment, Node.js will be automatically installed if needed
 
 ## Quick Start (Deployment Script)
@@ -36,8 +37,9 @@ The recommended way to install the Agentic CLI Installer is using the deployment
 ### What's New in v1.4.0
 
 - **Non-Interactive Mode**: Added `--yes`/`-y` flag for automatic installation with default selections
+- **Native Installers**: MoAI-ADK and OpenCode AI now use official install scripts (curl)
 - **Node.js/npm Requirements**: Now requires Node.js 22.9.0+ (includes npm 10+ for modern tool compatibility)
-- **Fixed uv Updates**: uv tools now properly update to latest versions using `--force` flag
+- **Fixed uv Updates**: uv tools now properly update to latest versions (removed `--force` for initial installs)
 - **Version Verification**: Improved npm/Node.js version detection in conda environments
 
 ### What's New in v1.3.0
