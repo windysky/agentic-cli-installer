@@ -4,71 +4,116 @@
 
 An interactive installer that manages multiple AI coding CLI tools from one place. It detects installed versions, fetches latest versions, and lets you install, update, or remove tools in a single run.
 
+## Quick Start
+
+### Prerequisites
+
+- `curl` (required for all installation methods)
+- Python 3.11+ for moai-adk (automatically installed by the official installer)
+- `uv` for mistral-vibe: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- Node.js >= 22.9.0 for npm tools (automatically installed in conda environments)
+
+### Installation
+
+**Option 1: Using the deployment script (recommended)**
+
+```bash
+# Clone the repository
+git clone https://github.com/windysky/agentic-cli-installer.git
+cd agentic-cli-installer
+
+# Run the deployment script
+chmod +x setup.sh
+./setup.sh --configure-path
+```
+
+**Option 2: Manual installation**
+
+```bash
+# Clone the repository
+git clone https://github.com/windysky/agentic-cli-installer.git
+cd agentic-cli-installer
+
+# Make the script executable
+chmod +x install_coding_tools.sh
+
+# Run the installer (interactive mode)
+./install_coding_tools.sh
+
+# Or run in non-interactive mode (auto-proceed with defaults)
+./install_coding_tools.sh --yes
+```
+
+**Windows:**
+
+```powershell
+# Clone the repository
+git clone https://github.com/windysky/agentic-cli-installer.git
+cd agentic-cli-installer
+
+# Run the batch script
+.\install_coding_tools.bat
+
+# Or run in non-interactive mode
+.\install_coding_tools.bat --yes
+```
+
 ## Features
 
-- Interactive TUI with per-tool actions (install, update, remove, skip)
-- Detects installed versions for npm, uv, and native tools
-- Fetches latest versions from npm, PyPI, and GitHub releases
-- Supports both macOS/Linux (`.sh`) and Windows (`.bat`)
-- **Cross-platform deployment script for easy installation**
+- **Interactive TUI** with per-tool actions (install, update, remove, skip)
+- **Multi-format version detection** for npm, uv, and native tools
+- **Latest version fetching** from npm, PyPI, and GitHub releases
+- **Cross-platform support** for macOS/Linux (`.sh`) and Windows (`.bat`)
+- **Cross-platform deployment script** for easy installation
+- **Non-interactive mode** with `--yes`/`-y` flag for automation
+- **Auto-install script** for processing multiple conda environments
 
 ## Supported Tools
 
-- [MoAI Agent Development Kit](https://github.com/modu-ai/moai-adk) (`moai-adk`, native) - [Official installer](https://modu-ai.github.io/moai-adk/install.sh)
-- [Claude Code CLI](https://github.com/anthropics/claude-code) (`claude-code`, native) - [Official installer](https://claude.ai/install.sh)
-- [OpenAI Codex CLI](https://github.com/openai/codex) (`@openai/codex`, npm)
-- [Google Gemini CLI](https://github.com/google-gemini/gemini-cli) (`@google/gemini-cli`, npm)
-- [Google Jules CLI](https://jules.google) (`@google/jules`, npm)
-- [OpenCode AI CLI](https://github.com/opencode-ai/opencode) (`opencode-ai`, native) - [Official installer](https://opencode.ai/install)
-- [Mistral Vibe CLI](https://github.com/mistralai/mistral-vibe) (`mistral-vibe`, uv)
+| Tool | Package | Manager | Installation Method |
+|------|---------|----------|-------------------|
+| [MoAI Agent Development Kit](https://github.com/modu-ai/moai-adk) | `moai-adk` | native | [Official installer](https://modu-ai.github.io/moai-adk/install.sh) |
+| [Claude Code CLI](https://github.com/anthropics/claude-code) | `claude-code` | native | [Official installer](https://claude.ai/install.sh) |
+| [OpenAI Codex CLI](https://github.com/openai/codex) | `@openai/codex` | npm | `npm install -g @openai/codex` |
+| [Google Gemini CLI](https://github.com/google-gemini/gemini-cli) | `@google/gemini-cli` | npm | `npm install -g @google/gemini-cli` |
+| [Google Jules CLI](https://jules.google) | `@google/jules` | npm | `npm install -g @google/jules` |
+| [OpenCode AI CLI](https://github.com/opencode-ai/opencode) | `opencode-ai` | native | [Official installer](https://opencode.ai/install) |
+| [Mistral Vibe CLI](https://github.com/mistralai/mistral-vibe) | `mistral-vibe` | uv | `uv tool install mistral-vibe` |
 
-## Requirements
+## Usage
 
-- `curl`
-- For uv-managed tools: `uv` (mistral-vibe)
-- For npm-managed tools: `node` >= 22.9.0 (includes npm >= 10.0.0)
-- For native tools: No additional package manager required
-  - If in conda environment, Node.js will be automatically installed if needed
-
-## Quick Start (Deployment Script)
-
-The recommended way to install the Agentic CLI Installer is using the deployment script:
-
-### What's New in v1.4.0
-
-- **Non-Interactive Mode**: Added `--yes`/`-y` flag for automatic installation with default selections
-- **Native Installers**: MoAI-ADK and OpenCode AI now use official install scripts (curl)
-- **Node.js/npm Requirements**: Now requires Node.js 22.9.0+ (includes npm 10+ for modern tool compatibility)
-- **Fixed uv Updates**: uv tools now properly update to latest versions (removed `--force` for initial installs)
-- **Version Verification**: Improved npm/Node.js version detection in conda environments
-
-### What's New in v1.3.0
-
-- **Auto Install Script**: Added `auto_install_coding_tools` script that automatically processes all conda environments
-- **Enhanced Deployment**: The `setup.sh` script now installs both `install_coding_tools.sh` and `auto_install_coding_tools`
+### Interactive Mode
 
 ```bash
-# Clone or download the repository
-cd agentic-cli-installer
-
-# Run the deployment script (recommended)
-chmod +x setup.sh
-./setup.sh --configure-path
-
-# Now you can run the installer from anywhere
 install_coding_tools.sh
 ```
 
-### Deployment Script Features
+This displays an interactive menu where you can:
+- Toggle tool selection by pressing numbers (skip → install → remove)
+- Press Enter to proceed with selected actions
+- Press Q to quit
 
-The `setup.sh` script provides:
-- **Automatic platform detection** - WSL, Linux, macOS
-- **WSL dual-filesystem support** - Installs both Unix and Windows scripts
-- **Backup of existing files** - Preserves your current installations
-- **Executable permissions** - Automatically sets chmod +x
-- **PATH configuration** - Optional helper to add `~/.local/bin` to your PATH
+### Non-Interactive Mode
 
-### Deployment Script Options
+```bash
+install_coding_tools.sh --yes
+# or
+install_coding_tools.sh -y
+```
+
+Automatically proceeds with default selections (tools with available updates).
+
+### Auto-Install Across Environments
+
+The `auto_install_coding_tools` script processes all conda environments:
+
+```bash
+auto_install_coding_tools
+```
+
+## Deployment Script
+
+The `setup.sh` script provides automatic deployment:
 
 ```bash
 ./setup.sh                           # Interactive installation
@@ -77,6 +122,14 @@ The `setup.sh` script provides:
 ./setup.sh --force --configure-path  # Non-interactive with PATH config
 ./setup.sh --help                    # Show help message
 ```
+
+### Deployment Features
+
+- **Automatic platform detection** - WSL, Linux, macOS
+- **WSL dual-filesystem support** - Installs both Unix and Windows scripts
+- **Backup of existing files** - Preserves your current installations
+- **Executable permissions** - Automatically sets chmod +x
+- **PATH configuration** - Optional helper to add `~/.local/bin` to your PATH
 
 ### Platform-Specific Behavior
 
@@ -93,57 +146,6 @@ The `setup.sh` script provides:
 
 **Windows:**
 - Run `install_coding_tools.bat` directly (no deployment script needed)
-
-## Auto Install Script
-
-The `auto_install_coding_tools` script automates the installation process across multiple conda environments:
-
-```bash
-# Run the auto installer (processes all conda environments except base)
-auto_install_coding_tools
-```
-
-### Features
-
-- **Multi-environment support**: Automatically processes all conda environments (excluding `base`)
-- **Seamless integration**: Uses the same installation logic as `install_coding_tools.sh`
-- **Conda environment detection**: Finds conda installations in standard locations
-- **Safety first**: Skips the `base` environment to avoid conflicts
-
-### Requirements
-
-- Conda or Miniconda installed
-- Multiple conda environments set up
-- Same requirements as `install_coding_tools.sh` (curl, uv, npm)
-
-## Manual Installation
-
-If you prefer not to use the deployment script:
-
-macOS/Linux:
-
-```bash
-chmod +x install_coding_tools.sh
-# Interactive mode
-./install_coding_tools.sh
-
-# Non-interactive mode (auto-proceed with defaults)
-./install_coding_tools.sh --yes
-# or
-./install_coding_tools.sh -y
-```
-
-Windows (PowerShell):
-
-```powershell
-# Interactive mode
-.\install_coding_tools.bat
-
-# Non-interactive mode
-.\install_coding_tools.bat --yes
-# or
-.\install_coding_tools.bat -y
-```
 
 ## Notes
 
@@ -193,3 +195,24 @@ Installed scripts:
 
 Backup location: ~/.local/bin.backup
 ```
+
+## Change Log
+
+### v1.4.0 - January 31, 2026
+
+- **Non-Interactive Mode**: Added `--yes`/`-y` flag for automatic installation with default selections
+- **Native Installers**: MoAI-ADK and OpenCode AI now use official install scripts
+- **Node.js/npm Requirements**: Now requires Node.js 22.9.0+ (includes npm 10+ for modern tool compatibility)
+- **Fixed uv Updates**: uv tools now properly update to latest versions (removed `--force` for initial installs)
+- **Version Verification**: Improved npm/Node.js version detection in conda environments
+
+### v1.3.0 - January 28, 2026
+
+- **Auto Install Script**: Added `auto_install_coding_tools` script that automatically processes all conda environments
+- **Enhanced Deployment**: The `setup.sh` script now installs both `install_coding_tools.sh` and `auto_install_coding_tools`
+
+### v1.2.0 - January 20, 2026
+
+- Initial release with interactive TUI
+- Support for 7 AI coding CLI tools
+- Cross-platform support (macOS/Linux/Windows)
