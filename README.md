@@ -1,6 +1,6 @@
 # Agentic CLI Installer v1.4.0
 
-**Last Modified:** January 29, 2026
+**Last Modified:** January 31, 2026
 
 An interactive installer that manages multiple AI coding CLI tools from one place. It detects installed versions, fetches latest versions, and lets you install, update, or remove tools in a single run.
 
