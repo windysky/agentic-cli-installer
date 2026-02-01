@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.4.0
+# Agentic Coders Installer v1.4.1
 # Interactive installer for AI coding CLI tools
 #############################################
 
@@ -430,19 +430,32 @@ get_latest_version() {
             get_latest_npm_self_version
             ;;
         native)
-            # For native Claude Code, check the GitHub releases with rate limit handling
-            if [[ "$pkg" == "claude-code" ]] && command -v curl >/dev/null 2>&1; then
-                local cache_bust
-                cache_bust=$(date +%s)
-                if command -v python3 >/dev/null 2>&1; then
-                    local response
-                    if response=$(github_api_get_with_retry "https://api.github.com/repos/anthropics/claude-code/releases/latest?ts=${cache_bust}"); then
+            local cache_bust
+            cache_bust=$(date +%s)
+
+            # For native tools, check GitHub releases with rate limit handling
+            if command -v curl >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
+                local response
+                local repo=""
+
+                case "$pkg" in
+                    claude-code)
+                        repo="anthropics/claude-code"
+                        ;;
+                    moai-adk)
+                        repo="modu-ai/moai-adk"
+                        ;;
+                    opencode-ai)
+                        repo="OpenCode-ai/OpenCode"
+                        ;;
+                esac
+
+                if [[ -n "$repo" ]]; then
+                    if response=$(github_api_get_with_retry "https://api.github.com/repos/${repo}/releases/latest?ts=${cache_bust}"); then
                         echo "$response" | python3 -c "import sys, json; data = sys.stdin.read().strip(); print(json.loads(data)['tag_name'].lstrip('v')) if data else None" 2>/dev/null || true
                     fi
                 fi
             fi
-            # For opencode-ai, we don't have a reliable API to check the latest version
-            # The installer handles this internally
             ;;
     esac
 }
@@ -647,7 +660,7 @@ initialize_tools() {
 render_menu() {
     clear_screen
 
-    printf "${BOLD}${CYAN}Agentic Coders CLI Installer${NC} ${BOLD}v1.2.0${NC}\n\n"
+    printf "${BOLD}${CYAN}Agentic Coders CLI Installer${NC} ${BOLD}v1.4.1${NC}\n\n"
     printf "Toggle tools: ${CYAN}skip${NC} -> ${GREEN}install${NC} -> ${RED}remove${NC} (press number multiple times)\n"
     printf "Numbers are ${BOLD}comma-separated${NC} (e.g., ${CYAN}1,3,5${NC}). Press ${BOLD}Q${NC} to quit.\n\n"
 

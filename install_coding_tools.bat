@@ -3,7 +3,7 @@ setlocal EnableDelayedExpansion
 set "SCRIPT_DIR=%~dp0"
 
 REM ###############################################
-REM Agentic Coders Installer v1.4.0
+REM Agentic Coders Installer v1.4.1
 REM Interactive installer for AI coding CLI tools
 REM Windows version (run in Anaconda Prompt or CMD)
 REM ###############################################
@@ -777,9 +777,7 @@ exit /b 0
 
 :get_latest_native_moai
 set "tmpfile=%TEMP%\moai_adk_version_%RANDOM%.tmp"
-if exist curl (
-    curl -s https://api.github.com/repos/modu-ai/moai-adk/releases/latest >"%tmpfile%" 2>nul
-)
+powershell -NoProfile -Command "$ProgressPreference = 'SilentlyContinue'; $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); $uri = 'https://api.github.com/repos/modu-ai/moai-adk/releases/latest?ts=' + $ts; $headers = @{ 'User-Agent'='agentic-cli-installer'; 'Accept'='application/vnd.github+json' }; try { $result = Invoke-RestMethod -UseBasicParsing -Uri $uri -Headers $headers -TimeoutSec 10 -ErrorAction Stop; if ($result -and $result.tag_name) { Write-Output ($result.tag_name -replace '^v','') } } catch { }" >"%tmpfile%" 2>nul
 if exist "%tmpfile%" (
     for /f "usebackq delims=" %%v in ("%tmpfile%") do (
         if not "%%v"=="" set "%outvar%=%%v"
@@ -800,9 +798,14 @@ if exist "%tmpfile%" (
 exit /b 0
 
 :get_latest_native_opencode
-REM For opencode-ai, we don't have a reliable API to check the latest version
-REM The installer handles this internally, so we return Unknown
-set "%outvar%=Unknown"
+set "tmpfile=%TEMP%\opencode_version_%RANDOM%.tmp"
+powershell -NoProfile -Command "$ProgressPreference = 'SilentlyContinue'; $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); $uri = 'https://api.github.com/repos/OpenCode-ai/OpenCode/releases/latest?ts=' + $ts; $headers = @{ 'User-Agent'='agentic-cli-installer'; 'Accept'='application/vnd.github+json' }; try { $result = Invoke-RestMethod -UseBasicParsing -Uri $uri -Headers $headers -TimeoutSec 10 -ErrorAction Stop; if ($result -and $result.tag_name) { Write-Output ($result.tag_name -replace '^v','') } } catch { }" >"%tmpfile%" 2>nul
+if exist "%tmpfile%" (
+    for /f "usebackq delims=" %%v in ("%tmpfile%") do (
+        if not "%%v"=="" set "%outvar%=%%v"
+    )
+    del "%tmpfile%" >nul 2>nul
+)
 exit /b 0
 
 REM Get installed version for native tools (e.g., Claude Code)
@@ -1128,7 +1131,7 @@ if "%DEBUG%"=="1" (
     cls
 )
 echo.
-echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.2.0%NC%
+echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.4.1%NC%
 echo.
 echo Toggle tools: %CYAN%skip%NC% -^> %GREEN%install%NC% -^> %RED%remove%NC% (press number multiple times^)
 echo Numbers are %BOLD%comma-separated%NC% (e.g., %CYAN%1,3,5%NC%^). Press %BOLD%Q%NC% to quit.
