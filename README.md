@@ -1,4 +1,4 @@
-# Agentic CLI Installer v1.4.1
+# Agentic CLI Installer v1.4.2
 
 **Last Modified:** January 31, 2026
 

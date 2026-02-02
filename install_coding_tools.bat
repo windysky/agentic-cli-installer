@@ -3,7 +3,7 @@ setlocal EnableDelayedExpansion
 set "SCRIPT_DIR=%~dp0"
 
 REM ###############################################
-REM Agentic Coders Installer v1.4.1
+REM Agentic Coders Installer v1.4.2
 REM Interactive installer for AI coding CLI tools
 REM Windows version (run in Anaconda Prompt or CMD)
 REM ###############################################
@@ -1131,7 +1131,7 @@ if "%DEBUG%"=="1" (
     cls
 )
 echo.
-echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.4.1%NC%
+echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.4.2%NC%
 echo.
 echo Toggle tools: %CYAN%skip%NC% -^> %GREEN%install%NC% -^> %RED%remove%NC% (press number multiple times^)
 echo Numbers are %BOLD%comma-separated%NC% (e.g., %CYAN%1,3,5%NC%^). Press %BOLD%Q%NC% to quit.
@@ -1587,10 +1587,18 @@ exit /b 0
 	exit /b 0
 
 :install_tool_moai
-	echo   Installing MoAI-ADK (using official installer)...
-	call :dbg   %BLUE%[DEBUG]%NC% run: curl -LsSf https://modu-ai.github.io/moai-adk/install.sh ^| bash
-	curl -LsSf https://modu-ai.github.io/moai-adk/install.sh | bash
+	echo   Installing MoAI-ADK (using official PowerShell installer)...
+	call :dbg   %BLUE%[DEBUG]%NC% run: powershell -c "irm https://moai-adk.github.io/MoAI-ADK/install.ps1 | iex"
+	if exist "%TEMP%\moai-adk-install.ps1" del "%TEMP%\moai-adk-install.ps1" >nul 2>nul
+	powershell -NoProfile -Command "$ProgressPreference = 'SilentlyContinue'; try { Invoke-RestMethod -Uri 'https://moai-adk.github.io/MoAI-ADK/install.ps1' -OutFile '%TEMP%\moai-adk-install.ps1' } catch { Write-Error $_; exit 1 }"
 	if errorlevel 1 (
+	    echo %RED%[ERROR]%NC% Failed to download MoAI-ADK installer
+	    exit /b 1
+	)
+	powershell -NoProfile -ExecutionPolicy Bypass -File "%TEMP%\moai-adk-install.ps1"
+	set "RC=%errorlevel%"
+	del "%TEMP%\moai-adk-install.ps1" >nul 2>nul
+	if %RC% NEQ 0 (
 	    echo %RED%[ERROR]%NC% Failed to install MoAI-ADK
 	    exit /b 1
 	)
@@ -1654,11 +1662,24 @@ exit /b 0
 	exit /b 0
 
 :install_tool_opencode
-	REM OpenCode AI CLI installation using the recommended install script
-	echo   Installing OpenCode AI CLI ^(using official installer^)...
-	call :dbg   %BLUE%[DEBUG]%NC% run: curl -fsSL https://opencode.ai/install | bash
-	curl -fsSL https://opencode.ai/install | bash
-	exit /b %errorlevel%
+	REM OpenCode AI CLI installation using PowerShell for Windows
+	echo   Installing OpenCode AI CLI ^(downloading from GitHub releases^)...
+	call :dbg   %BLUE%[DEBUG]%NC% Downloading opencode.exe from GitHub releases
+
+	REM Create bin directory if it doesn't exist
+	if not exist "%USERPROFILE%\.local\bin" mkdir "%USERPROFILE%\.local\bin" >nul 2>nul
+
+	REM Download the latest Windows binary using PowerShell
+	powershell -NoProfile -Command "$ProgressPreference = 'SilentlyContinue'; $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); $uri = 'https://api.github.com/repos/OpenCode-ai/OpenCode/releases/latest?ts=' + $ts; $headers = @{ 'User-Agent'='agentic-cli-installer'; 'Accept'='application/vnd.github+json' }; try { $result = Invoke-RestMethod -UseBasicParsing -Uri $uri -Headers $headers -TimeoutSec 30 -ErrorAction Stop; $asset = $result.assets | Where-Object { $_.name -like '*windows*' -or $_.name -like '*win64*' -or $_.name -eq 'opencode.exe' } | Select-Object -First 1; if ($asset) { $dest = '%USERPROFILE%\.local\bin\opencode.exe'; Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $dest -UseBasicParsing; Write-Output 'Downloaded to:' $dest } else { Write-Error 'No Windows binary found in latest release' } } catch { Write-Error $_; exit 1 }"
+	if errorlevel 1 (
+	    echo %YELLOW%[WARNING]%NC% Failed to download from GitHub releases
+	    echo   Please install OpenCode AI manually from: https://opencode.ai
+	    echo   Or use: powershell -c "irm https://opencode.ai/install.ps1 | iex"
+	    REM Don't fail completely, just warn
+	) else (
+	    echo   %GREEN%[SUCCESS]%NC% Installed OpenCode AI CLI
+	)
+	exit /b 0
 
 :install_tool_npm
 	if /I "!inst!"=="Not Installed" goto install_tool_npm_install
