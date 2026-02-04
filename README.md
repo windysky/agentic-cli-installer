@@ -1,6 +1,6 @@
-# Agentic CLI Installer v1.4.2
+# Agentic CLI Installer v1.5.0
 
-**Last Modified:** January 31, 2026
+**Last Modified:** February 4, 2026
 
 An interactive installer that manages multiple AI coding CLI tools from one place. It detects installed versions, fetches latest versions, and lets you install, update, or remove tools in a single run.
 
@@ -9,8 +9,8 @@ An interactive installer that manages multiple AI coding CLI tools from one plac
 ### Prerequisites
 
 - `curl` (required for all installation methods)
-- Python 3.11+ for moai-adk (automatically installed by the official installer)
-- `uv` for mistral-vibe: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- Python 3.11+ (required for `moai-adk` via `uv tool`)
+- `uv` for `moai-adk` and `mistral-vibe`: `curl -LsSf https://astral.sh/uv/install.sh | sh`
 - Node.js >= 22.9.0 for npm tools (automatically installed in conda environments)
 
 ### Installation
@@ -72,12 +72,12 @@ cd agentic-cli-installer
 
 | Tool | Package | Manager | Installation Method |
 |------|---------|----------|-------------------|
-| [MoAI Agent Development Kit](https://github.com/modu-ai/moai-adk) | `moai-adk` | native | [Official installer](https://modu-ai.github.io/moai-adk/install.sh) |
+| [MoAI Agent Development Kit](https://github.com/modu-ai/moai-adk) | `moai-adk` | uv | `uv tool install moai-adk` |
 | [Claude Code CLI](https://github.com/anthropics/claude-code) | `claude-code` | native | [Official installer](https://claude.ai/install.sh) |
 | [OpenAI Codex CLI](https://github.com/openai/codex) | `@openai/codex` | npm | `npm install -g @openai/codex` |
 | [Google Gemini CLI](https://github.com/google-gemini/gemini-cli) | `@google/gemini-cli` | npm | `npm install -g @google/gemini-cli` |
 | [Google Jules CLI](https://jules.google) | `@google/jules` | npm | `npm install -g @google/jules` |
-| [OpenCode AI CLI](https://github.com/opencode-ai/opencode) | `opencode-ai` | native | [Official installer](https://opencode.ai/install) |
+| [OpenCode AI CLI](https://github.com/opencode-ai/opencode) | `opencode-ai` | npm | `npm install -g opencode-ai` |
 | [Mistral Vibe CLI](https://github.com/mistralai/mistral-vibe) | `mistral-vibe` | uv | `uv tool install mistral-vibe` |
 
 ## Usage
@@ -198,10 +198,15 @@ Backup location: ~/.local/bin.backup
 
 ## Change Log
 
+### v1.5.0 - February 4, 2026
+
+- **MoAI-ADK Install**: Switched to `uv tool install moai-adk` to avoid upstream installer ANSI issues and improve portability
+- **OpenCode Install**: Switched to npm-managed install (`npm install -g opencode-ai`) for consistent versioning and updates
+
 ### v1.4.0 - January 31, 2026
 
 - **Non-Interactive Mode**: Added `--yes`/`-y` flag for automatic installation with default selections
-- **Native Installers**: MoAI-ADK and OpenCode AI now use official install scripts
+- **Tool Management**: Added native installer support where appropriate (e.g., Claude Code)
 - **Node.js/npm Requirements**: Now requires Node.js 22.9.0+ (includes npm 10+ for modern tool compatibility)
 - **Fixed uv Updates**: uv tools now properly update to latest versions (removed `--force` for initial installs)
 - **Version Verification**: Improved npm/Node.js version detection in conda environments
@@ -211,7 +216,7 @@ Backup location: ~/.local/bin.backup
 - **Auto Install Script**: Added `auto_install_coding_tools` script that automatically processes all conda environments
 - **Enhanced Deployment**: The `setup.sh` script now installs both `install_coding_tools.sh` and `auto_install_coding_tools`
 
-### v1.2.0 - January 20, 2026
+### v1.2.0 - January 24, 2026
 
 - Initial release with interactive TUI
 - Support for 7 AI coding CLI tools

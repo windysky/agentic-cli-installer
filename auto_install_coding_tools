@@ -1,4 +1,5 @@
-#!/usr/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
 # Initialize conda for this shell
 # Try to find conda.sh and activate it
@@ -6,8 +7,8 @@ if [ -f "$HOME/miniconda3/etc/profile.d/conda.sh" ]; then
     source "$HOME/miniconda3/etc/profile.d/conda.sh"
 elif [ -f "$HOME/anaconda3/etc/profile.d/conda.sh" ]; then
     source "$HOME/anaconda3/etc/profile.d/conda.sh"
-elif [ -f "$(dirname "$(which conda)")/../etc/profile.d/conda.sh" ]; then
-    source "$(dirname "$(which conda)")/../etc/profile.d/conda.sh"
+elif command -v conda >/dev/null 2>&1 && [ -f "$(dirname "$(command -v conda)")/../etc/profile.d/conda.sh" ]; then
+    source "$(dirname "$(command -v conda)")/../etc/profile.d/conda.sh"
 else
     echo "Error: Could not find conda.sh to initialize conda"
     exit 1
@@ -16,15 +17,28 @@ fi
 # Get list of conda environments, excluding 'base'
 envs=$(conda env list | grep -v "^#" | awk '{print $1}' | grep -v "^$" | grep -v "base")
 
+INSTALLER_SH="${INSTALLER_SH:-}"
+if [[ -z "$INSTALLER_SH" ]]; then
+    if command -v install_coding_tools.sh >/dev/null 2>&1; then
+        INSTALLER_SH="install_coding_tools.sh"
+    else
+        INSTALLER_SH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/install_coding_tools.sh"
+    fi
+fi
+
+if [[ ! -x "$INSTALLER_SH" ]]; then
+    echo "Error: install script not found or not executable: $INSTALLER_SH"
+    exit 1
+fi
+
 # Loop through each environment and run install_coding_tools.sh
 for env in $envs; do
     echo "Activating environment: $env"
     conda activate "$env"
-    install_coding_tools.sh --yes
+    "$INSTALLER_SH" --yes
     conda deactivate
     echo "Finished processing: $env"
     echo ""
 done
 
 echo "All environments processed."
-

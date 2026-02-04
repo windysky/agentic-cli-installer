@@ -3,7 +3,7 @@ setlocal EnableDelayedExpansion
 set "SCRIPT_DIR=%~dp0"
 
 REM ###############################################
-REM Agentic Coders Installer v1.4.2
+REM Agentic Coders Installer v1.5.0
 REM Interactive installer for AI coding CLI tools
 REM Windows version (run in Anaconda Prompt or CMD)
 REM ###############################################
@@ -69,12 +69,12 @@ set "MIN_NPM_VERSION=10.0.0"
 
 REM Tool list: name|manager|package|description
 set TOOLS_COUNT=7
-set "TOOL_1=moai-adk|native|moai-adk|MoAI Agent Development Kit"
+set "TOOL_1=moai-adk|uv|moai-adk|MoAI Agent Development Kit"
 set "TOOL_2=claude-code|native|claude-code|Claude Code CLI"
 set "TOOL_3=@openai/codex|npm|@openai/codex|OpenAI Codex CLI"
 set "TOOL_4=@google/gemini-cli|npm|@google/gemini-cli|Google Gemini CLI"
 set "TOOL_5=@google/jules|npm|@google/jules|Google Jules CLI"
-set "TOOL_6=opencode-ai|native|opencode-ai|OpenCode AI CLI"
+set "TOOL_6=opencode-ai|npm|opencode-ai|OpenCode AI CLI"
 set "TOOL_7=mistral-vibe|uv|mistral-vibe|Mistral Vibe CLI"
 
 REM Action states: 0=skip, 1=install, 2=remove
@@ -109,7 +109,7 @@ set "GITHUB_RATE_LIMIT_RESET=0"
 
 REM Load tool definitions
 set "NAME_1=MoAI Agent Development Kit"
-set "MGR_1=native"
+set "MGR_1=uv"
 set "PKG_1=moai-adk"
 set "DESC_1=MoAI Agent Development Kit"
 set "BIN_1=moai-adk"
@@ -144,7 +144,7 @@ set "BIN_5=jules"
 set "VERARG_5=version"
 
 set "NAME_6=OpenCode AI CLI"
-set "MGR_6=native"
+set "MGR_6=npm"
 set "PKG_6=opencode-ai"
 set "DESC_6=OpenCode AI CLI"
 set "BIN_6=opencode"
@@ -770,36 +770,12 @@ REM Get latest version for native tools (e.g., Claude Code)
 set "pkg=%~1"
 set "outvar=%~2"
 set "%outvar%="
-if /I "%pkg%"=="moai-adk" goto get_latest_native_moai
 if /I "%pkg%"=="claude-code" goto get_latest_native_claude
-if /I "%pkg%"=="opencode-ai" goto get_latest_native_opencode
-exit /b 0
-
-:get_latest_native_moai
-set "tmpfile=%TEMP%\moai_adk_version_%RANDOM%.tmp"
-powershell -NoProfile -Command "$ProgressPreference = 'SilentlyContinue'; $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); $uri = 'https://api.github.com/repos/modu-ai/moai-adk/releases/latest?ts=' + $ts; $headers = @{ 'User-Agent'='agentic-cli-installer'; 'Accept'='application/vnd.github+json' }; try { $result = Invoke-RestMethod -UseBasicParsing -Uri $uri -Headers $headers -TimeoutSec 10 -ErrorAction Stop; if ($result -and $result.tag_name) { Write-Output ($result.tag_name -replace '^v','') } } catch { }" >"%tmpfile%" 2>nul
-if exist "%tmpfile%" (
-    for /f "usebackq delims=" %%v in ("%tmpfile%") do (
-        if not "%%v"=="" set "%outvar%=%%v"
-    )
-    del "%tmpfile%" >nul 2>nul
-)
 exit /b 0
 
 :get_latest_native_claude
 set "tmpfile=%TEMP%\claude_code_version_%RANDOM%.tmp"
 powershell -NoProfile -Command "$ProgressPreference = 'SilentlyContinue'; $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); $uri = 'https://api.github.com/repos/anthropics/claude-code/releases/latest?ts=' + $ts; $headers = @{ 'User-Agent'='agentic-cli-installer'; 'Accept'='application/vnd.github+json' }; try { $result = Invoke-RestMethod -UseBasicParsing -Uri $uri -Headers $headers -TimeoutSec 10 -ErrorAction Stop; if ($result -and $result.tag_name) { Write-Output ($result.tag_name -replace '^v','') } } catch { }" >"%tmpfile%" 2>nul
-if exist "%tmpfile%" (
-    for /f "usebackq delims=" %%v in ("%tmpfile%") do (
-        if not "%%v"=="" set "%outvar%=%%v"
-    )
-    del "%tmpfile%" >nul 2>nul
-)
-exit /b 0
-
-:get_latest_native_opencode
-set "tmpfile=%TEMP%\opencode_version_%RANDOM%.tmp"
-powershell -NoProfile -Command "$ProgressPreference = 'SilentlyContinue'; $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); $uri = 'https://api.github.com/repos/OpenCode-ai/OpenCode/releases/latest?ts=' + $ts; $headers = @{ 'User-Agent'='agentic-cli-installer'; 'Accept'='application/vnd.github+json' }; try { $result = Invoke-RestMethod -UseBasicParsing -Uri $uri -Headers $headers -TimeoutSec 10 -ErrorAction Stop; if ($result -and $result.tag_name) { Write-Output ($result.tag_name -replace '^v','') } } catch { }" >"%tmpfile%" 2>nul
 if exist "%tmpfile%" (
     for /f "usebackq delims=" %%v in ("%tmpfile%") do (
         if not "%%v"=="" set "%outvar%=%%v"
@@ -816,50 +792,7 @@ set "%outvar%="
 if /I "%pkg%"=="claude-code" (
     where claude >nul 2>nul
     if not errorlevel 1 (
-        for /f "delims=" %%v in ('claude --version 2^>nul') do (
-            if not "%%v"=="" (
-                REM Extract version number from output
-                for /f "tokens=1-3 delims=." %%a in ("%%v") do (
-                    if "%%a" neq "" set "%outvar%=%%a.%%b.%%c"
-                )
-            )
-        )
-    )
-) else if /I "%pkg%"=="moai-adk" (
-    where moai-adk >nul 2>nul
-    if not errorlevel 1 (
-        for /f "delims=" %%v in ('moai-adk --version 2^>nul') do (
-            if not "%%v"=="" (
-                REM Extract version number from output
-                for /f "tokens=1-3 delims=." %%a in ("%%v") do (
-                    if "%%a" neq "" set "%outvar%=%%a.%%b.%%c"
-                )
-            )
-        )
-    )
-) else if /I "%pkg%"=="opencode-ai" (
-    where opencode >nul 2>nul
-    if not errorlevel 1 (
-        for /f "delims=" %%v in ('opencode --version 2^>nul') do (
-            if not "%%v"=="" (
-                REM Extract version number from output
-                for /f "tokens=1-3 delims=." %%a in ("%%v") do (
-                    if "%%a" neq "" set "%outvar%=%%a.%%b.%%c"
-                )
-            )
-        )
-    )
-) else if /I "%pkg%"=="opencode-ai" (
-    where opencode >nul 2>nul
-    if not errorlevel 1 (
-        for /f "delims=" %%v in ('opencode --version 2^>nul') do (
-            if not "%%v"=="" (
-                REM Extract version number from output
-                for /f "tokens=1-3 delims=." %%a in ("%%v") do (
-                    if "%%a" neq "" set "%outvar%=%%a.%%b.%%c"
-                )
-            )
-        )
+        call :get_semver_from_command "claude" "--version" "%outvar%"
     )
 )
 exit /b 0
@@ -969,25 +902,25 @@ set "LATEST_LIST_FILE=!LATEST_CACHE_DIR!\tools.txt"
 
 REM Prefetch with individual timeout for each tool
 echo Prefetching latest versions...
-for /L %%i in (1,1,%TOOLS_COUNT%) do (
-    set "idx=%%i"
-    call set "mgr=%%MGR_%%i%%"
-    call set "mgr=%%mgr%%"
-    call set "pkg=%%PKG_%%i%%"
-    call set "pkg=%%pkg%%"
-    call :prefetch_one_tool "!idx!" "!mgr!" "!pkg!"
-)
+for /L %%i in (1,1,%TOOLS_COUNT%) do call :prefetch_one_tool_by_index %%i
 if exist "!LATEST_LIST_FILE!" del "!LATEST_LIST_FILE!" >nul 2>nul
 
 :skip_prefetch
-for /L %%i in (1,1,%TOOLS_COUNT%) do (
-    call :init_tool %%i
-)
+for /L %%i in (1,1,%TOOLS_COUNT%) do call :init_tool %%i
 if defined LATEST_CACHE_DIR (
     rd /s /q "%LATEST_CACHE_DIR%" >nul 2>nul
 )
 REM Clear the progress line
 echo.
+exit /b 0
+
+:prefetch_one_tool_by_index
+set "idx=%~1"
+call set "mgr=%%MGR_%idx%%%"
+call set "mgr=%%mgr%%"
+call set "pkg=%%PKG_%idx%%%"
+call set "pkg=%%pkg%%"
+call :prefetch_one_tool "%idx%" "!mgr!" "!pkg!"
 exit /b 0
 
 :prefetch_one_tool
@@ -1131,7 +1064,7 @@ if "%DEBUG%"=="1" (
     cls
 )
 echo.
-echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.4.2%NC%
+echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.5.0%NC%
 echo.
 echo Toggle tools: %CYAN%skip%NC% -^> %GREEN%install%NC% -^> %RED%remove%NC% (press number multiple times^)
 echo Numbers are %BOLD%comma-separated%NC% (e.g., %CYAN%1,3,5%NC%^). Press %BOLD%Q%NC% to quit.
@@ -1581,28 +1514,7 @@ exit /b 0
 	exit /b %errorlevel%
 
 :install_tool_native
-	if /I "!pkg!"=="moai-adk" goto install_tool_moai
 	if /I "!pkg!"=="claude-code" goto install_tool_claude
-	if /I "!pkg!"=="opencode-ai" goto install_tool_opencode
-	exit /b 0
-
-:install_tool_moai
-	echo   Installing MoAI-ADK (using official PowerShell installer)...
-	call :dbg   %BLUE%[DEBUG]%NC% run: powershell -c "irm https://moai-adk.github.io/MoAI-ADK/install.ps1 | iex"
-	if exist "%TEMP%\moai-adk-install.ps1" del "%TEMP%\moai-adk-install.ps1" >nul 2>nul
-	powershell -NoProfile -Command "$ProgressPreference = 'SilentlyContinue'; try { Invoke-RestMethod -Uri 'https://moai-adk.github.io/MoAI-ADK/install.ps1' -OutFile '%TEMP%\moai-adk-install.ps1' } catch { Write-Error $_; exit 1 }"
-	if errorlevel 1 (
-	    echo %RED%[ERROR]%NC% Failed to download MoAI-ADK installer
-	    exit /b 1
-	)
-	powershell -NoProfile -ExecutionPolicy Bypass -File "%TEMP%\moai-adk-install.ps1"
-	set "RC=%errorlevel%"
-	del "%TEMP%\moai-adk-install.ps1" >nul 2>nul
-	if %RC% NEQ 0 (
-	    echo %RED%[ERROR]%NC% Failed to install MoAI-ADK
-	    exit /b 1
-	)
-	echo   %GREEN%[SUCCESS]%NC% Installed MoAI-ADK
 	exit /b 0
 
 :install_tool_claude
@@ -1661,26 +1573,6 @@ exit /b 0
 	if %RC% NEQ 0 exit /b %RC%
 	exit /b 0
 
-:install_tool_opencode
-	REM OpenCode AI CLI installation using PowerShell for Windows
-	echo   Installing OpenCode AI CLI ^(downloading from GitHub releases^)...
-	call :dbg   %BLUE%[DEBUG]%NC% Downloading opencode.exe from GitHub releases
-
-	REM Create bin directory if it doesn't exist
-	if not exist "%USERPROFILE%\.local\bin" mkdir "%USERPROFILE%\.local\bin" >nul 2>nul
-
-	REM Download the latest Windows binary using PowerShell
-	powershell -NoProfile -Command "$ProgressPreference = 'SilentlyContinue'; $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); $uri = 'https://api.github.com/repos/OpenCode-ai/OpenCode/releases/latest?ts=' + $ts; $headers = @{ 'User-Agent'='agentic-cli-installer'; 'Accept'='application/vnd.github+json' }; try { $result = Invoke-RestMethod -UseBasicParsing -Uri $uri -Headers $headers -TimeoutSec 30 -ErrorAction Stop; $asset = $result.assets | Where-Object { $_.name -like '*windows*' -or $_.name -like '*win64*' -or $_.name -eq 'opencode.exe' } | Select-Object -First 1; if ($asset) { $dest = '%USERPROFILE%\.local\bin\opencode.exe'; Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $dest -UseBasicParsing; Write-Output 'Downloaded to:' $dest } else { Write-Error 'No Windows binary found in latest release' } } catch { Write-Error $_; exit 1 }"
-	if errorlevel 1 (
-	    echo %YELLOW%[WARNING]%NC% Failed to download from GitHub releases
-	    echo   Please install OpenCode AI manually from: https://opencode.ai
-	    echo   Or use: powershell -c "irm https://opencode.ai/install.ps1 | iex"
-	    REM Don't fail completely, just warn
-	) else (
-	    echo   %GREEN%[SUCCESS]%NC% Installed OpenCode AI CLI
-	)
-	exit /b 0
-
 :install_tool_npm
 	if /I "!inst!"=="Not Installed" goto install_tool_npm_install
 	goto install_tool_npm_update
@@ -1726,9 +1618,9 @@ if /I "!mgr!"=="npm-self" (
     echo   Uninstalling !pkg!...
     call :dbg   %BLUE%[DEBUG]%NC% run: uv tool uninstall "!pkg!"
     call uv tool uninstall "!pkg!"
-) else if /I "!mgr!"=="native" (
-    if /I "!pkg!"=="claude-code" (
-        echo   Uninstalling Claude Code ^(native^)...
+	) else if /I "!mgr!"=="native" (
+	    if /I "!pkg!"=="claude-code" (
+	        echo   Uninstalling Claude Code ^(native^)...
         call :dbg   %BLUE%[DEBUG]%NC% remove: %USERPROFILE%\.local\bin\claude.exe
         if exist "%USERPROFILE%\.local\bin\claude.exe" (
             del "%USERPROFILE%\.local\bin\claude.exe" >nul 2>nul
@@ -1737,46 +1629,12 @@ if /I "!mgr!"=="npm-self" (
             rmdir /s /q "%USERPROFILE%\.local\share\claude" >nul 2>nul
         )
         REM Check if removal was successful
-        if exist "%USERPROFILE%\.local\bin\claude.exe" (
-            echo %RED%[ERROR]%NC% Failed to remove Claude Code binary
-            exit /b 1
-        )
-    ) else if /I "!pkg!"=="moai-adk" (
-        echo   Uninstalling MoAI-ADK...
-        call :dbg   %BLUE%[DEBUG]%NC% remove: moai-adk
-        REM First try using uv tool uninstall if available
-        where uv >nul 2>nul
-        if not errorlevel 1 (
-            call uv tool uninstall moai-adk 2>nul
-            if not errorlevel 1 (
-                echo %GREEN%[SUCCESS]%NC% Removed MoAI-ADK
-                exit /b 0
-            )
-        )
-        REM Fallback: remove binary directly if it exists
-        call :dbg   %BLUE%[DEBUG]%NC% remove: %USERPROFILE%\.local\bin\moai-adk.exe
-        if exist "%USERPROFILE%\.local\bin\moai-adk.exe" (
-            del "%USERPROFILE%\.local\bin\moai-adk.exe" >nul 2>nul
-        )
-        if exist "%USERPROFILE%\.local\bin\moai-adk.exe" (
-            echo %RED%[ERROR]%NC% Failed to remove MoAI-ADK binary
-            exit /b 1
-        )
-        echo %GREEN%[SUCCESS]%NC% Removed MoAI-ADK
-        exit /b 0
-    ) else if /I "!pkg!"=="opencode-ai" (
-        echo   Uninstalling OpenCode AI CLI...
-        call :dbg   %BLUE%[DEBUG]%NC% remove: %USERPROFILE%\.local\bin\opencode.exe
-        if exist "%USERPROFILE%\.local\bin\opencode.exe" (
-            del "%USERPROFILE%\.local\bin\opencode.exe" >nul 2>nul
-        )
-        REM Check if removal was successful
-        if exist "%USERPROFILE%\.local\bin\opencode.exe" (
-            echo %RED%[ERROR]%NC% Failed to remove OpenCode AI CLI binary
-            exit /b 1
-        )
-    )
-) else (
+	        if exist "%USERPROFILE%\.local\bin\claude.exe" (
+	            echo %RED%[ERROR]%NC% Failed to remove Claude Code binary
+	            exit /b 1
+	        )
+	    )
+	) else (
     echo   Uninstalling !pkg!...
     call :dbg   %BLUE%[DEBUG]%NC% run: npm uninstall -g "!pkg!"
     call npm uninstall -g "!pkg!"

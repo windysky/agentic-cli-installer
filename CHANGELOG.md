@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-02-04
+
+### Changed
+
+- MoAI-ADK is now installed/updated via `uv tool` for consistent behavior across shells and to avoid upstream installer ANSI issues
+- OpenCode AI CLI is now installed/updated via npm for consistent version detection and updates
+
+### Fixed
+
+- Windows batch parsing robustness when running `call :label` from `for (...) do (...)` blocks
+- Duplicate `opencode-ai` native version-detection branch and brittle native parsing for `claude --version`
+- `setup.bat` backup timestamps are now locale-independent
+
+---
+
+## [1.4.0] - 2026-01-31
+
+### Added
+
+- Non-interactive mode via `--yes` / `-y`
+- Node.js and npm prerequisite checks with conda-friendly install/update behavior
+
+### Changed
+
+- Updated minimum Node.js / npm requirements for modern CLI tooling
+- Improved uv tool upgrade behavior (initial install vs forced update)
+
+---
+
+## [1.3.0] - 2026-01-28
+
+### Added
+
+- `auto_install_coding_tools` to process multiple conda environments
+- Deployment improvements in `setup.sh` to install helper scripts
+
+---
+
 ## [1.2.0] - 2026-01-24
 
 ### Security

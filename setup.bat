@@ -6,7 +6,7 @@ REM
 REM Usage:
 REM   setup.bat
 REM
-REM Version: 1.3.0
+REM Version: 1.5.0
 REM License: MIT
 REM ###############################################
 
@@ -16,7 +16,8 @@ set "SOURCE_SCRIPT=%SCRIPT_DIR%install_coding_tools.bat"
 
 REM ANSI color codes for Windows 10+
 set "ESC="
-for /F %%a in ('echo prompt $E ^| cmd') do set "ESC=%%a"
+if not defined ComSpec set "ComSpec=%SystemRoot%\\System32\\cmd.exe"
+for /F %%a in ('echo prompt $E ^| "%ComSpec%"') do set "ESC=%%a"
 if not defined ESC (
     set "RED="
     set "GREEN="
@@ -79,12 +80,9 @@ if exist "%TARGET_FILE%" (
         )
     )
 
-    REM Create backup with timestamp
-    for /f "tokens=1-3 delims=/ " %%a in ('date /t') do (
-        for /f "tokens=1-2 delims=:." %%x in ('time /t') do (
-            set "TIMESTAMP=%%c%%a%%b_%%x%%y"
-        )
-    )
+    REM Create backup with timestamp (locale-independent)
+    for /f "delims=" %%t in ('powershell -NoProfile -Command "(Get-Date).ToString('yyyyMMdd_HHmmss')" 2^>nul') do set "TIMESTAMP=%%t"
+    if not defined TIMESTAMP set "TIMESTAMP=%RANDOM%"
 
     set "BACKUP_FILE=%BACKUP_DIR%\install_coding_tools.bat.!TIMESTAMP!"
     echo %BLUE%[INFO]%NC% Creating backup: %BACKUP_FILE%

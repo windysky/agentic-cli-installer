@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.4.1
+# Agentic Coders Installer v1.5.0
 # Interactive installer for AI coding CLI tools
 #############################################
 
@@ -47,12 +47,12 @@ readonly MIN_NPM_VERSION="10.0.0"
 
 # Tool definitions: name, package manager, package name, description
 declare -a TOOLS=(
-    "moai-adk|native|moai-adk|MoAI Agent Development Kit"
+    "moai-adk|uv|moai-adk|MoAI Agent Development Kit"
     "claude-code|native|claude-code|Claude Code CLI"
     "@openai/codex|npm|@openai/codex|OpenAI Codex CLI"
     "@google/gemini-cli|npm|@google/gemini-cli|Google Gemini CLI"
     "@google/jules|npm|@google/jules|Google Jules CLI"
-    "opencode-ai|native|opencode-ai|OpenCode AI CLI"
+    "opencode-ai|npm|opencode-ai|OpenCode AI CLI"
     "mistral-vibe|uv|mistral-vibe|Mistral Vibe CLI"
 )
 
@@ -362,14 +362,6 @@ get_installed_native_version() {
         if command -v claude >/dev/null 2>&1; then
             claude --version 2>/dev/null | head -n1 | sed -E 's/.*([0-9]+\.[0-9]+\.[0-9]+).*/\1/' || true
         fi
-    elif [[ "$pkg" == "moai-adk" ]]; then
-        if command -v moai-adk >/dev/null 2>&1; then
-            moai-adk --version 2>/dev/null | head -n1 | sed -E 's/.*([0-9]+\.[0-9]+\.[0-9]+).*/\1/' || true
-        fi
-    elif [[ "$pkg" == "opencode-ai" ]]; then
-        if command -v opencode >/dev/null 2>&1; then
-            opencode --version 2>/dev/null | head -n1 | sed -E 's/.*([0-9]+\.[0-9]+\.[0-9]+).*/\1/' || true
-        fi
     fi
 }
 
@@ -441,12 +433,6 @@ get_latest_version() {
                 case "$pkg" in
                     claude-code)
                         repo="anthropics/claude-code"
-                        ;;
-                    moai-adk)
-                        repo="modu-ai/moai-adk"
-                        ;;
-                    opencode-ai)
-                        repo="OpenCode-ai/OpenCode"
                         ;;
                 esac
 
@@ -660,7 +646,7 @@ initialize_tools() {
 render_menu() {
     clear_screen
 
-    printf "${BOLD}${CYAN}Agentic Coders CLI Installer${NC} ${BOLD}v1.4.1${NC}\n\n"
+    printf "${BOLD}${CYAN}Agentic Coders CLI Installer${NC} ${BOLD}v1.5.0${NC}\n\n"
     printf "Toggle tools: ${CYAN}skip${NC} -> ${GREEN}install${NC} -> ${RED}remove${NC} (press number multiple times)\n"
     printf "Numbers are ${BOLD}comma-separated${NC} (e.g., ${CYAN}1,3,5${NC}). Press ${BOLD}Q${NC} to quit.\n\n"
 
@@ -1065,30 +1051,6 @@ install_tool() {
                             return 1
                         fi
                     fi
-                fi
-            elif [[ "$pkg" == "moai-adk" ]]; then
-                # MoAI-ADK installation using the recommended curl install script
-                printf "  Installing MoAI-ADK (using official installer)...\n"
-                if curl -LsSf https://modu-ai.github.io/moai-adk/install.sh | bash; then
-                    # Add ~/.local/bin to PATH if not already there
-                    if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
-                        printf "  ${YELLOW}Note: $HOME/.local/bin should be in your PATH${NC}\n"
-                    fi
-                    log_success "Installed ${name}"
-                    return 0
-                else
-                    log_error "Failed to install ${name}"
-                    return 1
-                fi
-            elif [[ "$pkg" == "opencode-ai" ]]; then
-                # OpenCode AI CLI installation using the recommended curl install script
-                printf "  Installing OpenCode AI CLI (using official installer)...\n"
-                if curl -fsSL https://opencode.ai/install | bash; then
-                    log_success "Installed ${name}"
-                    return 0
-                else
-                    log_error "Failed to install ${name}"
-                    return 1
                 fi
             fi
             ;;
