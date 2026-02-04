@@ -3,7 +3,7 @@ setlocal EnableDelayedExpansion
 set "SCRIPT_DIR=%~dp0"
 
 REM ###############################################
-REM Agentic Coders Installer v1.5.0
+REM Agentic Coders Installer v1.5.1
 REM Interactive installer for AI coding CLI tools
 REM Windows version (run in Anaconda Prompt or CMD)
 REM ###############################################
@@ -1074,7 +1074,7 @@ if "%DEBUG%"=="1" (
     cls
 )
 call :print_banner_sep
-echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.5.0%NC%
+echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.5.1%NC%
 echo Toggle: %CYAN%skip%NC% -^> %GREEN%install%NC% -^> %RED%remove%NC%  Input: 1,3,5  Enter/P=proceed  Q=quit
 call :print_banner_sep
 echo.

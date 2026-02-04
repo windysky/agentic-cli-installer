@@ -1,4 +1,4 @@
-# Agentic CLI Installer v1.5.0
+# Agentic CLI Installer v1.5.1
 
 **Last Modified:** February 4, 2026
 
@@ -197,6 +197,10 @@ Backup location: ~/.local/bin.backup
 ```
 
 ## Change Log
+
+### v1.5.1 - February 4, 2026
+
+- **Fixed installer output**: Resolved a Bash `printf` error when printing bullet-style lines in the action summary/result sections
 
 ### v1.5.0 - February 4, 2026
 

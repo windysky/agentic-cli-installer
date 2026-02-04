@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.5.0
+# Agentic Coders Installer v1.5.1
 # Interactive installer for AI coding CLI tools
 #############################################
 
@@ -704,7 +704,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.5.0" \
+        "Agentic Coders CLI Installer v1.5.1" \
         "Toggle: skip->install->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"
@@ -1281,19 +1281,19 @@ display_action_summary() {
     print_section "ACTION SUMMARY"
 
     if [[ "$install_count" -eq 0 && "$remove_count" -eq 0 ]]; then
-        printf "- No actions selected.\n"
+        printf -- "- No actions selected.\n"
         return 0
     fi
 
     if [[ "$install_count" -gt 0 ]]; then
-        printf "- Install (%d):\n" "$install_count"
+        printf -- "- Install (%d):\n" "$install_count"
         for item in "${install_items[@]}"; do
             printf "  - %s\n" "$item"
         done
     fi
 
     if [[ "$remove_count" -gt 0 ]]; then
-        printf "- Remove (%d):\n" "$remove_count"
+        printf -- "- Remove (%d):\n" "$remove_count"
         for item in "${remove_items[@]}"; do
             printf "  - %s\n" "$item"
         done
@@ -1373,9 +1373,9 @@ run_installation() {
     done
 
     print_section "RESULT"
-    printf "- Installed: %d\n" "$install_success"
-    printf "- Removed:   %d\n" "$remove_success"
-    printf "- Failed:    %d\n" "$((install_fail + remove_fail))"
+    printf -- "- Installed: %d\n" "$install_success"
+    printf -- "- Removed:   %d\n" "$remove_success"
+    printf -- "- Failed:    %d\n" "$((install_fail + remove_fail))"
 }
 
 #############################################
