@@ -205,12 +205,12 @@ if "%AUTO_YES%"=="1" (
 call :render_menu
 
 echo.
-echo %CYAN%Enter selection (numbers, Enter to proceed, P if Enter fails, Q to quit):%NC%
+echo %BOLD%Enter selection:%NC%
 REM Robust input handling:
 REM - If user presses Enter: treat it as "proceed".
 REM - If STDIN is closed/EOF and redirected (common when piped input runs out): exit safely.
 set "input="
-set /p "input="
+set /p "input=> "
 set "INPUT_RC=%errorlevel%"
 if "%INPUT_RC%"=="1" (
     if "%STDIN_REDIRECTED%"=="1" (
@@ -572,7 +572,11 @@ if !count!==0 (
     pause
     exit /b 1
 )
-echo %GREEN%[SUCCESS]%NC% Starting installation/upgrade of !count! tool^(s^)...
+if !count! EQU 1 (
+    echo %GREEN%[SUCCESS]%NC% Starting installation/upgrade of 1 tool...
+) else (
+    echo %GREEN%[SUCCESS]%NC% Starting installation/upgrade of !count! tools...
+)
 exit /b 0
 
 :selection_requires_npm
@@ -607,6 +611,12 @@ exit /b 1
 :print_sep
 REM ASCII separator to avoid mojibake in different Windows code pages.
 set "sep=--------------------------------------------------------------------------------"
+echo %CYAN%!sep!%NC%
+exit /b 0
+
+:print_banner_sep
+REM Slightly heavier separator for section banners (ASCII-only).
+set "sep================================================================================="
 echo %CYAN%!sep!%NC%
 exit /b 0
 
@@ -1063,14 +1073,14 @@ if "%DEBUG%"=="1" (
 ) else (
     cls
 )
-echo.
+call :print_banner_sep
 echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.5.0%NC%
+echo Toggle: %CYAN%skip%NC% -^> %GREEN%install%NC% -^> %RED%remove%NC%  Input: 1,3,5  Enter/P=proceed  Q=quit
+call :print_banner_sep
 echo.
-echo Toggle tools: %CYAN%skip%NC% -^> %GREEN%install%NC% -^> %RED%remove%NC% (press number multiple times^)
-echo Numbers are %BOLD%comma-separated%NC% (e.g., %CYAN%1,3,5%NC%^). Press %BOLD%Q%NC% to quit.
-echo.
+echo %BOLD%[MENU]%NC%
 call :print_sep
-echo   #  Tool Name                      Installed       Latest     Action  Select
+echo   #  Tool                           Installed       Latest     Action  Select
 call :print_sep
 set "HAS_OFFPATH=0"
 for /L %%i in (1,1,%TOOLS_COUNT%) do (
@@ -1273,7 +1283,7 @@ if "!cur!"=="0" (
 exit /b 0
 
 :invalid
-echo %RED%[ERROR]%NC% Invalid selection: "%num%" (use numbers 1-%TOOLS_COUNT%)
+echo %RED%[ERROR]%NC% Invalid selection: "%num%" - use numbers 1-%TOOLS_COUNT%
 exit /b 1
 
 REM ###############################################
@@ -1283,44 +1293,53 @@ REM ###############################################
 :display_action_summary
 set "install_count=0"
 set "remove_count=0"
-set "install_tools="
-set "remove_tools="
 
 for /L %%i in (1,1,%TOOLS_COUNT%) do (
     call set "act=%%ACT_%%i%%"
     call set "act=%%act%%"
-    call set "name=%%NAME_%%i%%"
-    call set "name=%%name%%"
     if "!act!"=="1" (
         set /a install_count+=1
-        if defined install_tools set "install_tools=!install_tools!, "
-        set "install_tools=!install_tools!!name!"
     ) else if "!act!"=="2" (
         set /a remove_count+=1
-        if defined remove_tools set "remove_tools=!remove_tools!, "
-        set "remove_tools=!remove_tools!!name!"
     )
 )
 
-call :print_sep
 echo.
-echo %CYAN%%BOLD%Action Summary%NC%
+echo %BOLD%[ACTION SUMMARY]%NC%
 call :print_sep
-set "install_word=tools"
-if !install_count! EQU 1 set "install_word=tool"
-echo   %GREEN%Install%NC%: !install_count! !install_word!
-if !install_count! GTR 0 echo     !install_tools!
+
+if !install_count! GTR 0 (
+    echo - Install: !install_count!
+    for /L %%i in (1,1,%TOOLS_COUNT%) do (
+        call set "act=%%ACT_%%i%%"
+        call set "act=%%act%%"
+        if "!act!"=="1" (
+            call set "pkg=%%PKG_%%i%%"
+            call set "pkg=%%pkg%%"
+            call set "inst=%%INST_%%i%%"
+            call set "inst=%%inst%%"
+            call set "lat=%%LAT_%%i%%"
+            call set "lat=%%lat%%"
+            echo   - !pkg!: !inst! -^> !lat!
+        )
+    )
+)
 
 if !remove_count! GTR 0 (
-    set "remove_word=tools"
-    if !remove_count! EQU 1 set "remove_word=tool"
-    echo   %RED%Remove%NC%: !remove_count! !remove_word!
-    echo     !remove_tools!
-    call :print_sep
+    echo - Remove: !remove_count!
+    for /L %%i in (1,1,%TOOLS_COUNT%) do (
+        call set "act=%%ACT_%%i%%"
+        call set "act=%%act%%"
+        if "!act!"=="2" (
+            call set "pkg=%%PKG_%%i%%"
+            call set "pkg=%%pkg%%"
+            call set "inst=%%INST_%%i%%"
+            call set "inst=%%inst%%"
+            echo   - !pkg!: !inst!
+        )
+    )
     echo.
-    echo %RED%%BOLD%WARNING: You are about to remove: !remove_tools!%NC%
-    echo %RED%%BOLD%This action cannot be undone.%NC%
-    echo.
+    echo %RED%%BOLD%WARNING:%NC% removals cannot be undone.
 )
 exit /b 0
 
@@ -1424,16 +1443,14 @@ set "install_success=0"
 set "install_fail=0"
 set "remove_success=0"
 set "remove_fail=0"
-
-call :print_sep
-echo.
-echo %CYAN%%BOLD%Installation Progress%NC%
-call :print_sep
-echo.
-
-for /L %%i in (1,1,%TOOLS_COUNT%) do (
-    call set "act=%%ACT_%%i%%"
-    call set "act=%%act%%"
+	
+	echo.
+	echo %BOLD%[INSTALLATION]%NC%
+	call :print_sep
+	
+	for /L %%i in (1,1,%TOOLS_COUNT%) do (
+	    call set "act=%%ACT_%%i%%"
+	    call set "act=%%act%%"
     if "!act!"=="1" (
         call :install_tool %%i
         if errorlevel 1 (
@@ -1448,37 +1465,35 @@ for /L %%i in (1,1,%TOOLS_COUNT%) do (
         ) else (
             set /a remove_success+=1
         )
-    )
-)
+	    )
+	)
 
-echo.
-call :print_sep
-echo.
-echo %CYAN%%BOLD%Installation Summary%NC%
-call :print_sep
-echo   %GREEN%Installed%NC%: !install_success!
-if !install_fail! GTR 0 echo   %RED%Install Failed%NC%: !install_fail!
-echo   %GREEN%Removed%NC%: !remove_success!
-if !remove_fail! GTR 0 echo   %RED%Remove Failed%NC%: !remove_fail!
-call :print_sep
-if !install_fail! GTR 0 exit /b 1
-if !remove_fail! GTR 0 exit /b 1
-exit /b 0
+	echo.
+	echo %BOLD%[RESULT]%NC%
+	call :print_sep
+	set /a "fail_total=install_fail+remove_fail"
+	echo - Installed: !install_success!
+	echo - Removed:   !remove_success!
+	echo - Failed:    !fail_total!
+	call :print_sep
+	if !install_fail! GTR 0 exit /b 1
+	if !remove_fail! GTR 0 exit /b 1
+	exit /b 0
 
 :install_tool
-	set "idx=%~1"
-	call set "name=%%NAME_%idx%%%"
-	call set "name=%%name%%"
-	call set "mgr=%%MGR_%idx%%%"
-	call set "mgr=%%mgr%%"
-	call set "pkg=%%PKG_%idx%%%"
-	call set "pkg=%%pkg%%"
-	call set "inst=%%INST_%idx%%%"
-	call set "inst=%%inst%%"
-	
-	echo.
-	echo %CYAN%Processing: !name!%NC%
-	call :dbg   %BLUE%[DEBUG]%NC% mgr=!mgr! pkg=!pkg! installed=!inst!
+		set "idx=%~1"
+		call set "name=%%NAME_%idx%%%"
+		call set "name=%%name%%"
+		call set "mgr=%%MGR_%idx%%%"
+		call set "mgr=%%mgr%%"
+		call set "pkg=%%PKG_%idx%%%"
+		call set "pkg=%%pkg%%"
+		call set "inst=%%INST_%idx%%%"
+		call set "inst=%%inst%%"
+		
+		echo.
+		echo - !pkg!:
+		call :dbg   %BLUE%[DEBUG]%NC% mgr=!mgr! pkg=!pkg! installed=!inst!
 
 	REM Avoid nested parenthesized blocks here; unescaped parentheses from tool output or paths
 	REM can break cmd.exe parsing and produce "... was unexpected at this time."
@@ -1488,30 +1503,30 @@ exit /b 0
 	goto install_tool_npm
 
 :install_tool_npm_self
-	REM npm can only be updated, not installed from scratch
-	echo   Updating npm to latest version...
-	call :dbg   %BLUE%[DEBUG]%NC% run: npm install -g npm@latest
-	call npm install -g npm@latest
-	exit /b %errorlevel%
+		REM npm can only be updated, not installed from scratch
+		echo   Updating via npm...
+		call :dbg   %BLUE%[DEBUG]%NC% run: npm install -g npm@latest
+		call npm install -g npm@latest
+		exit /b %errorlevel%
 
 :install_tool_uv
 	if /I "!inst!"=="Not Installed" goto install_tool_uv_install
 	goto install_tool_uv_update
 
 :install_tool_uv_install
-	echo   Installing !pkg!...
-	REM For initial install, do not use --force (recommended method)
-	call :dbg   %BLUE%[DEBUG]%NC% run: uv tool install "!pkg!"
-	call uv tool install "!pkg!"
-	exit /b %errorlevel%
+		echo   Installing via uv...
+		REM For initial install, do not use --force (recommended method)
+		call :dbg   %BLUE%[DEBUG]%NC% run: uv tool install "!pkg!"
+		call uv tool install "!pkg!"
+		exit /b %errorlevel%
 
 :install_tool_uv_update
-	echo   Updating !pkg!...
-	REM Use install --force instead of update to get the latest version
-	REM uv tool update only updates within original version constraints
-	call :dbg   %BLUE%[DEBUG]%NC% run: uv tool install "!pkg!" --force
-	call uv tool install "!pkg!" --force
-	exit /b %errorlevel%
+		echo   Updating via uv...
+		REM Use install --force instead of update to get the latest version
+		REM uv tool update only updates within original version constraints
+		call :dbg   %BLUE%[DEBUG]%NC% run: uv tool install "!pkg!" --force
+		call uv tool install "!pkg!" --force
+		exit /b %errorlevel%
 
 :install_tool_native
 	if /I "!pkg!"=="claude-code" goto install_tool_claude
@@ -1578,16 +1593,16 @@ exit /b 0
 	goto install_tool_npm_update
 
 :install_tool_npm_install
-	echo   Installing !pkg!...
-	call :dbg   %BLUE%[DEBUG]%NC% run: npm install -g "!pkg!"
-	call npm install -g "!pkg!"
-	exit /b %errorlevel%
+		echo   Installing via npm...
+		call :dbg   %BLUE%[DEBUG]%NC% run: npm install -g "!pkg!"
+		call npm install -g "!pkg!"
+		exit /b %errorlevel%
 
 :install_tool_npm_update
-	echo   Updating !pkg!...
-	call :dbg   %BLUE%[DEBUG]%NC% run: npm install -g "!pkg!@latest"
-	call npm install -g "!pkg!@latest"
-	exit /b %errorlevel%
+		echo   Updating via npm...
+		call :dbg   %BLUE%[DEBUG]%NC% run: npm install -g "!pkg!@latest"
+		call npm install -g "!pkg!@latest"
+		exit /b %errorlevel%
 	
 :remove_tool
 	set "idx=%~1"
@@ -1601,7 +1616,7 @@ call set "inst=%%INST_%idx%%%"
 call set "inst=%%inst%%"
 
 echo.
-echo %CYAN%Processing: !name!%NC%
+echo - !pkg!:
 call :dbg   %BLUE%[DEBUG]%NC% mgr=!mgr! pkg=!pkg! installed=!inst!
 
 REM Validate tool is installed
@@ -1615,13 +1630,13 @@ if /I "!mgr!"=="npm-self" (
     echo %RED%[ERROR]%NC% Cannot remove !name!: npm is a core tool and cannot be removed
     exit /b 1
 ) else if /I "!mgr!"=="uv" (
-    echo   Uninstalling !pkg!...
+    echo   Uninstalling via uv...
     call :dbg   %BLUE%[DEBUG]%NC% run: uv tool uninstall "!pkg!"
     call uv tool uninstall "!pkg!"
-	) else if /I "!mgr!"=="native" (
-	    if /I "!pkg!"=="claude-code" (
-	        echo   Uninstalling Claude Code ^(native^)...
-        call :dbg   %BLUE%[DEBUG]%NC% remove: %USERPROFILE%\.local\bin\claude.exe
+		) else if /I "!mgr!"=="native" (
+		    if /I "!pkg!"=="claude-code" (
+			        echo   Uninstalling native...
+		        call :dbg   %BLUE%[DEBUG]%NC% remove: %USERPROFILE%\.local\bin\claude.exe
         if exist "%USERPROFILE%\.local\bin\claude.exe" (
             del "%USERPROFILE%\.local\bin\claude.exe" >nul 2>nul
         )
@@ -1634,8 +1649,8 @@ if /I "!mgr!"=="npm-self" (
 	            exit /b 1
 	        )
 	    )
-	) else (
-    echo   Uninstalling !pkg!...
+		) else (
+    echo   Uninstalling via npm...
     call :dbg   %BLUE%[DEBUG]%NC% run: npm uninstall -g "!pkg!"
     call npm uninstall -g "!pkg!"
 )

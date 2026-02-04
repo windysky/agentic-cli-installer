@@ -97,6 +97,65 @@ log_error() {
     printf "${RED}[ERROR]${NC} %s\n" "$*" >&2
 }
 
+supports_utf8() {
+    local locale="${LC_ALL:-}${LC_CTYPE:-}${LANG:-}"
+    [[ "$locale" == *"UTF-8"* || "$locale" == *"utf8"* || "$locale" == *"UTF8"* ]]
+}
+
+# UI drawing characters (UTF-8 when available, ASCII fallback)
+UI_HLINE="-"
+UI_VLINE="|"
+UI_TL="+"
+UI_TR="+"
+UI_BL="+"
+UI_BR="+"
+
+init_ui_chars() {
+    if supports_utf8; then
+        UI_HLINE="─"
+        UI_VLINE="│"
+        UI_TL="┌"
+        UI_TR="┐"
+        UI_BL="└"
+        UI_BR="┘"
+    fi
+}
+
+init_ui_chars
+
+repeat_char() {
+    local ch=$1
+    local count=$2
+    local out=""
+    for ((i=0; i<count; i++)); do
+        out+="$ch"
+    done
+    printf "%s" "$out"
+}
+
+print_section() {
+    printf "\n${BOLD}[%s]${NC}\n" "$1"
+}
+
+print_box_header() {
+    local title=$1
+    local subtitle=$2
+
+    local width
+    width=$(tput cols 2>/dev/null || echo 80)
+    if [[ "$width" -gt 92 ]]; then
+        width=92
+    elif [[ "$width" -lt 60 ]]; then
+        width=60
+    fi
+
+    local inner=$((width - 2))
+    printf "%s%s%s\n" "$UI_TL" "$(repeat_char "$UI_HLINE" "$inner")" "$UI_TR"
+    printf "%s %-*s%s\n" "$UI_VLINE" "$((inner - 1))" "$title" "$UI_VLINE"
+    printf "%s %-*s%s\n" "$UI_VLINE" "$((inner - 1))" "$subtitle" "$UI_VLINE"
+    printf "%s%s%s\n" "$UI_BL" "$(repeat_char "$UI_HLINE" "$inner")" "$UI_BR"
+}
+
 print_header() {
     printf "\n${CYAN}${BOLD}%s${NC}\n" "$*"
 }
@@ -106,10 +165,8 @@ print_sep() {
     local width
     width=$(tput cols 2>/dev/null || echo 80)
     # Create separator line that fills terminal width
-    local sep=""
-    for ((i=0; i<width; i++)); do
-        sep+="─"
-    done
+    local sep
+    sep=$(repeat_char "$UI_HLINE" "$width")
     printf "${CYAN}%s${NC}\n" "$sep"
 }
 
@@ -646,10 +703,11 @@ initialize_tools() {
 render_menu() {
     clear_screen
 
-    printf "${BOLD}${CYAN}Agentic Coders CLI Installer${NC} ${BOLD}v1.5.0${NC}\n\n"
-    printf "Toggle tools: ${CYAN}skip${NC} -> ${GREEN}install${NC} -> ${RED}remove${NC} (press number multiple times)\n"
-    printf "Numbers are ${BOLD}comma-separated${NC} (e.g., ${CYAN}1,3,5${NC}). Press ${BOLD}Q${NC} to quit.\n\n"
+    print_box_header \
+        "Agentic Coders CLI Installer v1.5.0" \
+        "Toggle: skip->install->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
+    print_section "MENU"
     print_sep
 
     # Header
@@ -902,7 +960,7 @@ get_user_selection() {
     while true; do
         render_menu
 
-        printf "\n${CYAN}Enter selection (numbers, Enter to proceed, P if Enter fails, Q to quit):${NC} "
+        printf "\nEnter selection:\n> "
         read -r input
 
         # Trim input
@@ -933,7 +991,11 @@ get_user_selection() {
                 continue
             fi
 
-            log_success "Starting installation/upgrade of $selected_count tool(s)..."
+            if [[ "$selected_count" -eq 1 ]]; then
+                log_success "Starting installation/upgrade of 1 tool..."
+            else
+                log_success "Starting installation/upgrade of ${selected_count} tools..."
+            fi
             return 0
         fi
 
@@ -958,12 +1020,12 @@ install_tool() {
     local pkg=$3
     local installed_version=$4
 
-    printf "\n${CYAN}Processing: ${name}${NC}\n"
+    printf "\n- %s: " "$pkg"
 
     case "$manager" in
         uv)
             if [[ "$installed_version" == "Not Installed" ]]; then
-                printf "  Installing ${pkg}...\n"
+                printf "Installing via uv...\n"
                 # For initial install, do not use --force (recommended method)
                 if uv tool install "$pkg"; then
                     log_success "Installed ${name}"
@@ -973,7 +1035,7 @@ install_tool() {
                     return 1
                 fi
             else
-                printf "  Updating ${pkg}...\n"
+                printf "Updating via uv...\n"
                 # Use install --force instead of update to get the latest version
                 # uv tool update only updates within original version constraints
                 if uv tool install "$pkg" --force; then
@@ -987,7 +1049,7 @@ install_tool() {
             ;;
         npm)
             if [[ "$installed_version" == "Not Installed" ]]; then
-                printf "  Installing ${pkg}...\n"
+                printf "Installing via npm...\n"
                 if npm install -g "$pkg"; then
                     log_success "Installed ${name}"
                     return 0
@@ -996,7 +1058,7 @@ install_tool() {
                     return 1
                 fi
             else
-                printf "  Updating ${pkg}...\n"
+                printf "Updating via npm...\n"
                 if npm install -g "$pkg@latest"; then
                     log_success "Updated ${name}"
                     return 0
@@ -1023,7 +1085,7 @@ install_tool() {
                 fi
 
                 if [[ "$installed_version" == "Not Installed" ]]; then
-                    printf "  Installing Claude Code (native installer)...\n"
+                    printf "Installing via native installer...\n"
                     if run_claude_installer; then
                         # Add ~/.local/bin to PATH if not already there
                         if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
@@ -1036,7 +1098,7 @@ install_tool() {
                         return 1
                     fi
                 else
-                    printf "  Updating Claude Code...\n"
+                    printf "Updating...\n"
                     if claude update 2>/dev/null; then
                         log_success "Updated ${name}"
                         return 0
@@ -1057,7 +1119,7 @@ install_tool() {
         npm-self)
             # npm-self should only be "update" action, never "install" from scratch
             # If npm is not installed, this should have been handled via conda
-            printf "  Updating npm...\n"
+            printf "Updating npm...\n"
             if npm install -g npm@latest; then
                 log_success "Updated npm"
                 return 0
@@ -1075,7 +1137,7 @@ remove_tool() {
     local pkg=$3
     local installed_version=$4
 
-    printf "\n${CYAN}Processing: ${name}${NC}\n"
+    printf "\n- %s: " "$pkg"
 
     # Validate tool is installed
     if [[ "$installed_version" == "Not Installed" ]]; then
@@ -1085,7 +1147,7 @@ remove_tool() {
 
     case "$manager" in
         uv)
-            printf "  Uninstalling ${pkg}...\n"
+            printf "Uninstalling via uv...\n"
             if uv tool uninstall "$pkg"; then
                 log_success "Removed ${name}"
                 return 0
@@ -1095,7 +1157,7 @@ remove_tool() {
             fi
             ;;
         npm)
-            printf "  Uninstalling ${pkg}...\n"
+            printf "Uninstalling via npm...\n"
             if npm uninstall -g "$pkg"; then
                 log_success "Removed ${name}"
                 return 0
@@ -1106,7 +1168,7 @@ remove_tool() {
             ;;
         native)
             if [[ "$pkg" == "claude-code" ]]; then
-                printf "  Uninstalling Claude Code (native)...\n"
+                printf "Uninstalling (native)...\n"
                 local removed=false
                 # Remove the binary
                 if [[ -f "$HOME/.local/bin/claude" ]]; then
@@ -1191,48 +1253,51 @@ validate_removal() {
 display_action_summary() {
     local install_count=0
     local remove_count=0
-    local install_tools=""
-    local remove_tools=""
+    local -a install_items=()
+    local -a remove_items=()
 
     for i in "${!TOOL_NAMES[@]}"; do
-        if [[ "${SELECTED[$i]}" -eq 1 ]]; then
-            local action="${TOOL_ACTIONS[$i]}"
-            case "$action" in
-                install)
-                    install_count=$((install_count + 1))
-                    if [[ -n "$install_tools" ]]; then
-                        install_tools+=", "
-                    fi
-                    install_tools+="${TOOL_NAMES[$i]}"
-                    ;;
-                remove)
-                    remove_count=$((remove_count + 1))
-                    if [[ -n "$remove_tools" ]]; then
-                        remove_tools+=", "
-                    fi
-                    remove_tools+="${TOOL_NAMES[$i]}"
-                    ;;
-            esac
+        if [[ "${SELECTED[$i]}" -ne 1 ]]; then
+            continue
         fi
+
+        local action="${TOOL_ACTIONS[$i]}"
+        local pkg="${TOOL_PACKAGES[$i]}"
+        local installed="${INSTALLED_VERSIONS[$i]}"
+        local latest="${LATEST_VERSIONS[$i]}"
+
+        case "$action" in
+            install)
+                install_count=$((install_count + 1))
+                install_items+=("${pkg}: ${installed} -> ${latest}")
+                ;;
+            remove)
+                remove_count=$((remove_count + 1))
+                remove_items+=("${pkg}: ${installed}")
+                ;;
+        esac
     done
 
-    print_sep
-    print_header "Action Summary"
-    print_sep
-    printf "  ${GREEN}Install${NC}: %d tools" "$install_count"
-    if [[ $install_count -gt 0 ]]; then
-        printf " (%s)\n" "$install_tools"
-    else
-        printf "\n"
+    print_section "ACTION SUMMARY"
+
+    if [[ "$install_count" -eq 0 && "$remove_count" -eq 0 ]]; then
+        printf "- No actions selected.\n"
+        return 0
     fi
 
-    if [[ $remove_count -gt 0 ]]; then
-        printf "  ${RED}Remove${NC}: %d tools (%s)\n" "$remove_count" "$remove_tools"
-        print_sep
-        printf "\n"
-        printf "${RED}${BOLD}WARNING: You are about to remove '%s'${NC}\n" "$remove_tools"
-        printf "${RED}${BOLD}This action cannot be undone.${NC}\n"
-        printf "\n"
+    if [[ "$install_count" -gt 0 ]]; then
+        printf "- Install (%d):\n" "$install_count"
+        for item in "${install_items[@]}"; do
+            printf "  - %s\n" "$item"
+        done
+    fi
+
+    if [[ "$remove_count" -gt 0 ]]; then
+        printf "- Remove (%d):\n" "$remove_count"
+        for item in "${remove_items[@]}"; do
+            printf "  - %s\n" "$item"
+        done
+        printf "\n${RED}${BOLD}WARNING:${NC} removals cannot be undone.\n"
     fi
 }
 
@@ -1252,7 +1317,7 @@ confirm_removals() {
             return 0
         fi
 
-        printf "Proceed? (y/N): "
+        printf "Proceed with removals? [y/N]: "
         read -r response
         case "$response" in
             [Yy]|[Yy][Ee][Ss])
@@ -1274,9 +1339,7 @@ run_installation() {
     local remove_success=0
     local remove_fail=0
 
-    print_sep
-    print_header "Installation Progress"
-    print_sep
+    print_section "INSTALLATION"
 
     for i in "${!TOOL_NAMES[@]}"; do
         if [[ "${SELECTED[$i]}" -eq 1 ]]; then
@@ -1309,18 +1372,10 @@ run_installation() {
         fi
     done
 
-    print_sep
-    print_header "Installation Summary"
-    print_sep
-    printf "  ${GREEN}Installed${NC}: %d\n" "$install_success"
-    if [[ $install_fail -gt 0 ]]; then
-        printf "  ${RED}Install Failed${NC}: %d\n" "$install_fail"
-    fi
-    printf "  ${GREEN}Removed${NC}: %d\n" "$remove_success"
-    if [[ $remove_fail -gt 0 ]]; then
-        printf "  ${RED}Remove Failed${NC}: %d\n" "$remove_fail"
-    fi
-    print_sep
+    print_section "RESULT"
+    printf "- Installed: %d\n" "$install_success"
+    printf "- Removed:   %d\n" "$remove_success"
+    printf "- Failed:    %d\n" "$((install_fail + remove_fail))"
 }
 
 #############################################
