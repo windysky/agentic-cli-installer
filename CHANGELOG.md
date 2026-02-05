@@ -34,6 +34,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.7.0] - 2026-02-05
+
+### Added
+
+- npm (Node Package Manager) restored to the interactive menu as an update-only tool for visibility and manual updates.
+
+### Changed
+
+- System-level npm check remains mandatory for Claude MCP servers, but npm is also ensured inside the active conda environment when npm-managed tools are selected.
+
+---
+
 ## [1.6.0] - 2026-02-05
 
 ### Changed

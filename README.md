@@ -1,4 +1,4 @@
-# Agentic CLI Installer v1.6.0
+# Agentic CLI Installer v1.7.0
 
 **Last Modified:** February 5, 2026
 
@@ -198,10 +198,14 @@ Backup location: ~/.local/bin.backup
 
 ## Change Log
 
+### v1.7.0 - February 5, 2026
+
+- **Dual npm handling**: System-level npm is still required for Claude MCP servers and is ensured up front; npm is also back in the menu (update-only) and conda-aware checks will install/update Node.js/npm inside the active environment when needed.
+- **Menu restored**: npm (Node Package Manager) appears again in the tool list for visibility and updates.
+
 ### v1.6.0 - February 5, 2026
 
-- **System npm required**: The shell installer now checks for system-level npm (outside conda) at startup and auto-installs/updates it via `curl -q https://www.npmjs.com/install.sh | sudo bash` if missing or outdated.
-- **Simplified tool list**: npm is no longer presented as an installable/updateable tool inside the menu; only user-facing CLIs remain.
+- **System npm required**: The shell installer checks for system-level npm (outside conda) at startup and auto-installs/updates it via `curl -q https://www.npmjs.com/install.sh | sudo bash` if missing or outdated.
 
 ### v1.5.1 - February 4, 2026
 

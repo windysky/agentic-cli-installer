@@ -660,6 +660,15 @@ prefetch_latest_versions() {
 #############################################
 
 initialize_tools() {
+    # Conditionally add npm to the tool list (only if detected)
+    if command -v npm >/dev/null 2>&1; then
+        TOOL_NAMES+=("npm")
+        TOOL_MANAGERS+=("npm-self")
+        TOOL_PACKAGES+=("npm")
+        TOOL_DESCRIPTIONS+=("npm (Node Package Manager)")
+        UPDATE_ONLY+=(1)  # npm is update-only
+    fi
+
     # Add regular tools
     for tool_info in "${TOOLS[@]}"; do
         IFS='|' read -r name manager pkg description <<< "$tool_info"
@@ -1531,8 +1540,124 @@ ensure_system_npm() {
 }
 
 ensure_npm_prerequisite() {
-    # System npm is handled up front by ensure_system_npm
-    return 0
+    local has_npm_tool=0
+    for tool in "${TOOLS[@]}"; do
+        IFS='|' read -r _ manager _ _ <<< "$tool"
+        if [[ "$manager" == "npm" ]]; then
+            has_npm_tool=1
+            break
+        fi
+    done
+
+    if [[ "$has_npm_tool" -eq 0 ]]; then
+        return 0
+    fi
+
+    # Helper function to get npm from conda environment directly
+    get_conda_npm_path() {
+        if [[ -n "$CONDA_PREFIX" ]]; then
+            echo "$CONDA_PREFIX/bin/npm"
+        elif [[ -n "$CONDA_DEFAULT_ENV" ]]; then
+            # Try to find conda prefix from environment name
+            local conda_root
+            conda_root=$(conda info --base 2>/dev/null || true)
+            if [[ -n "$conda_root" ]]; then
+                echo "$conda_root/envs/$CONDA_DEFAULT_ENV/bin/npm"
+            fi
+        fi
+    }
+
+    # Helper function to get npm version from specific path
+    get_npm_version_from_path() {
+        local npm_path=$1
+        if [[ -x "$npm_path" ]]; then
+            "$npm_path" --version 2>/dev/null | head -n1 || true
+        fi
+    }
+
+    local conda_npm
+    conda_npm=$(get_conda_npm_path)
+
+    if ! command -v npm >/dev/null 2>&1; then
+        # Check if we're in a conda environment
+        if [[ -n "$CONDA_DEFAULT_ENV" && -n "$conda_npm" ]]; then
+            log_warning "npm is not installed but required for npm-managed tools."
+            printf "Attempting to install Node.js ${MIN_NODEJS_VERSION}+ via conda...\n"
+            if conda install -y -c conda-forge "nodejs>=${MIN_NODEJS_VERSION}"; then
+                # Clear any command hash cache
+                hash -r npm 2>/dev/null || true
+                # Verify using the conda npm directly
+                if [[ -x "$conda_npm" ]]; then
+                    local npm_version
+                    npm_version=$(get_npm_version_from_path "$conda_npm")
+                    log_success "Node.js + npm ${npm_version} installed via conda"
+                    return 0
+                else
+                    log_error "npm installation via conda appeared successful but npm is still not available at: $conda_npm"
+                    return 1
+                fi
+            else
+                log_error "Failed to install Node.js via conda."
+                printf "Install Node.js + npm manually:\n"
+                printf "  ${CYAN}macOS${NC}:           ${YELLOW}brew install node${NC}\n"
+                printf "  ${CYAN}Debian/Ubuntu${NC}:   ${YELLOW}curl -fsSL https://deb.nodesource.com/setup_current.x | sudo -E bash - && sudo apt-get install -y nodejs${NC}\n"
+                printf "  ${CYAN}Other platforms${NC}: ${YELLOW}https://docs.npmjs.com/downloading-and-installing-node-js-and-npm${NC}\n"
+                return 1
+            fi
+        else
+            log_warning "npm is not installed but required for npm-managed tools."
+            printf "Install Node.js ${MIN_NPM_VERSION}+ before continuing:\n"
+            printf "  ${CYAN}macOS${NC}:           ${YELLOW}brew install node${NC}\n"
+            printf "  ${CYAN}Debian/Ubuntu${NC}:   ${YELLOW}curl -fsSL https://deb.nodesource.com/setup_current.x | sudo -E bash - && sudo apt-get install -y nodejs${NC}\n"
+            printf "  ${CYAN}Other platforms${NC}: ${YELLOW}https://docs.npmjs.com/downloading-and-installing-node-js-and-npm${NC}\n"
+            return 1
+        fi
+    fi
+
+    local npm_version
+    npm_version=$(npm --version 2>/dev/null | head -n1 || true)
+    if [[ -z "$npm_version" ]]; then
+        log_error "Unable to determine npm version."
+        return 1
+    fi
+
+    if version_ge "$npm_version" "$MIN_NPM_VERSION"; then
+        printf "${BLUE}[INFO]${NC} npm version %s detected (minimum required: %s)\n" "$npm_version" "$MIN_NPM_VERSION"
+        return 0
+    fi
+
+    # Version is too old, try to update via conda if available
+    if [[ -n "$CONDA_DEFAULT_ENV" && -n "$conda_npm" ]]; then
+        log_warning "npm version $npm_version is below required $MIN_NPM_VERSION. Updating via conda..."
+        if conda install -y -c conda-forge "nodejs>=${MIN_NODEJS_VERSION}" --force-reinstall; then
+            # Clear command hash cache
+            hash -r npm 2>/dev/null || true
+            # Verify using the conda npm directly
+            local updated_version
+            updated_version=$(get_npm_version_from_path "$conda_npm")
+            if [[ -n "$updated_version" ]] && version_ge "$updated_version" "$MIN_NPM_VERSION"; then
+                log_success "Node.js + npm updated to version ${updated_version} via conda"
+                return 0
+            else
+                log_error "Conda update completed but version is still insufficient: ${updated_version:-unknown}"
+                return 1
+            fi
+        else
+            log_warning "Conda update failed, trying npm self-update..."
+        fi
+    fi
+
+    # Fallback to npm self-update (only if we have a compatible node version)
+    log_warning "npm version $npm_version is below required $MIN_NPM_VERSION. Attempting to update via npm..."
+    if npm install -g npm@latest; then
+        local updated_version
+        updated_version=$(npm --version 2>/dev/null | head -n1 || true)
+        log_success "npm updated to version ${updated_version:-unknown}."
+        return 0
+    else
+        log_error "npm update failed. Please run: npm install -g npm@latest"
+        return 1
+    fi
 }
 
 check_dependencies() {
@@ -1581,8 +1706,12 @@ check_dependencies() {
 
 selection_requires_npm() {
     for i in "${!TOOL_NAMES[@]}"; do
-        if [[ "${SELECTED[$i]}" -eq 1 && "${TOOL_MANAGERS[$i]}" == "npm" ]]; then
-            return 0
+        if [[ "${SELECTED[$i]}" -eq 1 ]]; then
+            case "${TOOL_MANAGERS[$i]}" in
+                npm|npm-self)
+                    return 0
+                    ;;
+            esac
         fi
     done
     return 1
@@ -1669,6 +1798,13 @@ main() {
 
     # Confirm removals if any
     confirm_removals
+
+    # Ensure npm is available and recent if any npm tools are selected
+    if selection_requires_npm; then
+        if ! ensure_npm_prerequisite; then
+            exit 1
+        fi
+    fi
 
     # Ensure uv is available if any uv tools are selected
     if selection_requires_uv; then
