@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.7.1
+# Agentic Coders Installer v1.7.2
 # Interactive installer for AI coding CLI tools
 #############################################
 
@@ -733,7 +733,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.7.1" \
+        "Agentic Coders CLI Installer v1.7.2" \
         "Toggle: skip->install->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"
@@ -1543,8 +1543,17 @@ ensure_system_npm() {
             printf "${BLUE}[INFO]${NC} System npm found: %s (at %s)\n" "$npm_version" "$system_npm_path"
             return 0
         fi
-        printf "${YELLOW}[WARNING]${NC} System npm %s is below required %s. Updating...\n" "$npm_version" "$MIN_NPM_VERSION"
-        install_system_npm || printf "${YELLOW}[WARNING]${NC} System npm update failed; continuing, but Claude MCP may fail.\n"
+        printf "${YELLOW}[WARNING]${NC} System npm %s is below required %s.\n" "$npm_version" "$MIN_NPM_VERSION"
+        printf "Update system npm now? [y/N]: "
+        read -r resp_update
+        case "$resp_update" in
+            [Yy]|[Yy][Ee][Ss])
+                install_system_npm || printf "${YELLOW}[WARNING]${NC} System npm update failed; continuing, but Claude MCP may fail.\n"
+                ;;
+            *)
+                printf "${YELLOW}[WARNING]${NC} Skipping system npm update. Claude MCP features may not work until you update it.\n"
+                ;;
+        esac
     fi
 
     return 0
