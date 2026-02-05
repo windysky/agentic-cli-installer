@@ -2,12 +2,13 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.7.0
+# Agentic Coders Installer v1.7.1
 # Interactive installer for AI coding CLI tools
 #############################################
 
 # Non-interactive mode flag
 AUTO_YES=false
+SKIP_SYSTEM_NPM=false
 
 # Parse command-line arguments
 while [[ $# -gt 0 ]]; do
@@ -16,10 +17,15 @@ while [[ $# -gt 0 ]]; do
             AUTO_YES=true
             shift
             ;;
+        --skip-system-npm)
+            SKIP_SYSTEM_NPM=true
+            shift
+            ;;
         --help|-h)
             printf "Usage: %s [--yes|-y] [--help|-h]\n" "$0"
             printf "\nOptions:\n"
             printf "  --yes, -y        Non-interactive mode (auto-proceed with defaults)\n"
+            printf "  --skip-system-npm  Skip system-level npm check (use with caution)\n"
             printf "  --help, -h       Show this help message\n"
             exit 0
             ;;
@@ -727,7 +733,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.7.0" \
+        "Agentic Coders CLI Installer v1.7.1" \
         "Toggle: skip->install->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"
@@ -1459,6 +1465,11 @@ run_installation() {
 # System-level npm check for MCP servers (native Claude Code requirement)
 # MCP servers need system npm, not conda npm
 ensure_system_npm() {
+    if [[ "$SKIP_SYSTEM_NPM" == true ]]; then
+        printf "${YELLOW}[WARNING]${NC} Skipping system npm check (requested by flag). Claude MCP servers may not work without system npm.\n"
+        return 0
+    fi
+
     printf "${BLUE}[INFO]${NC} Checking system-level npm (outside conda)...\n"
 
     local base_path="/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/local/bin"
@@ -1515,16 +1526,16 @@ ensure_system_npm() {
     }
 
     if [[ -z "$system_npm_path" ]]; then
-        printf "${YELLOW}[WARNING]${NC} System npm not found. It must be installed at the OS level (outside conda).\n"
-        printf "Will run: ${CYAN}%s${NC}\n" "$install_cmd"
+        printf "${YELLOW}[WARNING]${NC} System npm not found. Claude MCP servers (used by Claude Code) need a system-level npm to install MCP packages.\n"
+        printf "Recommended command: ${CYAN}%s${NC}\n" "$install_cmd"
         if [[ "$AUTO_YES" == true ]]; then
-            install_system_npm || return 1
+            install_system_npm || printf "${YELLOW}[WARNING]${NC} Could not install system npm automatically; continuing, but Claude MCP may fail.\n"
         else
             printf "Install system npm now? [y/N]: "
             read -r response
             case "$response" in
-                [Yy]|[Yy][Ee][Ss]) install_system_npm || return 1 ;;
-                *) log_error "System npm is required. Aborting."; return 1 ;;
+                [Yy]|[Yy][Ee][Ss]) install_system_npm || printf "${YELLOW}[WARNING]${NC} System npm install failed; continuing, but Claude MCP may fail.\n" ;;
+                *) printf "${YELLOW}[WARNING]${NC} Proceeding without system npm. Claude MCP features may not work until you install it.\n" ;;
             esac
         fi
     elif [[ -n "$npm_version" ]]; then
@@ -1533,7 +1544,7 @@ ensure_system_npm() {
             return 0
         fi
         printf "${YELLOW}[WARNING]${NC} System npm %s is below required %s. Updating...\n" "$npm_version" "$MIN_NPM_VERSION"
-        install_system_npm || return 1
+        install_system_npm || printf "${YELLOW}[WARNING]${NC} System npm update failed; continuing, but Claude MCP may fail.\n"
     fi
 
     return 0
@@ -1782,10 +1793,8 @@ main() {
         exit 1
     fi
 
-    # Require system-level npm (outside conda) before proceeding
-    if ! ensure_system_npm; then
-        exit 1
-    fi
+    # Require system-level npm (outside conda) before proceeding (non-fatal)
+    ensure_system_npm
 
     # Initialize tool information
     initialize_tools

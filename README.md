@@ -1,4 +1,4 @@
-# Agentic CLI Installer v1.7.0
+# Agentic CLI Installer v1.7.1
 
 **Last Modified:** February 5, 2026
 
@@ -197,6 +197,10 @@ Backup location: ~/.local/bin.backup
 ```
 
 ## Change Log
+
+### v1.7.1 - February 5, 2026
+
+- **System npm optional-but-warned**: If system npm is missing or outdated and the user declines installation, the installer now warns and continues (Claude MCP features may not work). Added `--skip-system-npm` flag for automation.
 
 ### v1.7.0 - February 5, 2026
 

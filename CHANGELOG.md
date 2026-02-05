@@ -46,6 +46,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.7.1] - 2026-02-05
+
+### Changed
+
+- System npm check is now non-fatal: if installation/update is declined or fails, the installer warns and continues (Claude MCP features may not work until system npm is installed).
+- Added `--skip-system-npm` flag for automation scenarios (e.g., `auto_install_coding_tools`) to bypass the system npm check explicitly.
+
+---
+
 ## [1.6.0] - 2026-02-05
 
 ### Changed
