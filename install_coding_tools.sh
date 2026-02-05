@@ -1014,6 +1014,47 @@ get_user_selection() {
 # INSTALLATION FUNCTIONS
 #############################################
 
+oh_my_opencode_flags="--no-tui --claude=no --openai=no --gemini=no --copilot=no --opencode-zen=no --zai-coding-plan=no"
+
+install_oh_my_opencode() {
+    # Preferred runners: bunx, then npx
+    local runner=()
+    if command -v bunx >/dev/null 2>&1; then
+        runner=(bunx oh-my-opencode install $oh_my_opencode_flags)
+    elif command -v npx >/dev/null 2>&1; then
+        runner=(npx oh-my-opencode install $oh_my_opencode_flags)
+    else
+        log_warning "Skipping oh-my-opencode install: neither bunx nor npx is available."
+        return 0
+    fi
+
+    printf "  Installing oh-my-opencode via %s...\n" "${runner[0]}"
+    if "${runner[@]}"; then
+        log_success "Installed oh-my-opencode"
+    else
+        log_warning "oh-my-opencode installer failed (command: ${runner[*]}). Rerun manually with your desired providers."
+    fi
+}
+
+remove_oh_my_opencode() {
+    local runner=()
+    if command -v bunx >/dev/null 2>&1; then
+        runner=(bunx oh-my-opencode uninstall --no-tui)
+    elif command -v npx >/dev/null 2>&1; then
+        runner=(npx oh-my-opencode uninstall --no-tui)
+    else
+        log_warning "Skipping oh-my-opencode removal: neither bunx nor npx is available."
+        return 0
+    fi
+
+    printf "  Removing oh-my-opencode via %s...\n" "${runner[0]}"
+    if "${runner[@]}"; then
+        log_success "Removed oh-my-opencode"
+    else
+        log_warning "oh-my-opencode removal failed (command: ${runner[*]}). Manual cleanup may be required."
+    fi
+}
+
 install_tool() {
     local name=$1
     local manager=$2
@@ -1052,6 +1093,9 @@ install_tool() {
                 printf "Installing via npm...\n"
                 if npm install -g "$pkg"; then
                     log_success "Installed ${name}"
+                    if [[ "$pkg" == "opencode-ai" ]]; then
+                        install_oh_my_opencode
+                    fi
                     return 0
                 else
                     log_error "Failed to install ${name}"
@@ -1061,6 +1105,9 @@ install_tool() {
                 printf "Updating via npm...\n"
                 if npm install -g "$pkg@latest"; then
                     log_success "Updated ${name}"
+                    if [[ "$pkg" == "opencode-ai" ]]; then
+                        install_oh_my_opencode
+                    fi
                     return 0
                 else
                     log_error "Failed to update ${name}"
@@ -1159,6 +1206,9 @@ remove_tool() {
         npm)
             printf "Uninstalling via npm...\n"
             if npm uninstall -g "$pkg"; then
+                if [[ "$pkg" == "opencode-ai" ]]; then
+                    remove_oh_my_opencode
+                fi
                 log_success "Removed ${name}"
                 return 0
             else
@@ -1221,6 +1271,7 @@ remove_tool() {
                     rm -f "$HOME/.local/bin/opencode"
                     removed=true
                 fi
+                remove_oh_my_opencode
                 if $removed; then
                     log_success "Removed ${name}"
                     return 0
@@ -1381,6 +1432,193 @@ run_installation() {
 #############################################
 # DEPENDENCY CHECKS
 #############################################
+
+# System-level npm check for MCP servers (native Claude Code requirement)
+# MCP servers need system npm, not conda npm
+ensure_system_npm() {
+    # Check if native claude-code is in the tool list
+    local needs_native_claude=false
+    for tool in "${TOOLS[@]}"; do
+        IFS='|' read -r name manager pkg description <<< "$tool"
+        if [[ "$name" == "claude-code" && "$manager" == "native" ]]; then
+            needs_native_claude=true
+            break
+        fi
+    done
+
+    # Skip if native claude-code not selected for install
+    if [[ "$needs_native_claude" == false ]]; then
+        return 0
+    fi
+
+    # Check if claude is already installed (MCP servers are only needed if claude exists)
+    if ! command -v claude >/dev/null 2>&1; then
+        # Claude not installed yet, will check after installation
+        return 0
+    fi
+
+    printf "${BLUE}[INFO]${NC} Checking system-level npm (required for MCP servers)...\n"
+
+    # Check for system npm (outside conda)
+    local system_npm_path=""
+    local npm_version=""
+
+    # Try to find npm outside of conda environments
+    if [[ -n "$CONDA_PREFIX" ]]; then
+        # We're in a conda environment, need to check system npm
+        # Temporarily modify PATH to exclude conda
+        local temp_path="$PATH"
+        export PATH="/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin"
+
+        if command -v npm >/dev/null 2>&1; then
+            system_npm_path=$(command -v npm)
+            npm_version=$(npm --version 2>/dev/null | head -n1 || true)
+        fi
+
+        # Restore PATH
+        export PATH="$temp_path"
+    else
+        # Not in conda, just check normally
+        if command -v npm >/dev/null 2>&1; then
+            system_npm_path=$(command -v npm)
+            npm_version=$(npm --version 2>/dev/null | head -n1 || true)
+        fi
+    fi
+
+    if [[ -z "$system_npm_path" ]]; then
+        printf "${YELLOW}[WARNING]${NC} System-level npm not found (required for MCP servers).\n"
+        printf "MCP servers used by Claude Code require npm at the system level.\n"
+        printf "\nInstall npm system-wide?\n"
+        printf "  ${CYAN}curl -q https://www.npmjs.com/install.sh | sudo bash${NC}\n\n"
+
+        if [[ "$AUTO_YES" == true ]]; then
+            printf "${YELLOW}[AUTO-YES]${NC} Installing system npm...\n"
+            if command -v sudo >/dev/null 2>&1; then
+                # Validate sudo access before attempting installation
+                if ! sudo -v >/dev/null 2>&1; then
+                    log_error "sudo authentication failed. Please run: sudo -v to authenticate"
+                    return 1
+                fi
+                printf "${BLUE}[INFO]${NC} sudo access validated. Proceeding with npm installation...\n"
+                if curl -q https://www.npmjs.com/install.sh 2>/dev/null | sudo bash; then
+                    log_success "System npm installed"
+                    return 0
+                else
+                    log_error "Failed to install system npm"
+                    return 1
+                fi
+            else
+                log_error "sudo not available. Please install npm manually:"
+                printf "  ${CYAN}curl -q https://www.npmjs.com/install.sh | sudo bash${NC}\n"
+                return 1
+            fi
+        else
+            printf "Install system npm now? [y/N]: "
+            read -r response
+            case "$response" in
+                [Yy]|[Yy][Ee][Ss])
+                    if command -v sudo >/dev/null 2>&1; then
+                        # Validate sudo access before attempting installation
+                        printf "\n${BLUE}[INFO]${NC} Validating sudo access (you may be asked for your password)...\n"
+                        if ! sudo -v >/dev/null 2>&1; then
+                            log_error "sudo authentication failed or was cancelled."
+                            return 1
+                        fi
+                        printf "${GREEN}[OK]${NC} sudo access validated.\n"
+                        printf "${BLUE}[INFO]${NC} Installing npm system-wide...\n"
+                        if curl -q https://www.npmjs.com/install.sh 2>/dev/null | sudo bash; then
+                            log_success "System npm installed"
+                            return 0
+                        else
+                            log_error "Failed to install system npm"
+                            return 1
+                        fi
+                        if curl -q https://www.npmjs.com/install.sh 2>/dev/null | sudo bash; then
+                            log_success "System npm installed"
+                            return 0
+                        else
+                            log_error "Failed to install system npm"
+                            return 1
+                        fi
+                    else
+                        log_error "sudo not available. Please install npm manually:"
+                        printf "  ${CYAN}curl -q https://www.npmjs.com/install.sh | sudo bash${NC}\n"
+                        return 1
+                    fi
+                    ;;
+                *)
+                    log_warning "Skipping system npm installation. MCP servers may not work."
+                    return 0
+                    ;;
+            esac
+        fi
+    elif [[ -n "$npm_version" ]]; then
+        # Check version
+        printf "${BLUE}[INFO]${NC} System npm found: ${npm_version} (at ${system_npm_path})\n"
+
+        # Ubuntu 24.04's npm is often outdated - check if version is too old
+        if ! version_ge "$npm_version" "$MIN_NPM_VERSION"; then
+            printf "${YELLOW}[WARNING]${NC} System npm version ${npm_version} is below ${MIN_NPM_VERSION}\n"
+            printf "Update npm system-wide?\n"
+            printf "  ${CYAN}curl -q https://www.npmjs.com/install.sh | sudo bash${NC}\n\n"
+
+            if [[ "$AUTO_YES" == true ]]; then
+                printf "${YELLOW}[AUTO-YES]${NC} Updating system npm...\n"
+                if command -v sudo >/dev/null 2>&1; then
+                    # Validate sudo access before attempting update
+                    if ! sudo -v >/dev/null 2>&1; then
+                        log_error "sudo authentication failed. Please run: sudo -v to authenticate"
+                        return 1
+                    fi
+                    printf "${BLUE}[INFO]${NC} sudo access validated. Proceeding with npm update...\n"
+                    if curl -q https://www.npmjs.com/install.sh 2>/dev/null | sudo bash; then
+                        log_success "System npm updated"
+                        return 0
+                    else
+                        log_warning "Failed to update system npm"
+                        return 0
+                    fi
+                else
+                    log_warning "sudo not available. Please update npm manually."
+                    return 0
+                fi
+            else
+                printf "Update system npm now? [y/N]: "
+                read -r response
+                case "$response" in
+                    [Yy]|[Yy][Ee][Ss])
+                        if command -v sudo >/dev/null 2>&1; then
+                            # Validate sudo access before attempting update
+                            printf "\n${BLUE}[INFO]${NC} Validating sudo access (you may be asked for your password)...\n"
+                            if ! sudo -v >/dev/null 2>&1; then
+                                log_error "sudo authentication failed or was cancelled."
+                                return 1
+                            fi
+                            printf "${GREEN}[OK]${NC} sudo access validated.\n"
+                            printf "${BLUE}[INFO]${NC} Updating npm system-wide...\n"
+                            if curl -q https://www.npmjs.com/install.sh 2>/dev/null | sudo bash; then
+                                log_success "System npm updated"
+                                return 0
+                            else
+                                log_warning "Failed to update system npm"
+                                return 0
+                            fi
+                        else
+                            log_warning "sudo not available. Please update npm manually."
+                            return 0
+                        fi
+                        ;;
+                    *)
+                        log_warning "Skipping npm update. Some MCP servers may not work."
+                        return 0
+                        ;;
+                esac
+            fi
+        fi
+    fi
+
+    return 0
+}
 
 ensure_npm_prerequisite() {
     local has_npm_tool=0
@@ -1623,6 +1861,12 @@ main() {
         printf "Install curl: ${CYAN}sudo apt install curl${NC} (Debian/Ubuntu)\n"
         printf "              ${CYAN}sudo yum install curl${NC} (RHEL/CentOS)\n"
         exit 1
+    fi
+
+    # Check system-level npm for MCP servers (native Claude Code requirement)
+    # This must run before initialize_tools since we check for claude-code installation
+    if ! ensure_system_npm; then
+        log_warning "System npm check had issues, but continuing..."
     fi
 
     # Initialize tool information

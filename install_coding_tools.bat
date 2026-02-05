@@ -81,6 +81,7 @@ REM Action states: 0=skip, 1=install, 2=remove
 set ACTION_SKIP=0
 set ACTION_INSTALL=1
 set ACTION_REMOVE=2
+set "OHMY_FLAGS=--no-tui --claude=no --openai=no --gemini=no --copilot=no --opencode-zen=no --zai-coding-plan=no"
 
 REM Initialize tool data arrays
 for /L %%i in (1,1,%TOOLS_COUNT%) do (
@@ -177,6 +178,13 @@ set "RC=%errorlevel%"
 if not "%RC%"=="0" (
     call :die "check_curl" "%RC%"
     exit /b %RC%
+)
+
+call :dbg %BLUE%[STEP]%NC% check_system_npm
+call :check_system_npm
+REM Don't fail on system npm check, just warn
+if errorlevel 1 (
+    echo %YELLOW%[WARNING]%NC% System npm check had issues, but continuing...
 )
 
 call :dbg %BLUE%[STEP]%NC% initialize_tools
@@ -526,6 +534,90 @@ if errorlevel 1 (
     echo Install curl or use Windows 10+
     exit /b 1
 )
+exit /b 0
+
+:check_system_npm
+REM Check for system-level npm (required for MCP servers used by native Claude Code)
+REM Check if claude-code (native) is in the tool list
+set "CHECK_NATIVE_CLAUDE=0"
+for /L %%i in (1,1,%TOOLS_COUNT%) do (
+    call set "MGR_CHECK=%%MGR_%%i%%"
+    call set "PKG_CHECK=%%PKG_%%i%%"
+    if /I "!MGR_CHECK!"=="native" if /I "!PKG_CHECK!"=="claude-code" set "CHECK_NATIVE_CLAUDE=1"
+)
+
+REM Only check if native claude-code is present
+if "!CHECK_NATIVE_CLAUDE!"=="0" exit /b 0
+
+REM Check if claude is already installed
+where claude >nul 2>nul
+if errorlevel 1 exit /b 0
+
+echo %BLUE%[INFO]%NC% Checking system-level npm ^(required for MCP servers^)...
+
+REM Check for npm outside of conda
+set "SYSTEM_NPM_FOUND=0"
+set "SYSTEM_NPM_VERSION="
+
+REM Temporarily modify PATH to exclude conda
+set "ORIGINAL_PATH=%PATH%"
+REM Check if we're in conda by looking for conda in PATH
+if defined CONDA_PREFIX (
+    REM Remove conda paths from PATH for system npm check
+    set "PATH=%PATH%"
+    set "PATH=%PATH:C:\ProgramData\anaconda3;=%"
+    set "PATH=%PATH:C:\ProgramData\anaconda3\Scripts;=%"
+    set "PATH=%PATH:C:\ProgramData\anaconda3\Library\bin;=%"
+    set "PATH=%PATH:%CONDA_PREFIX%\Scripts;=%"
+    set "PATH=%PATH:%CONDA_PREFIX%\Library\bin;=%"
+)
+
+where npm >nul 2>nul
+if not errorlevel 1 (
+    set "SYSTEM_NPM_FOUND=1"
+    for /f "delims=" %%v in ('npm --version 2^>nul') do set "SYSTEM_NPM_VERSION=%%v"
+)
+
+REM Restore PATH
+set "PATH=%ORIGINAL_PATH%"
+
+if "!SYSTEM_NPM_FOUND!"=="0" (
+    echo %YELLOW%[WARNING]%NC% System-level npm not found ^(required for MCP servers^).
+    echo MCP servers used by Claude Code require npm at the system level.
+    echo.
+    echo Install Node.js ^(includes npm^) from: https://nodejs.org/
+    echo Or use winget: %CYAN%winget install OpenJS.NodeJS%NC%
+    echo.
+    if "%AUTO_YES%"=="1" (
+        echo %YELLOW%[AUTO-YES]%NC% Skipping system npm installation in non-interactive mode.
+        echo Please install Node.js manually and re-run.
+    ) else (
+        echo Press Enter to continue without system npm ^(MCP servers may not work^)...
+        set /p "input=> "
+    )
+    exit /b 0
+)
+
+if defined SYSTEM_NPM_VERSION (
+    echo %BLUE%[INFO]%NC% System npm found: !SYSTEM_NPM_VERSION!
+
+    REM Check if version is too old
+    powershell -NoProfile -Command "try { if ([version]'%SYSTEM_NPM_VERSION%' -lt [version]'%MIN_NPM_VERSION%') { exit 1 } else { exit 0 } } catch { exit 1 }" >nul 2>nul
+    if errorlevel 1 (
+        echo %YELLOW%[WARNING]%NC% System npm version !SYSTEM_NPM_VERSION! is below %MIN_NPM_VERSION%
+        echo.
+        echo Update Node.js/npm from: https://nodejs.org/
+        echo Or use winget: %CYAN%winget upgrade OpenJS.NodeJS%NC%
+        echo.
+        if "%AUTO_YES%"=="1" (
+            echo %YELLOW%[AUTO-YES]%NC% Skipping npm update in non-interactive mode.
+        ) else (
+            echo Press Enter to continue without updating ^(some MCP servers may not work^)...
+            set /p "input=> "
+        )
+    )
+)
+
 exit /b 0
 
 :download_claude_installer
@@ -1596,13 +1688,42 @@ set "remove_fail=0"
 		echo   Installing via npm...
 		call :dbg   %BLUE%[DEBUG]%NC% run: npm install -g "!pkg!"
 		call npm install -g "!pkg!"
-		exit /b %errorlevel%
+		set "RC=%errorlevel%"
+		if not "%RC%"=="0" exit /b %RC%
+		if /I "!pkg!"=="opencode-ai" call :install_oh_my_opencode
+		exit /b 0
 
 :install_tool_npm_update
 		echo   Updating via npm...
 		call :dbg   %BLUE%[DEBUG]%NC% run: npm install -g "!pkg!@latest"
 		call npm install -g "!pkg!@latest"
-		exit /b %errorlevel%
+		set "RC=%errorlevel%"
+		if not "%RC%"=="0" exit /b %RC%
+		if /I "!pkg!"=="opencode-ai" call :install_oh_my_opencode
+		exit /b 0
+
+:install_oh_my_opencode
+		echo   Installing oh-my-opencode plugin...
+		set "OHMY_RUNNER="
+		where bunx >nul 2>nul
+		if not errorlevel 1 set "OHMY_RUNNER=bunx oh-my-opencode install %OHMY_FLAGS%"
+		if not defined OHMY_RUNNER (
+		    where npx >nul 2>nul
+		    if not errorlevel 1 set "OHMY_RUNNER=npx oh-my-opencode install %OHMY_FLAGS%"
+		)
+		if not defined OHMY_RUNNER (
+		    echo   %YELLOW%[WARNING]%NC% Skipping oh-my-opencode: bunx/npx not found
+		    exit /b 0
+		)
+		for /f "tokens=1" %%r in ("%OHMY_RUNNER%") do set "OHMY_EXE=%%r"
+		call :dbg   %BLUE%[DEBUG]%NC% run: %OHMY_RUNNER%
+		call %OHMY_RUNNER%
+		if errorlevel 1 (
+		    echo   %YELLOW%[WARNING]%NC% oh-my-opencode installer failed ^(command: %OHMY_RUNNER%^)
+		) else (
+		    echo   %GREEN%[SUCCESS]%NC% Installed oh-my-opencode via %OHMY_EXE%
+		)
+		exit /b 0
 	
 :remove_tool
 	set "idx=%~1"
@@ -1633,10 +1754,11 @@ if /I "!mgr!"=="npm-self" (
     echo   Uninstalling via uv...
     call :dbg   %BLUE%[DEBUG]%NC% run: uv tool uninstall "!pkg!"
     call uv tool uninstall "!pkg!"
-		) else if /I "!mgr!"=="native" (
-		    if /I "!pkg!"=="claude-code" (
-			        echo   Uninstalling native...
-		        call :dbg   %BLUE%[DEBUG]%NC% remove: %USERPROFILE%\.local\bin\claude.exe
+    exit /b %errorlevel%
+) else if /I "!mgr!"=="native" (
+    if /I "!pkg!"=="claude-code" (
+        echo   Uninstalling native...
+        call :dbg   %BLUE%[DEBUG]%NC% remove: %USERPROFILE%\.local\bin\claude.exe
         if exist "%USERPROFILE%\.local\bin\claude.exe" (
             del "%USERPROFILE%\.local\bin\claude.exe" >nul 2>nul
         )
@@ -1644,17 +1766,43 @@ if /I "!mgr!"=="npm-self" (
             rmdir /s /q "%USERPROFILE%\.local\share\claude" >nul 2>nul
         )
         REM Check if removal was successful
-	        if exist "%USERPROFILE%\.local\bin\claude.exe" (
-	            echo %RED%[ERROR]%NC% Failed to remove Claude Code binary
-	            exit /b 1
-	        )
-	    )
-		) else (
+        if exist "%USERPROFILE%\.local\bin\claude.exe" (
+            echo %RED%[ERROR]%NC% Failed to remove Claude Code binary
+            exit /b 1
+        )
+    )
+    exit /b 0
+) else (
     echo   Uninstalling via npm...
     call :dbg   %BLUE%[DEBUG]%NC% run: npm uninstall -g "!pkg!"
     call npm uninstall -g "!pkg!"
+    set "RC=%errorlevel%"
+    if "%RC%"=="0" if /I "!pkg!"=="opencode-ai" call :remove_oh_my_opencode
+    exit /b %RC%
 )
-exit /b %errorlevel%
+
+:remove_oh_my_opencode
+    echo   Removing oh-my-opencode plugin...
+    set "OHMY_RUNNER="
+    where bunx >nul 2>nul
+    if not errorlevel 1 set "OHMY_RUNNER=bunx oh-my-opencode uninstall --no-tui"
+    if not defined OHMY_RUNNER (
+        where npx >nul 2>nul
+        if not errorlevel 1 set "OHMY_RUNNER=npx oh-my-opencode uninstall --no-tui"
+    )
+    if not defined OHMY_RUNNER (
+        echo   %YELLOW%[WARNING]%NC% Skipping oh-my-opencode removal: bunx/npx not found
+        exit /b 0
+    )
+    for /f "tokens=1" %%r in ("%OHMY_RUNNER%") do set "OHMY_EXE=%%r"
+    call :dbg   %BLUE%[DEBUG]%NC% run: %OHMY_RUNNER%
+    call %OHMY_RUNNER%
+    if errorlevel 1 (
+        echo   %YELLOW%[WARNING]%NC% oh-my-opencode removal failed ^(command: %OHMY_RUNNER%^)
+    ) else (
+        echo   %GREEN%[SUCCESS]%NC% Removed oh-my-opencode via %OHMY_EXE%
+    )
+    exit /b 0
 
 :get_installed_uv_version2
 set "pkg=%~1"

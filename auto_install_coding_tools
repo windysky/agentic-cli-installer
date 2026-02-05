@@ -34,9 +34,14 @@ fi
 # Loop through each environment and run install_coding_tools.sh
 for env in $envs; do
     echo "Activating environment: $env"
+    # Conda activation scripts can rely on unset variables; temporarily disable nounset
+    set +u
     conda activate "$env"
+    set -u
     "$INSTALLER_SH" --yes
+    set +u
     conda deactivate
+    set -u
     echo "Finished processing: $env"
     echo ""
 done
