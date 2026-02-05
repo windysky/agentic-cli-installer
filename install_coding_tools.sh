@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.5.1
+# Agentic Coders Installer v1.6.0
 # Interactive installer for AI coding CLI tools
 #############################################
 
@@ -637,15 +637,6 @@ prefetch_latest_versions() {
 #############################################
 
 initialize_tools() {
-    # Conditionally add npm to the tool list (only if detected)
-    if command -v npm >/dev/null 2>&1; then
-        TOOL_NAMES+=("npm")
-        TOOL_MANAGERS+=("npm-self")
-        TOOL_PACKAGES+=("npm")
-        TOOL_DESCRIPTIONS+=("npm (Node Package Manager)")
-        UPDATE_ONLY+=(1)  # npm is update-only
-    fi
-
     # Add regular tools
     for tool_info in "${TOOLS[@]}"; do
         IFS='|' read -r name manager pkg description <<< "$tool_info"
@@ -704,7 +695,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.5.1" \
+        "Agentic Coders CLI Installer v1.6.0" \
         "Toggle: skip->install->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"
@@ -1436,309 +1427,88 @@ run_installation() {
 # System-level npm check for MCP servers (native Claude Code requirement)
 # MCP servers need system npm, not conda npm
 ensure_system_npm() {
-    # Check if native claude-code is in the tool list
-    local needs_native_claude=false
-    for tool in "${TOOLS[@]}"; do
-        IFS='|' read -r name manager pkg description <<< "$tool"
-        if [[ "$name" == "claude-code" && "$manager" == "native" ]]; then
-            needs_native_claude=true
-            break
-        fi
-    done
+    printf "${BLUE}[INFO]${NC} Checking system-level npm (outside conda)...\n"
 
-    # Skip if native claude-code not selected for install
-    if [[ "$needs_native_claude" == false ]]; then
-        return 0
-    fi
-
-    # Check if claude is already installed (MCP servers are only needed if claude exists)
-    if ! command -v claude >/dev/null 2>&1; then
-        # Claude not installed yet, will check after installation
-        return 0
-    fi
-
-    printf "${BLUE}[INFO]${NC} Checking system-level npm (required for MCP servers)...\n"
-
-    # Check for system npm (outside conda)
+    local base_path="/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/local/bin"
+    local original_path="$PATH"
     local system_npm_path=""
     local npm_version=""
 
-    # Try to find npm outside of conda environments
-    if [[ -n "$CONDA_PREFIX" ]]; then
-        # We're in a conda environment, need to check system npm
-        # Temporarily modify PATH to exclude conda
-        local temp_path="$PATH"
-        export PATH="/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin"
+    # Prefer system locations by temporarily removing conda from PATH
+    PATH="$base_path"
+    if command -v npm >/dev/null 2>&1; then
+        system_npm_path=$(command -v npm)
+        npm_version=$(npm --version 2>/dev/null | head -n1 || true)
+    fi
+    PATH="$original_path"
 
-        if command -v npm >/dev/null 2>&1; then
-            system_npm_path=$(command -v npm)
-            npm_version=$(npm --version 2>/dev/null | head -n1 || true)
-        fi
-
-        # Restore PATH
-        export PATH="$temp_path"
-    else
-        # Not in conda, just check normally
-        if command -v npm >/dev/null 2>&1; then
-            system_npm_path=$(command -v npm)
-            npm_version=$(npm --version 2>/dev/null | head -n1 || true)
-        fi
+    # If npm resolves inside conda, treat as missing (we require system-level npm)
+    if [[ -n "$CONDA_PREFIX" && -n "$system_npm_path" && "$system_npm_path" == "$CONDA_PREFIX"* ]]; then
+        system_npm_path=""
+        npm_version=""
     fi
 
-    if [[ -z "$system_npm_path" ]]; then
-        printf "${YELLOW}[WARNING]${NC} System-level npm not found (required for MCP servers).\n"
-        printf "MCP servers used by Claude Code require npm at the system level.\n"
-        printf "\nInstall npm system-wide?\n"
-        printf "  ${CYAN}curl -q https://www.npmjs.com/install.sh | sudo bash${NC}\n\n"
+    local install_cmd="curl -q https://www.npmjs.com/install.sh | sudo bash"
 
-        if [[ "$AUTO_YES" == true ]]; then
-            printf "${YELLOW}[AUTO-YES]${NC} Installing system npm...\n"
-            if command -v sudo >/dev/null 2>&1; then
-                # Validate sudo access before attempting installation
-                if ! sudo -v >/dev/null 2>&1; then
-                    log_error "sudo authentication failed. Please run: sudo -v to authenticate"
-                    return 1
-                fi
-                printf "${BLUE}[INFO]${NC} sudo access validated. Proceeding with npm installation...\n"
-                if curl -q https://www.npmjs.com/install.sh 2>/dev/null | sudo bash; then
-                    log_success "System npm installed"
-                    return 0
-                else
-                    log_error "Failed to install system npm"
-                    return 1
-                fi
-            else
-                log_error "sudo not available. Please install npm manually:"
-                printf "  ${CYAN}curl -q https://www.npmjs.com/install.sh | sudo bash${NC}\n"
-                return 1
+    install_system_npm() {
+        if ! command -v sudo >/dev/null 2>&1; then
+            log_error "sudo not available. Please install npm manually:"
+            printf "  ${CYAN}%s${NC}\n" "$install_cmd"
+            return 1
+        fi
+        printf "${BLUE}[INFO]${NC} Validating sudo access (you may be prompted for your password)...\n"
+        if ! sudo -v >/dev/null 2>&1; then
+            log_error "sudo authentication failed or was cancelled."
+            return 1
+        fi
+        printf "${BLUE}[INFO]${NC} Installing/Updating npm system-wide...\n"
+        if curl -q https://www.npmjs.com/install.sh 2>/dev/null | sudo bash; then
+            hash -r npm 2>/dev/null || true
+            PATH="$base_path:$original_path"
+            if command -v npm >/dev/null 2>&1; then
+                system_npm_path=$(command -v npm)
+                npm_version=$(npm --version 2>/dev/null | head -n1 || true)
             fi
+            if [[ -n "$npm_version" ]]; then
+                log_success "System npm ready (${npm_version}) at ${system_npm_path}"
+                return 0
+            fi
+            log_error "npm installation finished but npm not found on PATH."
+            return 1
+        else
+            log_error "Failed to install/update system npm"
+            return 1
+        fi
+    }
+
+    if [[ -z "$system_npm_path" ]]; then
+        printf "${YELLOW}[WARNING]${NC} System npm not found. It must be installed at the OS level (outside conda).\n"
+        printf "Will run: ${CYAN}%s${NC}\n" "$install_cmd"
+        if [[ "$AUTO_YES" == true ]]; then
+            install_system_npm || return 1
         else
             printf "Install system npm now? [y/N]: "
             read -r response
             case "$response" in
-                [Yy]|[Yy][Ee][Ss])
-                    if command -v sudo >/dev/null 2>&1; then
-                        # Validate sudo access before attempting installation
-                        printf "\n${BLUE}[INFO]${NC} Validating sudo access (you may be asked for your password)...\n"
-                        if ! sudo -v >/dev/null 2>&1; then
-                            log_error "sudo authentication failed or was cancelled."
-                            return 1
-                        fi
-                        printf "${GREEN}[OK]${NC} sudo access validated.\n"
-                        printf "${BLUE}[INFO]${NC} Installing npm system-wide...\n"
-                        if curl -q https://www.npmjs.com/install.sh 2>/dev/null | sudo bash; then
-                            log_success "System npm installed"
-                            return 0
-                        else
-                            log_error "Failed to install system npm"
-                            return 1
-                        fi
-                        if curl -q https://www.npmjs.com/install.sh 2>/dev/null | sudo bash; then
-                            log_success "System npm installed"
-                            return 0
-                        else
-                            log_error "Failed to install system npm"
-                            return 1
-                        fi
-                    else
-                        log_error "sudo not available. Please install npm manually:"
-                        printf "  ${CYAN}curl -q https://www.npmjs.com/install.sh | sudo bash${NC}\n"
-                        return 1
-                    fi
-                    ;;
-                *)
-                    log_warning "Skipping system npm installation. MCP servers may not work."
-                    return 0
-                    ;;
+                [Yy]|[Yy][Ee][Ss]) install_system_npm || return 1 ;;
+                *) log_error "System npm is required. Aborting."; return 1 ;;
             esac
         fi
     elif [[ -n "$npm_version" ]]; then
-        # Check version
-        printf "${BLUE}[INFO]${NC} System npm found: ${npm_version} (at ${system_npm_path})\n"
-
-        # Ubuntu 24.04's npm is often outdated - check if version is too old
-        if ! version_ge "$npm_version" "$MIN_NPM_VERSION"; then
-            printf "${YELLOW}[WARNING]${NC} System npm version ${npm_version} is below ${MIN_NPM_VERSION}\n"
-            printf "Update npm system-wide?\n"
-            printf "  ${CYAN}curl -q https://www.npmjs.com/install.sh | sudo bash${NC}\n\n"
-
-            if [[ "$AUTO_YES" == true ]]; then
-                printf "${YELLOW}[AUTO-YES]${NC} Updating system npm...\n"
-                if command -v sudo >/dev/null 2>&1; then
-                    # Validate sudo access before attempting update
-                    if ! sudo -v >/dev/null 2>&1; then
-                        log_error "sudo authentication failed. Please run: sudo -v to authenticate"
-                        return 1
-                    fi
-                    printf "${BLUE}[INFO]${NC} sudo access validated. Proceeding with npm update...\n"
-                    if curl -q https://www.npmjs.com/install.sh 2>/dev/null | sudo bash; then
-                        log_success "System npm updated"
-                        return 0
-                    else
-                        log_warning "Failed to update system npm"
-                        return 0
-                    fi
-                else
-                    log_warning "sudo not available. Please update npm manually."
-                    return 0
-                fi
-            else
-                printf "Update system npm now? [y/N]: "
-                read -r response
-                case "$response" in
-                    [Yy]|[Yy][Ee][Ss])
-                        if command -v sudo >/dev/null 2>&1; then
-                            # Validate sudo access before attempting update
-                            printf "\n${BLUE}[INFO]${NC} Validating sudo access (you may be asked for your password)...\n"
-                            if ! sudo -v >/dev/null 2>&1; then
-                                log_error "sudo authentication failed or was cancelled."
-                                return 1
-                            fi
-                            printf "${GREEN}[OK]${NC} sudo access validated.\n"
-                            printf "${BLUE}[INFO]${NC} Updating npm system-wide...\n"
-                            if curl -q https://www.npmjs.com/install.sh 2>/dev/null | sudo bash; then
-                                log_success "System npm updated"
-                                return 0
-                            else
-                                log_warning "Failed to update system npm"
-                                return 0
-                            fi
-                        else
-                            log_warning "sudo not available. Please update npm manually."
-                            return 0
-                        fi
-                        ;;
-                    *)
-                        log_warning "Skipping npm update. Some MCP servers may not work."
-                        return 0
-                        ;;
-                esac
-            fi
+        if version_ge "$npm_version" "$MIN_NPM_VERSION"; then
+            printf "${BLUE}[INFO]${NC} System npm found: %s (at %s)\n" "$npm_version" "$system_npm_path"
+            return 0
         fi
+        printf "${YELLOW}[WARNING]${NC} System npm %s is below required %s. Updating...\n" "$npm_version" "$MIN_NPM_VERSION"
+        install_system_npm || return 1
     fi
 
     return 0
 }
 
 ensure_npm_prerequisite() {
-    local has_npm_tool=0
-    for tool in "${TOOLS[@]}"; do
-        IFS='|' read -r _ manager _ _ <<< "$tool"
-        if [[ "$manager" == "npm" ]]; then
-            has_npm_tool=1
-            break
-        fi
-    done
-
-    if [[ "$has_npm_tool" -eq 0 ]]; then
-        return 0
-    fi
-
-    # Helper function to get npm from conda environment directly
-    get_conda_npm_path() {
-        if [[ -n "$CONDA_PREFIX" ]]; then
-            echo "$CONDA_PREFIX/bin/npm"
-        elif [[ -n "$CONDA_DEFAULT_ENV" ]]; then
-            # Try to find conda prefix from environment name
-            local conda_root
-            conda_root=$(conda info --base 2>/dev/null || true)
-            if [[ -n "$conda_root" ]]; then
-                echo "$conda_root/envs/$CONDA_DEFAULT_ENV/bin/npm"
-            fi
-        fi
-    }
-
-    # Helper function to get npm version from specific path
-    get_npm_version_from_path() {
-        local npm_path=$1
-        if [[ -x "$npm_path" ]]; then
-            "$npm_path" --version 2>/dev/null | head -n1 || true
-        fi
-    }
-
-    local conda_npm
-    conda_npm=$(get_conda_npm_path)
-
-    if ! command -v npm >/dev/null 2>&1; then
-        # Check if we're in a conda environment
-        if [[ -n "$CONDA_DEFAULT_ENV" && -n "$conda_npm" ]]; then
-            log_warning "npm is not installed but required for npm-managed tools."
-            printf "Attempting to install Node.js ${MIN_NODEJS_VERSION}+ via conda...\n"
-            if conda install -y -c conda-forge "nodejs>=${MIN_NODEJS_VERSION}"; then
-                # Clear any command hash cache
-                hash -r npm 2>/dev/null || true
-                # Verify using the conda npm directly
-                if [[ -x "$conda_npm" ]]; then
-                    local npm_version
-                    npm_version=$(get_npm_version_from_path "$conda_npm")
-                    log_success "Node.js + npm ${npm_version} installed via conda"
-                    return 0
-                else
-                    log_error "npm installation via conda appeared successful but npm is still not available at: $conda_npm"
-                    return 1
-                fi
-            else
-                log_error "Failed to install Node.js via conda."
-                printf "Install Node.js + npm manually:\n"
-                printf "  ${CYAN}macOS${NC}:           ${YELLOW}brew install node${NC}\n"
-                printf "  ${CYAN}Debian/Ubuntu${NC}:   ${YELLOW}curl -fsSL https://deb.nodesource.com/setup_current.x | sudo -E bash - && sudo apt-get install -y nodejs${NC}\n"
-                printf "  ${CYAN}Other platforms${NC}: ${YELLOW}https://docs.npmjs.com/downloading-and-installing-node-js-and-npm${NC}\n"
-                return 1
-            fi
-        else
-            log_warning "npm is not installed but required for npm-managed tools."
-            printf "Install Node.js ${MIN_NPM_VERSION}+ before continuing:\n"
-            printf "  ${CYAN}macOS${NC}:           ${YELLOW}brew install node${NC}\n"
-            printf "  ${CYAN}Debian/Ubuntu${NC}:   ${YELLOW}curl -fsSL https://deb.nodesource.com/setup_current.x | sudo -E bash - && sudo apt-get install -y nodejs${NC}\n"
-            printf "  ${CYAN}Other platforms${NC}: ${YELLOW}https://docs.npmjs.com/downloading-and-installing-node-js-and-npm${NC}\n"
-            return 1
-        fi
-    fi
-
-    local npm_version
-    npm_version=$(npm --version 2>/dev/null | head -n1 || true)
-    if [[ -z "$npm_version" ]]; then
-        log_error "Unable to determine npm version."
-        return 1
-    fi
-
-    if version_ge "$npm_version" "$MIN_NPM_VERSION"; then
-        printf "${BLUE}[INFO]${NC} npm version %s detected (minimum required: %s)\n" "$npm_version" "$MIN_NPM_VERSION"
-        return 0
-    fi
-
-    # Version is too old, try to update via conda if available
-    if [[ -n "$CONDA_DEFAULT_ENV" && -n "$conda_npm" ]]; then
-        log_warning "npm version $npm_version is below required $MIN_NPM_VERSION. Updating via conda..."
-        if conda install -y -c conda-forge "nodejs>=${MIN_NODEJS_VERSION}" --force-reinstall; then
-            # Clear command hash cache
-            hash -r npm 2>/dev/null || true
-            # Verify using the conda npm directly
-            local updated_version
-            updated_version=$(get_npm_version_from_path "$conda_npm")
-            if [[ -n "$updated_version" ]] && version_ge "$updated_version" "$MIN_NPM_VERSION"; then
-                log_success "Node.js + npm updated to version ${updated_version} via conda"
-                return 0
-            else
-                log_error "Conda update completed but version is still insufficient: ${updated_version:-unknown}"
-                return 1
-            fi
-        else
-            log_warning "Conda update failed, trying npm self-update..."
-        fi
-    fi
-
-    # Fallback to npm self-update (only if we have a compatible node version)
-    log_warning "npm version $npm_version is below required $MIN_NPM_VERSION. Attempting to update via npm..."
-    if npm install -g npm@latest; then
-        local updated_version
-        updated_version=$(npm --version 2>/dev/null | head -n1 || true)
-        log_success "npm updated to version ${updated_version:-unknown}."
-        return 0
-    else
-        log_error "npm update failed. Please run: npm install -g npm@latest"
-        return 1
-    fi
+    # System npm is handled up front by ensure_system_npm
+    return 0
 }
 
 check_dependencies() {
@@ -1777,7 +1547,7 @@ check_dependencies() {
         printf "\n"
         printf "Install missing dependencies:\n"
         printf "  ${CYAN}uv${NC}:   ${YELLOW}curl -LsSf https://astral.sh/uv/install.sh | sh${NC}\n"
-        printf "  ${CYAN}npm${NC}:   ${YELLOW}https://docs.npmjs.com/downloading-and-installing-node-js-and-npm${NC}\n"
+        printf "  ${CYAN}npm${NC}:  ${YELLOW}curl -q https://www.npmjs.com/install.sh | sudo bash${NC}\n"
         printf "  ${CYAN}curl${NC}: ${YELLOW}sudo apt install curl${NC} (Debian/Ubuntu)\n"
         return 1
     fi
@@ -1787,12 +1557,8 @@ check_dependencies() {
 
 selection_requires_npm() {
     for i in "${!TOOL_NAMES[@]}"; do
-        if [[ "${SELECTED[$i]}" -eq 1 ]]; then
-            case "${TOOL_MANAGERS[$i]}" in
-                npm|npm-self)
-                    return 0
-                    ;;
-            esac
+        if [[ "${SELECTED[$i]}" -eq 1 && "${TOOL_MANAGERS[$i]}" == "npm" ]]; then
+            return 0
         fi
     done
     return 1
@@ -1863,10 +1629,9 @@ main() {
         exit 1
     fi
 
-    # Check system-level npm for MCP servers (native Claude Code requirement)
-    # This must run before initialize_tools since we check for claude-code installation
+    # Require system-level npm (outside conda) before proceeding
     if ! ensure_system_npm; then
-        log_warning "System npm check had issues, but continuing..."
+        exit 1
     fi
 
     # Initialize tool information
@@ -1880,13 +1645,6 @@ main() {
 
     # Confirm removals if any
     confirm_removals
-
-    # Ensure npm is available and recent if any npm tools are selected
-    if selection_requires_npm; then
-        if ! ensure_npm_prerequisite; then
-            exit 1
-        fi
-    fi
 
     # Ensure uv is available if any uv tools are selected
     if selection_requires_uv; then

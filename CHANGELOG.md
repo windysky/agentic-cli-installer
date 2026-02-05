@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-02-05
+
+### Changed
+
+- System npm is now required and checked at startup on macOS/Linux/WSL; if missing or outdated, it is installed/updated via `curl -q https://www.npmjs.com/install.sh | sudo bash`.
+- npm is no longer listed as an installable tool inside the interactive menu; only user-facing CLIs remain.
+
+### Fixed
+
+- Simplified npm prerequisite handling to avoid conda-only npm paths and ensure system-level availability.
+
+---
+
 ## [1.5.1] - 2026-02-04
 
 ### Fixed

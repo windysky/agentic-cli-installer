@@ -1,6 +1,6 @@
-# Agentic CLI Installer v1.5.1
+# Agentic CLI Installer v1.6.0
 
-**Last Modified:** February 4, 2026
+**Last Modified:** February 5, 2026
 
 An interactive installer that manages multiple AI coding CLI tools from one place. It detects installed versions, fetches latest versions, and lets you install, update, or remove tools in a single run.
 
@@ -197,6 +197,11 @@ Backup location: ~/.local/bin.backup
 ```
 
 ## Change Log
+
+### v1.6.0 - February 5, 2026
+
+- **System npm required**: The shell installer now checks for system-level npm (outside conda) at startup and auto-installs/updates it via `curl -q https://www.npmjs.com/install.sh | sudo bash` if missing or outdated.
+- **Simplified tool list**: npm is no longer presented as an installable/updateable tool inside the menu; only user-facing CLIs remain.
 
 ### v1.5.1 - February 4, 2026
 

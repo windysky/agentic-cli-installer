@@ -6,7 +6,7 @@ REM
 REM Usage:
 REM   setup.bat
 REM
-REM Version: 1.5.1
+REM Version: 1.6.0
 REM License: MIT
 REM ###############################################
 
