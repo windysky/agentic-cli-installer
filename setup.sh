@@ -17,7 +17,7 @@
 #   --configure-path    Add ~/.local/bin to PATH in shell config
 #   --force             Skip confirmation prompts
 #
-# Version: 1.6.0
+# Version: 1.7.0
 # License: MIT
 
 set -euo pipefail
@@ -32,7 +32,14 @@ SOURCE_SCRIPT_BAT="${SCRIPT_DIR}/install_coding_tools.bat"
 SOURCE_SCRIPT_AUTO="${SCRIPT_DIR}/auto_install_coding_tools"
 TARGET_DIR="${HOME}/.local/bin"
 BACKUP_DIR="${HOME}/.local/bin.backup"
+
+# Generate timestamp and validate format (YYYYMMDD_HHMMSS)
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+if [[ ! "$TIMESTAMP" =~ ^[0-9]{8}_[0-9]{6}$ ]]; then
+    error "Failed to generate valid timestamp"
+    exit 1
+fi
+
 FORCE="false"
 
 # Colors for output

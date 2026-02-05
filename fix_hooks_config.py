@@ -14,6 +14,13 @@ from pathlib import Path
 def fix_hooks_config(settings_path: Path) -> bool:
     """Fix hooks configuration in settings.json file."""
     try:
+        # Validate file size before processing (max 10MB to prevent memory exhaustion)
+        MAX_JSON_SIZE = 10 * 1024 * 1024  # 10MB
+        file_size = settings_path.stat().st_size
+        if file_size > MAX_JSON_SIZE:
+            print(f"Error: Settings file too large ({file_size} bytes, max {MAX_JSON_SIZE} bytes)")
+            return False
+
         # Read the current settings
         with open(settings_path, 'r', encoding='utf-8') as f:
             settings = json.load(f)

@@ -14,8 +14,8 @@ else
     exit 1
 fi
 
-# Get list of conda environments, excluding 'base'
-envs=$(conda env list | grep -v "^#" | awk '{print $1}' | grep -v "^$" | grep -v "base")
+# Get list of conda environments, excluding 'base' (exact match only)
+envs=$(conda env list | grep -v "^#" | awk '{print $1}' | grep -v "^$" | awk '$1 != "base"')
 
 INSTALLER_SH="${INSTALLER_SH:-}"
 if [[ -z "$INSTALLER_SH" ]]; then

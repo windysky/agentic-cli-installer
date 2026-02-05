@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.6.0
+# Agentic Coders Installer v1.7.0
 # Interactive installer for AI coding CLI tools
 #############################################
 
@@ -198,6 +198,9 @@ run_claude_installer() {
         return 1
     fi
 
+    # Download Claude Code installer
+    # Note: This downloads from official Anthropic source over HTTPS with TLS 1.2+
+    # For additional security, consider verifying checksum if Anthropic provides one
     if ! curl -fsSL --proto '=https' --tlsv1.2 https://claude.ai/install.sh -o "$tmp"; then
         log_error "Failed to download Claude Code installer."
         rm -f "$tmp"
@@ -314,14 +317,14 @@ get_installed_uv_version() {
 
     # Method 2: If method 1 failed, try substring match (handles escaped names)
     if [[ -z "$version" ]]; then
-        # Escape special regex characters in package name
-        local escaped_pkg=$(printf '%s\n' "$pkg" | sed 's/[[\.*^$()+?{|]/\\&/g')
+        # Escape special regex characters in package name (including ])
+        local escaped_pkg=$(printf '%s\n' "$pkg" | sed 's/[[\.*^$()+?{|\\]/\\&/g')
         version=$(echo "$output" | grep -E "${escaped_pkg}[[:space:]]+v?[0-9]" | head -n1 | sed -E 's/.*[[:space:]]+v?([0-9][^[:space:]]*).*/\1/')
     fi
 
-    # Method 3: Last resort - simple grep and extract
+    # Method 3: Last resort - use word boundary matching to avoid false positives
     if [[ -z "$version" ]]; then
-        version=$(echo "$output" | grep "${pkg}" | head -n1 | awk '{print $2}' | sed 's/^v//')
+        version=$(echo "$output" | grep -w "${pkg}" | head -n1 | awk '{print $2}' | sed 's/^v//')
     fi
 
     echo "$version"
@@ -359,16 +362,19 @@ get_latest_pypi_version() {
         return 0
     fi
     # Cache-bust to avoid stale CDN responses
+    # Using both Cache-Control header and timestamp query parameter for maximum compatibility
     local cache_bust
     cache_bust=$(date +%s)
     if command -v python3 >/dev/null 2>&1; then
         {
             curl -fsSL --connect-timeout 2 --max-time 10 --retry 1 --retry-delay 0 --retry-max-time 10 \
+                -H "Cache-Control: no-cache" \
                 "https://pypi.org/pypi/${pkg}/json?ts=${cache_bust}" 2>/dev/null || echo -n ""
         } | python3 -c "import sys, json; data = sys.stdin.read().strip(); print(json.loads(data)['info']['version']) if data else None" 2>/dev/null || true
     elif command -v node >/dev/null 2>&1; then
         {
             curl -fsSL --connect-timeout 2 --max-time 10 --retry 1 --retry-delay 0 --retry-max-time 10 \
+                -H "Cache-Control: no-cache" \
                 "https://pypi.org/pypi/${pkg}/json?ts=${cache_bust}" 2>/dev/null || echo -n ""
         } | node -e "const data = require('fs').readFileSync(0, 'utf8').trim(); if(data) console.log(JSON.parse(data).info.version);" 2>/dev/null || true
     fi
@@ -380,11 +386,13 @@ get_latest_npm_version() {
         return 0
     fi
     # Cache-bust to avoid stale CDN responses
+    # Using both Cache-Control header and timestamp query parameter for maximum compatibility
     local cache_bust
     cache_bust=$(date +%s)
     if command -v node >/dev/null 2>&1; then
         {
-            curl -fsSL --max-time 10 "https://registry.npmjs.org/${pkg}/latest?ts=${cache_bust}" 2>/dev/null || echo -n ""
+            curl -fsSL --max-time 10 -H "Cache-Control: no-cache" \
+                "https://registry.npmjs.org/${pkg}/latest?ts=${cache_bust}" 2>/dev/null || echo -n ""
         } | node -e "const data = require('fs').readFileSync(0, 'utf8').trim(); if(data) console.log(JSON.parse(data).version);" 2>/dev/null || true
     fi
 }
@@ -403,11 +411,13 @@ get_latest_npm_self_version() {
         return 0
     fi
     # Cache-bust to avoid stale CDN responses
+    # Using both Cache-Control header and timestamp query parameter for maximum compatibility
     local cache_bust
     cache_bust=$(date +%s)
     if command -v node >/dev/null 2>&1; then
         {
-            curl -fsSL --max-time 10 "https://registry.npmjs.org/npm/latest?ts=${cache_bust}" 2>/dev/null || echo -n ""
+            curl -fsSL --max-time 10 -H "Cache-Control: no-cache" \
+                "https://registry.npmjs.org/npm/latest?ts=${cache_bust}" 2>/dev/null || echo -n ""
         } | node -e "const data = require('fs').readFileSync(0, 'utf8').trim(); if(data) console.log(JSON.parse(data).version);" 2>/dev/null || true
     fi
 }
@@ -577,6 +587,8 @@ prefetch_latest_versions() {
     local tmp_dir
     tmp_dir=$(mktemp -d)
     local -a pids=()
+    local -a pids_to_tool=()
+    local failed_count=0
 
     for i in "${!TOOL_NAMES[@]}"; do
         local manager="${TOOL_MANAGERS[$i]}"
@@ -614,11 +626,22 @@ prefetch_latest_versions() {
             printf "%s" "$latest" >"$out"
         ) &
         pids+=("$!")
+        pids_to_tool[$i]=$!
     done
 
-    for pid in "${pids[@]}"; do
-        wait "$pid" || true
+    # Track which subprocesses failed
+    for i in "${!pids[@]}"; do
+        local pid="${pids[$i]}"
+        if ! wait "$pid"; then
+            log_warning "Failed to fetch version for tool ${TOOL_NAMES[$i]}"
+            failed_count=$((failed_count + 1))
+        fi
     done
+
+    # Log warning if all fetches failed
+    if [[ $failed_count -eq ${#TOOL_NAMES[@]} ]]; then
+        log_warning "All version fetches failed - network may be unavailable"
+    fi
 
     for i in "${!TOOL_NAMES[@]}"; do
         local out="${tmp_dir}/${i}"
@@ -695,7 +718,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.6.0" \
+        "Agentic Coders CLI Installer v1.7.0" \
         "Toggle: skip->install->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"
@@ -1443,7 +1466,8 @@ ensure_system_npm() {
     PATH="$original_path"
 
     # If npm resolves inside conda, treat as missing (we require system-level npm)
-    if [[ -n "$CONDA_PREFIX" && -n "$system_npm_path" && "$system_npm_path" == "$CONDA_PREFIX"* ]]; then
+    # Use trailing slash to ensure proper path comparison (avoid matching /prefix/path2)
+    if [[ -n "$CONDA_PREFIX" && -n "$system_npm_path" && "$system_npm_path" == "${CONDA_PREFIX}/"* ]]; then
         system_npm_path=""
         npm_version=""
     fi

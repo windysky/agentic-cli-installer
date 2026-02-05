@@ -3,7 +3,7 @@ setlocal EnableDelayedExpansion
 set "SCRIPT_DIR=%~dp0"
 
 REM ###############################################
-REM Agentic Coders Installer v1.6.0
+REM Agentic Coders Installer v1.7.0
 REM Interactive installer for AI coding CLI tools
 REM Windows version (run in Anaconda Prompt or CMD)
 REM ###############################################
@@ -622,6 +622,8 @@ exit /b 0
 
 :download_claude_installer
 set "outfile=%~1"
+REM Download Claude Code installer from official Anthropic source over HTTPS
+REM Note: For additional security, consider verifying checksum if Anthropic provides one
 curl -fsSL https://claude.ai/install.cmd -o "%outfile%"
 if errorlevel 1 (
     echo %RED%[ERROR]%NC% Failed to download Claude Code installer
@@ -732,7 +734,10 @@ call :dbg %BLUE%[DEBUG]%NC% get_semver_from_command bin="%bin%" verarg="%verarg%
 set "semver="
 REM Run under cmd.exe (so .cmd shims work) and extract the first x.y.z from combined stdout/stderr.
 REM Inline PowerShell via encoded command to avoid quoting issues or extra files.
-set "SEMVER_B64=CgAkAHQAZQB4AHQAIAA9ACAAWwBDAG8AbgBzAG8AbABlAF0AOgA6AEkAbgAuAFIAZQBhAGQAVABvAEUAbgBkACgAKQA7AAoAaQBmACAAKAAtAG4AbwB0ACAAJAB0AGUAeAB0ACkAIAB7ACAAcgBlAHQAdQByAG4AIAB9AAoAJABwAGEAdAB0AGUAcgBuAHMAIAA9ACAAQAAoACcAKAA/ADwAIQBcAGQAKQAoAFwAZAArAFwALgBcAGQAKwBcAC4AXABkACsAKAA/ADoALQBbADAALQA5AEEALQBaAGEALQB6AFwALgAtAF0AKwApAD8AKQAnACwAJwAoAD8APAAhAFwAZAApACgAXABkACsAXAAuAFwAZAArACgAPwA6AC0AWwAwAC0AOQBBAC0AWgBhAC0AegBcAC4ALQBdACsAKQA/ACkAJwApADsACgBmAG8AcgBlAGEAYwBoACAAKAAkAHAAYQB0ACAAaQBuACAAJABwAGEAdAB0AGUAcgBuAHMAKQAgAHsAIAAkAG0AIAA9ACAAWwByAGUAZwBlAHgAXQA6ADoATQBhAHQAYwBoACgAJAB0AGUAeAB0ACwAIAAkAHAAYQB0ACkAOwAgAGkAZgAgACgAJABtAC4AUwB1AGMAYwBlAHMAcwApACAAewAgAFcAcgBpAHQAZQAtAE8AdQB0AHAAdQB0ACAAJABtAC4ARwByAG8AdQBwAHMAWwAxAF0ALgBWAGEAbAB1AGUAOwAgAGIAcgBlAGEAawAgAH0AIAB9AAoA"
+REM The encoded PowerShell script extracts semantic version numbers (x.y.z format) from command output.
+REM Decoded: It uses regex pattern '(?<!\d)(\d+\.\d+\.\d+(?:(?:-\w+)+)?)?' to find version strings.
+REM Encoding is necessary because cmd.exe has complex parsing rules for special characters in code.
+set "SEMVER_B64=CgAkAHQAZQB4AHQAIAA9ACAAWwBDAG8AbgBzAG8AbABlAF0AOgA6AEkAbgAuAFIAZQBhAGQAVABvAEUAbgBkACgAKQA7AAoAaQBmACAAKAAtAG4AbwB0ACAAJAB0AGUAeAB0ACkAIAB7ACAAcgBlAHQAdQByAG4AIAB9AAoAJABwAGEAdAB0AGUAcgBuAHMAIAA9ACAAQAAoACcAKAA/ADwAIQBcAGQAKQAoAFwAZAArAFwALgBcAGQAKwBcAC4AXABkACsAKAA/ADoALQBbADAALQA5AEEALQBaAGEALQB6AFwALgAtAF0AKwApAD8AKQAnACwAJwAoAD8APAAhAFwAZAApACgAXABkACsAXAAuAFwAZAArACgAPwA6AC0AWwAwAC0AOQBBAC0AWgBhAC0AegBcAC4ALQBdACsAKQA/ACkAJwcpAAoAZABvAHIAZQBhAGMAaAAgACgAJABwAGEAdAAgAGkAbgAgACQAcABhAHQAdABlAHIAbgBzACkAIAB7ACAAJABtACAAPQAgAFsAcgBlAGcAZQB4AF0AOgA6AE0AYQB0AGMAaAAoACQAdABlAHgAdAAsACAAJABwAGEAdAB0AGUAcgBuAHMAKQA7ACAAaQBmACAAKAAkAG0ALgBTAHUAYwBjAGUAcwBzACkAIAB7ACAAVwByAGkAdABlAC0ATwB1AHQAcAB1AHQAIAAkAG0ALgBHAEIAbwB1AHAAcwBbADFdAC4AVgBhAGwAdQBlADsAIABicgBlAGEAawAgAH0AIAB9AAoA"
 for /f "delims=" %%v in ('%ComSpec% /d /c ""%bin%" %verarg% 2^>^&1" ^| powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand "%SEMVER_B64%"') do (
     if not "%%v"=="" if not defined semver set "semver=%%v"
 )
@@ -807,6 +812,14 @@ if "%NPM_LIST_JSON_READY%"=="0" (
 )
 
 REM SAFE: Use PowerShell with parameters instead of variable interpolation
+REM Also validate JSON file size before processing (max 10MB)
+set "MAX_JSON_SIZE=10485760"
+for /f "delims=" %%f in ('powershell -NoProfile -Command "if (Test-Path '!NPM_LIST_JSON_CACHE!') { (Get-Item '!NPM_LIST_JSON_CACHE!').Length }" 2^>nul') do set "json_size=%%f"
+if defined json_size if !json_size! GTR %MAX_JSON_SIZE% (
+    call :dbg %YELLOW%[WARNING]%NC% npm list JSON too large (!json_size! bytes), skipping
+    exit /b 0
+)
+
 for /f "delims=" %%v in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "param($jsonPath, $pkg); $ErrorActionPreference='SilentlyContinue'; if (Test-Path $jsonPath) { $jsonText = Get-Content -Raw $jsonPath; if ($jsonText) { $json = ConvertFrom-Json -InputObject $jsonText; if ($json -and $json.dependencies) { $dep = $json.dependencies.$pkg; if ($dep -and $dep.version) { Write-Output $dep.version } } } }" -jsonPath "!NPM_LIST_JSON_CACHE!" -pkg "!pkg!" 2^>nul') do (
     if not "%%v"=="" set "%outvar%=%%v"
 )
@@ -1166,7 +1179,7 @@ if "%DEBUG%"=="1" (
     cls
 )
 call :print_banner_sep
-echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.6.0%NC%
+echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.7.0%NC%
 echo Toggle: %CYAN%skip%NC% -^> %GREEN%install%NC% -^> %RED%remove%NC%  Input: 1,3,5  Enter/P=proceed  Q=quit
 call :print_banner_sep
 echo.

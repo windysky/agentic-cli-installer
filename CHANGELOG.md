@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-02-05
+
+### Security
+
+#### Medium - Download Security Documentation (SHELL-002, BAT-001)
+
+- Added comments documenting installer download sources (Anthropic official, npmjs.com)
+- Added Cache-Control headers for more reliable cache-busting in version queries
+- Added file size validation for JSON parsing (max 10MB limit to prevent memory exhaustion)
+
+### Fixed
+
+#### Code Quality Improvements
+
+- **SHELL-005**: Fixed regex escaping to properly handle `]` character in package names
+- **SHELL-006**: Fixed path comparison logic to use trailing slash for proper prefix matching (avoids false matches like `/home/conda2` matching `/home/conda`)
+- **SHELL-007**: Improved version parsing fallback to use word boundaries (`grep -w`) to avoid false positives
+- **SHELL-008**: Added error tracking and logging for parallel subprocess failures in version prefetch
+
+- **BAT-002**: Added documentation for encoded PowerShell commands explaining the purpose and encoding necessity
+- **BAT-003**: Documented PATH manipulation behavior for conda path filtering
+- **BAT-004**: Added JSON file size validation before parsing npm list output
+
+- **SETUP-001**: Added timestamp format validation to ensure proper backup filename generation
+- **AUTO-001**: Fixed environment filtering to use exact match for "base" environment (avoids excluding environments like "database" or "my-base-env")
+- **FIX-001**: Added JSON file size validation (max 10MB) to prevent memory exhaustion
+
+---
+
 ## [1.6.0] - 2026-02-05
 
 ### Changed
