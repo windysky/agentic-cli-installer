@@ -17,7 +17,7 @@
 #   --configure-path    Add ~/.local/bin to PATH in shell config
 #   --force             Skip confirmation prompts
 #
-# Version: 1.7.0
+# Version: 1.7.3
 # License: MIT
 
 set -euo pipefail
@@ -145,20 +145,64 @@ detect_platform() {
 # Get Windows username in WSL
 get_windows_username() {
     local username=""
+    local wsl_user="${WSL_USER:-}"
+    local userprofile="${USERPROFILE:-}"
 
     # Try multiple methods to get Windows username
-    if [[ -n "${USERPROFILE:-}" ]]; then
-        username=$(basename "$USERPROFILE")
-    elif [[ -n "${WSL_USER:-}" ]]; then
-        username="$WSL_USER"
-    elif command_exists powershell.exe; then
-        username=$(powershell.exe -NoProfile -Command "[Environment]::UserName" 2>/dev/null | tr -d '\r')
-    elif [[ -d /mnt/c/Users ]]; then
-        # Try to find first user directory
+    if [[ -n "$userprofile" ]]; then
+        username=$(basename "${userprofile//\\//}")
+    elif [[ -n "$wsl_user" ]]; then
+        username="$wsl_user"
+    fi
+
+    if [[ -z "$username" ]]; then
+        local cmd=""
+        if command_exists cmd.exe; then
+            cmd="cmd.exe"
+        elif [[ -x /mnt/c/Windows/System32/cmd.exe ]]; then
+            cmd="/mnt/c/Windows/System32/cmd.exe"
+        fi
+        if [[ -n "$cmd" ]]; then
+            username=$("$cmd" /c "echo %USERNAME%" 2>/dev/null | tr -d '\r')
+            if [[ -z "$username" ]]; then
+                local up
+                up=$("$cmd" /c "echo %USERPROFILE%" 2>/dev/null | tr -d '\r')
+                if [[ -n "$up" ]]; then
+                    username=$(basename "${up//\\//}")
+                fi
+            fi
+        fi
+    fi
+
+    if [[ -z "$username" ]]; then
+        local pwsh=""
+        if command_exists powershell.exe; then
+            pwsh="powershell.exe"
+        elif [[ -x /mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe ]]; then
+            pwsh="/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
+        fi
+        if [[ -n "$pwsh" ]]; then
+            username=$("$pwsh" -NoProfile -Command "[Environment]::UserName" 2>/dev/null | tr -d '\r')
+        fi
+    fi
+
+    if [[ -z "$username" && -d /mnt/c/Users ]]; then
+        # Prefer a match to $USER if available; otherwise pick a non-system directory.
         for user_dir in /mnt/c/Users/*/; do
-            if [[ -d "$user_dir" ]]; then
-                username=$(basename "$user_dir")
+            [[ -d "$user_dir" ]] || continue
+            local base
+            base=$(basename "$user_dir")
+            case "$base" in
+                "Public"|"Default"|"Default User"|"All Users"|"DefaultAppPool")
+                    continue
+                    ;;
+            esac
+            if [[ -n "${USER:-}" && "${USER,,}" == "${base,,}" ]]; then
+                username="$base"
                 break
+            fi
+            if [[ -z "$username" ]]; then
+                username="$base"
             fi
         done
     fi

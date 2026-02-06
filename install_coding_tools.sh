@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.7.2
+# Agentic Coders Installer v1.7.3
 # Interactive installer for AI coding CLI tools
 #############################################
 
@@ -197,6 +197,57 @@ require_cmd() {
     return 0
 }
 
+get_conda_root() {
+    if command -v conda >/dev/null 2>&1; then
+        conda info --base 2>/dev/null || true
+    fi
+}
+
+get_conda_npm_path() {
+    if [[ -n "$CONDA_PREFIX" ]]; then
+        printf "%s" "$CONDA_PREFIX/bin/npm"
+        return 0
+    fi
+    if [[ -n "$CONDA_DEFAULT_ENV" ]]; then
+        local conda_root
+        conda_root=$(get_conda_root)
+        if [[ -n "$conda_root" ]]; then
+            printf "%s" "$conda_root/envs/$CONDA_DEFAULT_ENV/bin/npm"
+            return 0
+        fi
+    fi
+    return 1
+}
+
+get_npm_bin() {
+    local npm_path
+    npm_path=$(get_conda_npm_path || true)
+    if [[ -n "$npm_path" && -x "$npm_path" ]]; then
+        printf "%s" "$npm_path"
+        return 0
+    fi
+    return 1
+}
+
+get_npm_node_bin() {
+    local npm_bin
+    npm_bin=$(get_npm_bin) || return 1
+    local node_bin
+    node_bin="$(dirname "$npm_bin")/node"
+    if [[ -x "$node_bin" ]]; then
+        printf "%s" "$node_bin"
+        return 0
+    fi
+    return 1
+}
+
+get_npm_version_from_path() {
+    local npm_path=$1
+    if [[ -x "$npm_path" ]]; then
+        "$npm_path" --version 2>/dev/null | head -n1 || true
+    fi
+}
+
 run_claude_installer() {
     local tmp
     if ! tmp=$(mktemp); then
@@ -338,12 +389,14 @@ get_installed_uv_version() {
 
 get_installed_npm_version() {
     local pkg=$1
-    if ! command -v npm >/dev/null 2>&1; then
+    local npm_bin
+    npm_bin=$(get_npm_bin) || return 0
+    if [[ -z "$npm_bin" ]]; then
         return 0
     fi
     local json
     if [[ "$NPM_LIST_JSON_READY" -eq 0 ]]; then
-        NPM_LIST_JSON_CACHE=$(npm list -g --depth=0 --json 2>/dev/null || true)
+        NPM_LIST_JSON_CACHE=$("$npm_bin" list -g --depth=0 --json 2>/dev/null || true)
         NPM_LIST_JSON_READY=1
     fi
     json="$NPM_LIST_JSON_CACHE"
@@ -351,8 +404,10 @@ get_installed_npm_version() {
         return 0
     fi
     # SAFE: Pass package name as CLI argument instead of interpolating into code
-    if command -v node >/dev/null 2>&1; then
-        node -e "
+    local node_bin
+    node_bin=$(get_npm_node_bin || true)
+    if [[ -n "$node_bin" ]]; then
+        "$node_bin" -e "
             const obj = JSON.parse(process.argv[1]);
             const pkg = process.argv[2];
             if (obj && obj.dependencies && obj.dependencies[pkg] && obj.dependencies[pkg].version) {
@@ -405,10 +460,12 @@ get_latest_npm_version() {
 
 # Get npm's own installed version
 get_installed_npm_self_version() {
-    if ! command -v npm >/dev/null 2>&1; then
+    local npm_bin
+    npm_bin=$(get_npm_bin) || return 0
+    if [[ -z "$npm_bin" ]]; then
         return 0
     fi
-    npm --version 2>/dev/null | head -n1 || true
+    "$npm_bin" --version 2>/dev/null | head -n1 || true
 }
 
 # Get npm's own latest version
@@ -440,9 +497,11 @@ get_installed_native_version() {
 
 # Check for npm-installed Claude Code (for migration)
 check_npm_claude_code() {
-    if command -v npm >/dev/null 2>&1; then
+    local npm_bin
+    npm_bin=$(get_npm_bin) || return 1
+    if [[ -n "$npm_bin" ]]; then
         local json
-        json=$(npm list -g --depth=0 --json 2>/dev/null || true)
+        json=$("$npm_bin" list -g --depth=0 --json 2>/dev/null || true)
         if [[ -n "$json" ]]; then
             # SAFE: Use grep instead of JavaScript code interpolation
             if echo "$json" | grep -q "@anthropic-ai/claude-code"; then
@@ -667,7 +726,7 @@ prefetch_latest_versions() {
 
 initialize_tools() {
     # Conditionally add npm to the tool list (only if detected)
-    if command -v npm >/dev/null 2>&1; then
+    if get_npm_bin >/dev/null 2>&1; then
         TOOL_NAMES+=("npm")
         TOOL_MANAGERS+=("npm-self")
         TOOL_PACKAGES+=("npm")
@@ -733,7 +792,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.7.2" \
+        "Agentic Coders CLI Installer v1.7.3" \
         "Toggle: skip->install->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"
@@ -1118,9 +1177,15 @@ install_tool() {
             fi
             ;;
         npm)
+            local npm_bin
+            npm_bin=$(get_npm_bin || true)
+            if [[ -z "$npm_bin" ]]; then
+                log_error "Conda npm not found. npm tools must use conda npm."
+                return 1
+            fi
             if [[ "$installed_version" == "Not Installed" ]]; then
                 printf "Installing via npm...\n"
-                if npm install -g "$pkg"; then
+                if "$npm_bin" install -g "$pkg"; then
                     log_success "Installed ${name}"
                     if [[ "$pkg" == "opencode-ai" ]]; then
                         install_oh_my_opencode
@@ -1132,7 +1197,7 @@ install_tool() {
                 fi
             else
                 printf "Updating via npm...\n"
-                if npm install -g "$pkg@latest"; then
+                if "$npm_bin" install -g "$pkg@latest"; then
                     log_success "Updated ${name}"
                     if [[ "$pkg" == "opencode-ai" ]]; then
                         install_oh_my_opencode
@@ -1151,7 +1216,9 @@ install_tool() {
                     printf "  ${YELLOW}Detected npm-installed Claude Code (deprecated method)${NC}\n"
                     printf "  ${YELLOW}The npm installation method is deprecated. Migrating to native installer...${NC}\n"
                     printf "  Removing npm version...\n"
-                    if npm uninstall -g "@anthropic-ai/claude-code" 2>/dev/null; then
+                    local npm_bin
+                    npm_bin=$(get_npm_bin || true)
+                    if [[ -n "$npm_bin" ]] && "$npm_bin" uninstall -g "@anthropic-ai/claude-code" 2>/dev/null; then
                         printf "  ${GREEN}npm version removed successfully${NC}\n"
                     else
                         printf "  ${YELLOW}Warning: Failed to remove npm version, continuing anyway...${NC}\n"
@@ -1195,12 +1262,18 @@ install_tool() {
         npm-self)
             # npm-self should only be "update" action, never "install" from scratch
             # If npm is not installed, this should have been handled via conda
-            printf "Updating npm...\n"
-            if npm install -g npm@latest; then
-                log_success "Updated npm"
+            printf "Updating npm via conda npm...\n"
+            local npm_bin
+            npm_bin=$(get_npm_bin || true)
+            if [[ -z "$npm_bin" ]]; then
+                log_error "Conda npm not found. npm tools must use conda npm."
+                return 1
+            fi
+            if "$npm_bin" install -g npm@latest; then
+                log_success "Updated npm via conda npm"
                 return 0
             else
-                log_error "Failed to update npm"
+                log_error "Failed to update npm via conda npm"
                 return 1
             fi
             ;;
@@ -1234,7 +1307,13 @@ remove_tool() {
             ;;
         npm)
             printf "Uninstalling via npm...\n"
-            if npm uninstall -g "$pkg"; then
+            local npm_bin
+            npm_bin=$(get_npm_bin || true)
+            if [[ -z "$npm_bin" ]]; then
+                log_error "Conda npm not found. npm tools must use conda npm."
+                return 1
+            fi
+            if "$npm_bin" uninstall -g "$pkg"; then
                 if [[ "$pkg" == "opencode-ai" ]]; then
                     remove_oh_my_opencode
                 fi
@@ -1573,71 +1652,39 @@ ensure_npm_prerequisite() {
         return 0
     fi
 
-    # Helper function to get npm from conda environment directly
-    get_conda_npm_path() {
-        if [[ -n "$CONDA_PREFIX" ]]; then
-            echo "$CONDA_PREFIX/bin/npm"
-        elif [[ -n "$CONDA_DEFAULT_ENV" ]]; then
-            # Try to find conda prefix from environment name
-            local conda_root
-            conda_root=$(conda info --base 2>/dev/null || true)
-            if [[ -n "$conda_root" ]]; then
-                echo "$conda_root/envs/$CONDA_DEFAULT_ENV/bin/npm"
-            fi
-        fi
-    }
+    if [[ -z "${CONDA_PREFIX:-}" && -z "${CONDA_DEFAULT_ENV:-}" ]]; then
+        log_error "Conda environment is not active. npm tools must use conda npm."
+        printf "Activate a conda environment and re-run this installer.\n"
+        return 1
+    fi
 
-    # Helper function to get npm version from specific path
-    get_npm_version_from_path() {
-        local npm_path=$1
-        if [[ -x "$npm_path" ]]; then
-            "$npm_path" --version 2>/dev/null | head -n1 || true
-        fi
-    }
+    if ! command -v conda >/dev/null 2>&1; then
+        log_error "conda not found. npm tools require conda-provided Node.js/npm."
+        return 1
+    fi
 
     local conda_npm
-    conda_npm=$(get_conda_npm_path)
+    conda_npm=$(get_conda_npm_path || true)
 
-    if ! command -v npm >/dev/null 2>&1; then
-        # Check if we're in a conda environment
-        if [[ -n "$CONDA_DEFAULT_ENV" && -n "$conda_npm" ]]; then
-            log_warning "npm is not installed but required for npm-managed tools."
-            printf "Attempting to install Node.js ${MIN_NODEJS_VERSION}+ via conda...\n"
-            if conda install -y -c conda-forge "nodejs>=${MIN_NODEJS_VERSION}"; then
-                # Clear any command hash cache
-                hash -r npm 2>/dev/null || true
-                # Verify using the conda npm directly
-                if [[ -x "$conda_npm" ]]; then
-                    local npm_version
-                    npm_version=$(get_npm_version_from_path "$conda_npm")
-                    log_success "Node.js + npm ${npm_version} installed via conda"
-                    return 0
-                else
-                    log_error "npm installation via conda appeared successful but npm is still not available at: $conda_npm"
-                    return 1
-                fi
-            else
-                log_error "Failed to install Node.js via conda."
-                printf "Install Node.js + npm manually:\n"
-                printf "  ${CYAN}macOS${NC}:           ${YELLOW}brew install node${NC}\n"
-                printf "  ${CYAN}Debian/Ubuntu${NC}:   ${YELLOW}curl -fsSL https://deb.nodesource.com/setup_current.x | sudo -E bash - && sudo apt-get install -y nodejs${NC}\n"
-                printf "  ${CYAN}Other platforms${NC}: ${YELLOW}https://docs.npmjs.com/downloading-and-installing-node-js-and-npm${NC}\n"
-                return 1
-            fi
-        else
-            log_warning "npm is not installed but required for npm-managed tools."
-            printf "Install Node.js ${MIN_NPM_VERSION}+ before continuing:\n"
-            printf "  ${CYAN}macOS${NC}:           ${YELLOW}brew install node${NC}\n"
-            printf "  ${CYAN}Debian/Ubuntu${NC}:   ${YELLOW}curl -fsSL https://deb.nodesource.com/setup_current.x | sudo -E bash - && sudo apt-get install -y nodejs${NC}\n"
-            printf "  ${CYAN}Other platforms${NC}: ${YELLOW}https://docs.npmjs.com/downloading-and-installing-node-js-and-npm${NC}\n"
+    if [[ -z "$conda_npm" || ! -x "$conda_npm" ]]; then
+        log_warning "npm is not installed in the active conda environment but is required for npm-managed tools."
+        printf "Installing Node.js + npm via conda...\n"
+        if ! conda install -y -c conda-forge "nodejs>=${MIN_NODEJS_VERSION}"; then
+            log_error "Failed to install Node.js/npm via conda."
             return 1
         fi
     fi
 
+    conda_npm=$(get_conda_npm_path || true)
+    if [[ -z "$conda_npm" || ! -x "$conda_npm" ]]; then
+        log_error "npm installation via conda completed but npm is still not available."
+        return 1
+    fi
+
     local npm_version
-    npm_version=$(npm --version 2>/dev/null | head -n1 || true)
+    npm_version=$(get_npm_version_from_path "$conda_npm")
     if [[ -z "$npm_version" ]]; then
-        log_error "Unable to determine npm version."
+        log_error "Unable to determine npm version from conda npm."
         return 1
     fi
 
@@ -1646,38 +1693,20 @@ ensure_npm_prerequisite() {
         return 0
     fi
 
-    # Version is too old, try to update via conda if available
-    if [[ -n "$CONDA_DEFAULT_ENV" && -n "$conda_npm" ]]; then
-        log_warning "npm version $npm_version is below required $MIN_NPM_VERSION. Updating via conda..."
-        if conda install -y -c conda-forge "nodejs>=${MIN_NODEJS_VERSION}" --force-reinstall; then
-            # Clear command hash cache
-            hash -r npm 2>/dev/null || true
-            # Verify using the conda npm directly
-            local updated_version
-            updated_version=$(get_npm_version_from_path "$conda_npm")
-            if [[ -n "$updated_version" ]] && version_ge "$updated_version" "$MIN_NPM_VERSION"; then
-                log_success "Node.js + npm updated to version ${updated_version} via conda"
-                return 0
-            else
-                log_error "Conda update completed but version is still insufficient: ${updated_version:-unknown}"
-                return 1
-            fi
-        else
-            log_warning "Conda update failed, trying npm self-update..."
-        fi
-    fi
-
-    # Fallback to npm self-update (only if we have a compatible node version)
-    log_warning "npm version $npm_version is below required $MIN_NPM_VERSION. Attempting to update via npm..."
-    if npm install -g npm@latest; then
-        local updated_version
-        updated_version=$(npm --version 2>/dev/null | head -n1 || true)
-        log_success "npm updated to version ${updated_version:-unknown}."
-        return 0
-    else
-        log_error "npm update failed. Please run: npm install -g npm@latest"
+    log_warning "npm version $npm_version is below required $MIN_NPM_VERSION. Updating via npm..."
+    if ! "$conda_npm" install -g npm@latest; then
+        log_error "npm update failed. Please run: npm install -g npm@latest (within the conda env)"
         return 1
     fi
+
+    npm_version=$(get_npm_version_from_path "$conda_npm")
+    if [[ -n "$npm_version" ]] && version_ge "$npm_version" "$MIN_NPM_VERSION"; then
+        log_success "npm updated to version ${npm_version}"
+        return 0
+    fi
+
+    log_error "npm update completed but version is still insufficient: ${npm_version:-unknown}"
+    return 1
 }
 
 check_dependencies() {
@@ -1694,7 +1723,7 @@ check_dependencies() {
                     fi
                     ;;
                 npm)
-                    if ! command -v npm >/dev/null 2>&1; then
+                    if ! get_npm_bin >/dev/null 2>&1; then
                         missing+=("npm (required for ${TOOL_NAMES[$i]})")
                     fi
                     ;;
@@ -1716,7 +1745,7 @@ check_dependencies() {
         printf "\n"
         printf "Install missing dependencies:\n"
         printf "  ${CYAN}uv${NC}:   ${YELLOW}curl -LsSf https://astral.sh/uv/install.sh | sh${NC}\n"
-        printf "  ${CYAN}npm${NC}:  ${YELLOW}curl -q https://www.npmjs.com/install.sh | sudo bash${NC}\n"
+        printf "  ${CYAN}npm${NC}:  ${YELLOW}conda install -c conda-forge \"nodejs>=${MIN_NODEJS_VERSION}\" -y${NC}\n"
         printf "  ${CYAN}curl${NC}: ${YELLOW}sudo apt install curl${NC} (Debian/Ubuntu)\n"
         return 1
     fi

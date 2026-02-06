@@ -1,6 +1,6 @@
-# Agentic CLI Installer v1.7.1
+# Agentic CLI Installer v1.7.3
 
-**Last Modified:** February 5, 2026
+**Last Modified:** February 6, 2026
 
 An interactive installer that manages multiple AI coding CLI tools from one place. It detects installed versions, fetches latest versions, and lets you install, update, or remove tools in a single run.
 
@@ -11,7 +11,9 @@ An interactive installer that manages multiple AI coding CLI tools from one plac
 - `curl` (required for all installation methods)
 - Python 3.11+ (required for `moai-adk` via `uv tool`)
 - `uv` for `moai-adk` and `mistral-vibe`: `curl -LsSf https://astral.sh/uv/install.sh | sh`
-- Node.js >= 22.9.0 for npm tools (automatically installed in conda environments)
+- Node.js >= 22.9.0 for npm tools (installed via conda-forge in the active conda environment; npm updates use `npm install -g npm@latest` within conda)
+
+Note: npm operations use the active conda environment's npm. On Windows, system npm is not checked or used.
 
 ### Installation
 
@@ -58,6 +60,8 @@ cd agentic-cli-installer
 .\install_coding_tools.bat --yes
 ```
 
+Note: Run the Windows installer from an Anaconda Prompt with a non-base conda environment active.
+
 ## Features
 
 - **Interactive TUI** with per-tool actions (install, update, remove, skip)
@@ -67,6 +71,7 @@ cd agentic-cli-installer
 - **Cross-platform deployment script** for easy installation
 - **Non-interactive mode** with `--yes`/`-y` flag for automation
 - **Auto-install script** for processing multiple conda environments
+- **Conda-scoped npm** on Windows (no system npm check)
 
 ## Supported Tools
 
@@ -79,6 +84,8 @@ cd agentic-cli-installer
 | [Google Jules CLI](https://jules.google) | `@google/jules` | npm | `npm install -g @google/jules` |
 | [OpenCode AI CLI](https://github.com/opencode-ai/opencode) | `opencode-ai` | npm | `npm install -g opencode-ai` |
 | [Mistral Vibe CLI](https://github.com/mistralai/mistral-vibe) | `mistral-vibe` | uv | `uv tool install mistral-vibe` |
+
+Note: npm installs run using the active conda environment's npm (Windows does not use system npm).
 
 ## Usage
 
@@ -197,6 +204,11 @@ Backup location: ~/.local/bin.backup
 ```
 
 ## Change Log
+
+### v1.7.3 - February 6, 2026
+
+- **Windows npm policy**: System-level npm check removed; npm operations use conda npm only.
+- **Conda npm updates**: Node.js/npm install/update is handled via conda-forge to keep npm current within the active environment.
 
 ### v1.7.1 - February 5, 2026
 

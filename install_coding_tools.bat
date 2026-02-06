@@ -3,7 +3,7 @@ setlocal EnableDelayedExpansion
 set "SCRIPT_DIR=%~dp0"
 
 REM ###############################################
-REM Agentic Coders Installer v1.7.1
+REM Agentic Coders Installer v1.7.3
 REM Interactive installer for AI coding CLI tools
 REM Windows version (run in Anaconda Prompt or CMD)
 REM ###############################################
@@ -178,13 +178,6 @@ set "RC=%errorlevel%"
 if not "%RC%"=="0" (
     call :die "check_curl" "%RC%"
     exit /b %RC%
-)
-
-call :dbg %BLUE%[STEP]%NC% check_system_npm
-call :check_system_npm
-REM Don't fail on system npm check, just warn
-if errorlevel 1 (
-    echo %YELLOW%[WARNING]%NC% System npm check had issues, but continuing...
 )
 
 call :dbg %BLUE%[STEP]%NC% initialize_tools
@@ -388,12 +381,12 @@ call :log   CWD:    %CYAN%"%CD%"%NC%
 call :log   ComSpec:%CYAN% "%ComSpec%"%NC%
 call :log   CONDA_DEFAULT_ENV=%CYAN%!CONDA_DEFAULT_ENV!%NC%
 call :log   DEBUG=%CYAN%!DEBUG!%NC% NO_COLOR=%CYAN%!NO_COLOR!%NC% NO_PREFETCH=%CYAN%!NO_PREFETCH!%NC%
+call :resolve_conda_npm
+call :log   CONDA_NPM=%CYAN%!CONDA_NPM!%NC%
 call :log
 call :log %BLUE%[INFO]%NC% Executable resolution (where):
 where cmd 1>>"%LOGFILE%" 2>&1
 where cmd
-where npm 1>>"%LOGFILE%" 2>&1
-where npm
 where uv 1>>"%LOGFILE%" 2>&1
 where uv
 where curl 1>>"%LOGFILE%" 2>&1
@@ -402,6 +395,52 @@ where powershell 1>>"%LOGFILE%" 2>&1
 where powershell
 call :log
 exit /b 0
+
+:resolve_conda_npm
+set "CONDA_NPM="
+set "CONDA_NODE="
+set "CONDA_BASE="
+if defined CONDA_PREFIX set "CONDA_BASE=!CONDA_PREFIX!"
+if not defined CONDA_BASE if defined CONDA_DEFAULT_ENV (
+    for /f "delims=" %%p in ('conda info --base 2^>nul') do set "CONDA_ROOT=%%p"
+    if defined CONDA_ROOT set "CONDA_BASE=!CONDA_ROOT!\envs\!CONDA_DEFAULT_ENV!"
+)
+
+if defined CONDA_BASE (
+    call :probe_conda_npm "!CONDA_BASE!"
+)
+
+if defined CONDA_NPM exit /b 0
+
+REM Fallback: if npm is on PATH, only accept it if it's inside CONDA_BASE
+if defined CONDA_BASE (
+    set "BASE_LEN="
+    for /f "delims=" %%l in ('powershell -NoProfile -Command "('%CONDA_BASE%').Length" 2^>nul') do set "BASE_LEN=%%l"
+    if defined BASE_LEN (
+        for /f "delims=" %%p in ('where npm 2^>nul') do (
+            set "cand=%%p"
+            if /I "!cand:~0,%BASE_LEN%!"=="%CONDA_BASE%" (
+                set "CONDA_NPM=%%p"
+                exit /b 0
+            )
+        )
+    )
+)
+exit /b 1
+
+:probe_conda_npm
+set "base=%~1"
+if "%base%"=="" exit /b 1
+if exist "%base%\Scripts\npm.cmd" set "CONDA_NPM=%base%\Scripts\npm.cmd"
+if not defined CONDA_NPM if exist "%base%\Scripts\npm.exe" set "CONDA_NPM=%base%\Scripts\npm.exe"
+if not defined CONDA_NPM if exist "%base%\Library\bin\npm.cmd" set "CONDA_NPM=%base%\Library\bin\npm.cmd"
+if not defined CONDA_NPM if exist "%base%\Library\bin\npm.exe" set "CONDA_NPM=%base%\Library\bin\npm.exe"
+
+if exist "%base%\Scripts\node.exe" set "CONDA_NODE=%base%\Scripts\node.exe"
+if not defined CONDA_NODE if exist "%base%\Library\bin\node.exe" set "CONDA_NODE=%base%\Library\bin\node.exe"
+
+if defined CONDA_NPM exit /b 0
+exit /b 1
 
 :ensure_npm_prerequisite
 call :dbg %BLUE%[DEBUG]%NC% enter ensure_npm_prerequisite
@@ -415,105 +454,69 @@ for /L %%i in (1,1,%TOOLS_COUNT%) do (
 call :dbg %BLUE%[DEBUG]%NC% has_npm_tool=!has_npm_tool!
 if "!has_npm_tool!"=="0" exit /b 0
 
-REM Helper to get conda npm path directly
-set "CONDA_NPM="
-if defined CONDA_PREFIX (
-    set "CONDA_NPM=!CONDA_PREFIX!\Scripts\npm.cmd"
-) else if defined CONDA_DEFAULT_ENV (
-    REM Try to find conda environments
-    for /f "delims=" %%p in ('conda info --base 2^>nul') do set "CONDA_ROOT=%%p"
-    if defined CONDA_ROOT (
-        set "CONDA_NPM=!CONDA_ROOT!\envs\!CONDA_DEFAULT_ENV!\Scripts\npm.cmd"
-    )
+if not defined CONDA_DEFAULT_ENV if not defined CONDA_PREFIX (
+    echo %RED%[ERROR]%NC% Conda environment is not active. npm tools require conda npm.
+    echo Activate a conda environment and re-run this installer.
+    exit /b 1
 )
 
-call :dbg %BLUE%[DEBUG]%NC% CONDA_NPM=!CONDA_NPM!
-
-call :dbg %BLUE%[DEBUG]%NC% checking `where npm`
-where npm >nul 2>nul
+where conda >nul 2>nul
 if errorlevel 1 (
-    echo %YELLOW%[WARNING]%NC% npm is not installed but required for npm-managed tools.
-    REM Check if we're in a conda environment
-    if defined CONDA_DEFAULT_ENV (
-        echo Attempting to install Node.js %MIN_NODEJS_VERSION%+ via conda...
-        call conda install -y -c conda-forge "nodejs>=%MIN_NODEJS_VERSION%"
-        if errorlevel 1 (
-            echo %RED%[ERROR]%NC% Failed to install Node.js via conda.
-            echo Install Node.js + npm manually:
-            echo   %CYAN%Windows%NC%: %YELLOW%https://nodejs.org/en/download%NC%
-            echo   %CYAN%Via winget%NC%: %YELLOW%winget install OpenJS.NodeJS%NC%
-            exit /b 1
-        )
-        REM Verify using the conda npm directly
-        call :dbg %BLUE%[DEBUG]%NC% checking conda npm at: !CONDA_NPM!
-        if defined CONDA_NPM if exist "!CONDA_NPM!" (
-            for /f "delims=" %%v in ('"!CONDA_NPM!" --version 2^>nul') do (
-                if not "%%v"=="" set "NPM_VERSION=%%v"
-            )
-            echo %GREEN%[SUCCESS]%NC% Node.js + npm !NPM_VERSION! installed via conda
-            exit /b 0
-        )
-        echo %RED%[ERROR]%NC% npm installation via conda appeared successful but npm is still not available.
-        exit /b 1
-    ) else (
-        echo Install Node.js %MIN_NPM_VERSION%+ before continuing:
-        echo   %CYAN%Windows%NC%: %YELLOW%https://nodejs.org/en/download%NC%
-        echo   %CYAN%Via winget%NC%: %YELLOW%winget install OpenJS.NodeJS%NC%
+    echo %RED%[ERROR]%NC% conda not found. npm tools require conda-provided Node.js/npm.
+    exit /b 1
+)
+
+call :resolve_conda_npm
+if errorlevel 1 (
+    echo %YELLOW%[WARNING]%NC% npm is not installed in the active conda environment but required for npm-managed tools.
+    echo Installing Node.js + npm via conda...
+    call conda install -y -c conda-forge "nodejs>=%MIN_NODEJS_VERSION%"
+    if errorlevel 1 (
+        echo %RED%[ERROR]%NC% Failed to install Node.js/npm via conda.
         exit /b 1
     )
 )
 
-call :dbg %BLUE%[DEBUG]%NC% querying `npm --version`
-for /f "delims=" %%v in ('npm --version 2^>nul') do (
+call :resolve_conda_npm
+if errorlevel 1 (
+    echo %RED%[ERROR]%NC% npm installation via conda completed but npm is still not available.
+    exit /b 1
+)
+
+call :dbg %BLUE%[DEBUG]%NC% querying conda npm --version
+for /f "delims=" %%v in ('"!CONDA_NPM!" --version 2^>nul') do (
     if not "%%v"=="" set "NPM_VERSION=%%v"
 )
 
 call :dbg %BLUE%[DEBUG]%NC% NPM_VERSION=!NPM_VERSION!
 if not defined NPM_VERSION (
-    echo %RED%[ERROR]%NC% Unable to determine npm version.
+    echo %RED%[ERROR]%NC% Unable to determine npm version from conda npm.
     exit /b 1
 )
 
-	powershell -NoProfile -Command "try { if ([version]'%NPM_VERSION%' -ge [version]'%MIN_NPM_VERSION%') { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>nul
-	if errorlevel 1 (
-	    echo %YELLOW%[WARNING]%NC% npm version %NPM_VERSION% is below required %MIN_NPM_VERSION%.
-	    REM Try to update via conda if available
-	    if defined CONDA_DEFAULT_ENV if defined CONDA_NPM (
-	        echo Attempting to update Node.js via conda...
-	        call conda install -y -c conda-forge "nodejs>=%MIN_NODEJS_VERSION%" --force-reinstall
-	        if not errorlevel 1 (
-	            REM Verify using the conda npm directly
-	            for /f "delims=" %%v in ('"!CONDA_NPM!" --version 2^>nul') do (
-	                if not "%%v"=="" set "NPM_VERSION=%%v"
-	            )
-	            REM Verify the version meets requirements
-	            powershell -NoProfile -Command "try { if ([version]'%NPM_VERSION%' -ge [version]'%MIN_NPM_VERSION%') { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>nul
-	            if not errorlevel 1 (
-	                echo %GREEN%[SUCCESS]%NC% Node.js + npm updated to !NPM_VERSION! via conda
-	                exit /b 0
-	            )
-	            echo %RED%[ERROR]%NC% Conda update completed but version is still insufficient: !NPM_VERSION!
-	            exit /b 1
-	        )
-	        echo Conda update failed, trying npm self-update...
-	    )
-	    REM Fallback to npm self-update
-	    echo Attempting to update npm via npm itself...
-	    call npm install -g npm@latest
-	    if errorlevel 1 (
-	        echo %RED%[ERROR]%NC% npm update failed. Please run: npm install -g npm@latest
-	        exit /b 1
-	    )
-	    REM Get updated version
-	    for /f "delims=" %%v in ('npm --version 2^>nul') do (
-	        if not "%%v"=="" set "NPM_VERSION=%%v"
-	    )
-	    echo %GREEN%[SUCCESS]%NC% npm updated to !NPM_VERSION!
-	    exit /b 0
-	) else (
-	    echo %BLUE%[INFO]%NC% npm version %NPM_VERSION% detected. Minimum required: %MIN_NPM_VERSION%.
-	)
-	exit /b 0
+powershell -NoProfile -Command "try { if ([version]'%NPM_VERSION%' -ge [version]'%MIN_NPM_VERSION%') { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>nul
+if errorlevel 1 (
+    echo %YELLOW%[WARNING]%NC% npm version %NPM_VERSION% is below required %MIN_NPM_VERSION%.
+    echo Updating npm via conda npm...
+    call "!CONDA_NPM!" install -g npm@latest
+    if errorlevel 1 (
+        echo %RED%[ERROR]%NC% npm update failed. Please run: npm install -g npm@latest (within the conda env)
+        exit /b 1
+    )
+    for /f "delims=" %%v in ('"!CONDA_NPM!" --version 2^>nul') do (
+        if not "%%v"=="" set "NPM_VERSION=%%v"
+    )
+    powershell -NoProfile -Command "try { if ([version]'%NPM_VERSION%' -ge [version]'%MIN_NPM_VERSION%') { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>nul
+    if errorlevel 1 (
+        echo %RED%[ERROR]%NC% npm update completed but version is still insufficient: !NPM_VERSION!
+        exit /b 1
+    )
+    echo %GREEN%[SUCCESS]%NC% npm updated to !NPM_VERSION!
+    exit /b 0
+) else (
+    echo %BLUE%[INFO]%NC% npm version %NPM_VERSION% detected. Minimum required: %MIN_NPM_VERSION%.
+)
+exit /b 0
 
 :ensure_uv_prerequisite
 call :dbg %BLUE%[DEBUG]%NC% enter ensure_uv_prerequisite
@@ -537,87 +540,8 @@ if errorlevel 1 (
 exit /b 0
 
 :check_system_npm
-REM Check for system-level npm (required for MCP servers used by native Claude Code)
-REM Check if claude-code (native) is in the tool list
-set "CHECK_NATIVE_CLAUDE=0"
-for /L %%i in (1,1,%TOOLS_COUNT%) do (
-    call set "MGR_CHECK=%%MGR_%%i%%"
-    call set "PKG_CHECK=%%PKG_%%i%%"
-    if /I "!MGR_CHECK!"=="native" if /I "!PKG_CHECK!"=="claude-code" set "CHECK_NATIVE_CLAUDE=1"
-)
-
-REM Only check if native claude-code is present
-if "!CHECK_NATIVE_CLAUDE!"=="0" exit /b 0
-
-REM Check if claude is already installed
-where claude >nul 2>nul
-if errorlevel 1 exit /b 0
-
-echo %BLUE%[INFO]%NC% Checking system-level npm ^(required for MCP servers^)...
-
-REM Check for npm outside of conda
-set "SYSTEM_NPM_FOUND=0"
-set "SYSTEM_NPM_VERSION="
-
-REM Temporarily modify PATH to exclude conda
-set "ORIGINAL_PATH=%PATH%"
-REM Check if we're in conda by looking for conda in PATH
-if defined CONDA_PREFIX (
-    REM Remove conda paths from PATH for system npm check
-    set "PATH=%PATH%"
-    set "PATH=%PATH:C:\ProgramData\anaconda3;=%"
-    set "PATH=%PATH:C:\ProgramData\anaconda3\Scripts;=%"
-    set "PATH=%PATH:C:\ProgramData\anaconda3\Library\bin;=%"
-    set "PATH=%PATH:%CONDA_PREFIX%\Scripts;=%"
-    set "PATH=%PATH:%CONDA_PREFIX%\Library\bin;=%"
-)
-
-where npm >nul 2>nul
-if not errorlevel 1 (
-    set "SYSTEM_NPM_FOUND=1"
-    for /f "delims=" %%v in ('npm --version 2^>nul') do set "SYSTEM_NPM_VERSION=%%v"
-)
-
-REM Restore PATH
-set "PATH=%ORIGINAL_PATH%"
-
-if "!SYSTEM_NPM_FOUND!"=="0" (
-    echo %YELLOW%[WARNING]%NC% System-level npm not found ^(required for MCP servers^).
-    echo MCP servers used by Claude Code require npm at the system level.
-    echo.
-    echo Install Node.js ^(includes npm^) from: https://nodejs.org/
-    echo Or use winget: %CYAN%winget install OpenJS.NodeJS%NC%
-    echo.
-    if "%AUTO_YES%"=="1" (
-        echo %YELLOW%[AUTO-YES]%NC% Skipping system npm installation in non-interactive mode.
-        echo Please install Node.js manually and re-run.
-    ) else (
-        echo Press Enter to continue without system npm ^(MCP servers may not work^)...
-        set /p "input=> "
-    )
-    exit /b 0
-)
-
-if defined SYSTEM_NPM_VERSION (
-    echo %BLUE%[INFO]%NC% System npm found: !SYSTEM_NPM_VERSION!
-
-    REM Check if version is too old
-    powershell -NoProfile -Command "try { if ([version]'%SYSTEM_NPM_VERSION%' -lt [version]'%MIN_NPM_VERSION%') { exit 1 } else { exit 0 } } catch { exit 1 }" >nul 2>nul
-    if errorlevel 1 (
-        echo %YELLOW%[WARNING]%NC% System npm version !SYSTEM_NPM_VERSION! is below %MIN_NPM_VERSION%
-        echo.
-        echo Update Node.js/npm from: https://nodejs.org/
-        echo Or use winget: %CYAN%winget upgrade OpenJS.NodeJS%NC%
-        echo.
-        if "%AUTO_YES%"=="1" (
-            echo %YELLOW%[AUTO-YES]%NC% Skipping npm update in non-interactive mode.
-        ) else (
-            echo Press Enter to continue without updating ^(some MCP servers may not work^)...
-            set /p "input=> "
-        )
-    )
-)
-
+REM System npm is not used on Windows; conda npm is required.
+echo %BLUE%[INFO]%NC% Skipping system npm check on Windows ^(conda npm only^).
 exit /b 0
 
 :download_claude_installer
@@ -737,7 +661,7 @@ REM Inline PowerShell via encoded command to avoid quoting issues or extra files
 REM The encoded PowerShell script extracts semantic version numbers (x.y.z format) from command output.
 REM Decoded: It uses regex pattern '(?<!\d)(\d+\.\d+\.\d+(?:(?:-\w+)+)?)?' to find version strings.
 REM Encoding is necessary because cmd.exe has complex parsing rules for special characters in code.
-set "SEMVER_B64=CgAkAHQAZQB4AHQAIAA9ACAAWwBDAG8AbgBzAG8AbABlAF0AOgA6AEkAbgAuAFIAZQBhAGQAVABvAEUAbgBkACgAKQA7AAoAaQBmACAAKAAtAG4AbwB0ACAAJAB0AGUAeAB0ACkAIAB7ACAAcgBlAHQAdQByAG4AIAB9AAoAJABwAGEAdAB0AGUAcgBuAHMAIAA9ACAAQAAoACcAKAA/ADwAIQBcAGQAKQAoAFwAZAArAFwALgBcAGQAKwBcAC4AXABkACsAKAA/ADoALQBbADAALQA5AEEALQBaAGEALQB6AFwALgAtAF0AKwApAD8AKQAnACwAJwAoAD8APAAhAFwAZAApACgAXABkACsAXAAuAFwAZAArACgAPwA6AC0AWwAwAC0AOQBBAC0AWgBhAC0AegBcAC4ALQBdACsAKQA/ACkAJwcpAAoAZABvAHIAZQBhAGMAaAAgACgAJABwAGEAdAAgAGkAbgAgACQAcABhAHQAdABlAHIAbgBzACkAIAB7ACAAJABtACAAPQAgAFsAcgBlAGcAZQB4AF0AOgA6AE0AYQB0AGMAaAAoACQAdABlAHgAdAAsACAAJABwAGEAdAB0AGUAcgBuAHMAKQA7ACAAaQBmACAAKAAkAG0ALgBTAHUAYwBjAGUAcwBzACkAIAB7ACAAVwByAGkAdABlAC0ATwB1AHQAcAB1AHQAIAAkAG0ALgBHAEIAbwB1AHAAcwBbADFdAC4AVgBhAGwAdQBlADsAIABicgBlAGEAawAgAH0AIAB9AAoA"
+set "SEMVER_B64=JAB0AGUAeAB0ACAAPQAgAFsAQwBvAG4AcwBvAGwAZQBdADoAOgBJAG4ALgBSAGUAYQBkAFQAbwBFAG4AZAAoACkAOwAKAGkAZgAgACgALQBuAG8AdAAgACQAdABlAHgAdAApACAAewAgAHIAZQB0AHUAcgBuACAAfQAKACQAcABhAHQAdABlAHIAbgBzACAAPQAgAEAAKAAnACgAPwA8ACEAXABkACkAKABcAGQAKwBcAC4AXABkACsAXAAuAFwAZAArACgAPwA6AC0AWwAwAC0AOQBBAC0AWgBhAC0AegBcAC4ALQBdACsAKQA/ACkAJwAsACcAKAA/ADwAIQBcAGQAKQAoAFwAZAArAFwALgBcAGQAKwAoAD8AOgAtAFsAMAAtADkAQQAtAFoAYQAtAHoAXAAuAC0AXQArACkAPwApACcAKQAKAGYAbwByAGUAYQBjAGgAIAAoACQAcABhAHQAIABpAG4AIAAkAHAAYQB0AHQAZQByAG4AcwApACAAewAKACAAIAAkAG0AIAA9ACAAWwByAGUAZwBlAHgAXQA6ADoATQBhAHQAYwBoACgAJAB0AGUAeAB0ACwAIAAkAHAAYQB0ACkACgAgACAAaQBmACAAKAAkAG0ALgBTAHUAYwBjAGUAcwBzACkAIAB7ACAAVwByAGkAdABlAC0ATwB1AHQAcAB1AHQAIAAkAG0ALgBHAHIAbwB1AHAAcwBbADEAXQAuAFYAYQBsAHUAZQA7ACAAYgByAGUAYQBrACAAfQAKAH0ACgA="
 for /f "delims=" %%v in ('%ComSpec% /d /c ""%bin%" %verarg% 2^>^&1" ^| powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand "%SEMVER_B64%"') do (
     if not "%%v"=="" if not defined semver set "semver=%%v"
 )
@@ -802,12 +726,12 @@ exit /b 0
 set "pkg=%~1"
 set "outvar=%~2"
 set "%outvar%="
-where npm >nul 2>nul
+call :resolve_conda_npm
 if errorlevel 1 exit /b 0
 
 if "%NPM_LIST_JSON_READY%"=="0" (
     if not defined NPM_LIST_JSON_CACHE set "NPM_LIST_JSON_CACHE=%TEMP%\npm_list_%RANDOM%.json"
-    npm list -g --depth=0 --json >"!NPM_LIST_JSON_CACHE!" 2>nul
+    "!CONDA_NPM!" list -g --depth=0 --json >"!NPM_LIST_JSON_CACHE!" 2>nul
     set "NPM_LIST_JSON_READY=1"
 )
 
@@ -857,9 +781,9 @@ REM Get npm's own installed version
 :get_installed_npm_self_version
 set "outvar=%~1"
 set "%outvar%="
-where npm >nul 2>nul
+call :resolve_conda_npm
 if errorlevel 1 exit /b 0
-for /f "delims=" %%v in ('npm --version 2^>nul') do (
+for /f "delims=" %%v in ('"!CONDA_NPM!" --version 2^>nul') do (
     if not "%%v"=="" set "%outvar%=%%v"
 )
 exit /b 0
@@ -916,11 +840,11 @@ REM Check for npm-installed Claude Code (for migration)
 :check_npm_claude_code
 set "outvar=%~1"
 set "%outvar%=0"
-where npm >nul 2>nul
+call :resolve_conda_npm
 if errorlevel 1 exit /b 0
 REM Check if @anthropic-ai/claude-code is in npm list
 set "NPM_CLAUDE_CHECK="
-for /f "delims=" %%v in ('npm list -g @anthropic-ai/claude-code 2^>nul ^| findstr /C:"@anthropic-ai/claude-code"') do (
+for /f "delims=" %%v in ('"!CONDA_NPM!" list -g @anthropic-ai/claude-code 2^>nul ^| findstr /C:"@anthropic-ai/claude-code"') do (
     set "NPM_CLAUDE_CHECK=%%v"
 )
 if defined NPM_CLAUDE_CHECK (
@@ -948,11 +872,11 @@ REM INITIALIZATION
 REM ###############################################
 
 :initialize_tools
-REM Check if npm exists and add it as update-only tool at the top
+REM Add npm as update-only tool when a conda environment is active
 set "HAS_NPM=0"
-where npm >nul 2>nul
-if not errorlevel 1 (
-    set "HAS_NPM=1"
+if defined CONDA_PREFIX set "HAS_NPM=1"
+if defined CONDA_DEFAULT_ENV set "HAS_NPM=1"
+if "%HAS_NPM%"=="1" (
     REM Shift all existing tools up by 1
     REM TOOLS_COUNT is still 7 at this point, so we loop from 7 down to 1
     for /L %%i in (7,-1,1) do (
@@ -964,18 +888,18 @@ if not errorlevel 1 (
         call set "BIN_!new_idx!=%%BIN_%%i%%"
         call set "VERARG_!new_idx!=%%VERARG_%%i%%"
     )
-	    REM Now increment TOOLS_COUNT after shifting
-	    set /a TOOLS_COUNT+=1
-	    REM Add npm as tool 1
-	    REM Avoid parentheses in tool names; they can break parsing inside parenthesized blocks.
-	    set "NAME_1=npm - Node Package Manager"
-	    set "MGR_1=npm-self"
-	    set "PKG_1=npm"
-	    set "DESC_1=npm - Node Package Manager"
-	    set "BIN_1=npm"
-	    set "VERARG_1=--version"
-	    set "UPDATE_ONLY_1=1"
-	)
+        REM Now increment TOOLS_COUNT after shifting
+        set /a TOOLS_COUNT+=1
+        REM Add npm as tool 1
+        REM Avoid parentheses in tool names; they can break parsing inside parenthesized blocks.
+        set "NAME_1=npm - Node Package Manager"
+        set "MGR_1=npm-self"
+        set "PKG_1=npm"
+        set "DESC_1=npm - Node Package Manager"
+        set "BIN_1=npm"
+        set "VERARG_1=--version"
+        set "UPDATE_ONLY_1=1"
+    )
 
 call :dbg %BLUE%[STEP]%NC% prefetch_latest_versions
 if "%NO_PREFETCH%"=="1" (
@@ -1179,7 +1103,7 @@ if "%DEBUG%"=="1" (
     cls
 )
 call :print_banner_sep
-echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.7.1%NC%
+echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.7.3%NC%
 echo Toggle: %CYAN%skip%NC% -^> %GREEN%install%NC% -^> %RED%remove%NC%  Input: 1,3,5  Enter/P=proceed  Q=quit
 call :print_banner_sep
 echo.
@@ -1509,7 +1433,7 @@ for /L %%i in (1,1,%TOOLS_COUNT%) do (
                 set "missing_!missing_count!=uv (required for !name!^)"
             )
         ) else if "!mgr!"=="npm" (
-            where npm >nul 2>nul
+            call :resolve_conda_npm
             if errorlevel 1 (
                 set /a missing_count+=1
                 set "missing_!missing_count!=npm (required for !name!^)"
@@ -1534,7 +1458,7 @@ if !missing_count! GTR 0 (
     echo.
     echo Install missing dependencies:
     echo   %CYAN%uv%NC%:   %YELLOW%https://github.com/astral-sh/uv#installing-uv%NC%
-    echo   %CYAN%npm%NC%:   %YELLOW%https://docs.npmjs.com/downloading-and-installing-node-js-and-npm%NC%
+    echo   %CYAN%npm%NC%:   %YELLOW%conda install -c conda-forge "nodejs>=%MIN_NODEJS_VERSION%" -y%NC%
     exit /b 1
 )
 exit /b 0
@@ -1609,9 +1533,11 @@ set "remove_fail=0"
 
 :install_tool_npm_self
 		REM npm can only be updated, not installed from scratch
-		echo   Updating via npm...
-		call :dbg   %BLUE%[DEBUG]%NC% run: npm install -g npm@latest
-		call npm install -g npm@latest
+		echo   Updating npm via conda npm...
+		call :resolve_conda_npm
+		if errorlevel 1 exit /b 1
+		call :dbg   %BLUE%[DEBUG]%NC% run: "!CONDA_NPM!" install -g npm@latest
+		call "!CONDA_NPM!" install -g npm@latest
 		exit /b %errorlevel%
 
 :install_tool_uv
@@ -1644,14 +1570,16 @@ set "remove_fail=0"
 	goto install_tool_claude_post_migrate
 
 :install_tool_claude_migrate
-	echo   %YELLOW%Detected npm-installed Claude Code (deprecated method)%NC%
-	echo   %YELLOW%The npm installation method is deprecated. Migrating to native installer...%NC%
-	echo   Removing npm version...
-	call :dbg   %BLUE%[DEBUG]%NC% run: npm uninstall -g "@anthropic-ai/claude-code"
-	call npm uninstall -g "@anthropic-ai/claude-code" >nul 2>nul
-	if errorlevel 1 goto install_tool_claude_migrate_warn
-	echo   %GREEN%npm version removed successfully%NC%
-	goto install_tool_claude_migrate_done
+		echo   %YELLOW%Detected npm-installed Claude Code (deprecated method)%NC%
+		echo   %YELLOW%The npm installation method is deprecated. Migrating to native installer...%NC%
+		echo   Removing npm version...
+		call :resolve_conda_npm
+		if errorlevel 1 goto install_tool_claude_migrate_warn
+		call :dbg   %BLUE%[DEBUG]%NC% run: "!CONDA_NPM!" uninstall -g "@anthropic-ai/claude-code"
+		call "!CONDA_NPM!" uninstall -g "@anthropic-ai/claude-code" >nul 2>nul
+		if errorlevel 1 goto install_tool_claude_migrate_warn
+		echo   %GREEN%npm version removed successfully%NC%
+		goto install_tool_claude_migrate_done
 
 :install_tool_claude_migrate_warn
 	echo   %YELLOW%Warning: Failed to remove npm version, continuing anyway...%NC%
@@ -1699,8 +1627,10 @@ set "remove_fail=0"
 
 :install_tool_npm_install
 		echo   Installing via npm...
-		call :dbg   %BLUE%[DEBUG]%NC% run: npm install -g "!pkg!"
-		call npm install -g "!pkg!"
+		call :resolve_conda_npm
+		if errorlevel 1 exit /b 1
+		call :dbg   %BLUE%[DEBUG]%NC% run: "!CONDA_NPM!" install -g "!pkg!"
+		call "!CONDA_NPM!" install -g "!pkg!"
 		set "RC=%errorlevel%"
 		if not "%RC%"=="0" exit /b %RC%
 		if /I "!pkg!"=="opencode-ai" call :install_oh_my_opencode
@@ -1708,8 +1638,10 @@ set "remove_fail=0"
 
 :install_tool_npm_update
 		echo   Updating via npm...
-		call :dbg   %BLUE%[DEBUG]%NC% run: npm install -g "!pkg!@latest"
-		call npm install -g "!pkg!@latest"
+		call :resolve_conda_npm
+		if errorlevel 1 exit /b 1
+		call :dbg   %BLUE%[DEBUG]%NC% run: "!CONDA_NPM!" install -g "!pkg!@latest"
+		call "!CONDA_NPM!" install -g "!pkg!@latest"
 		set "RC=%errorlevel%"
 		if not "%RC%"=="0" exit /b %RC%
 		if /I "!pkg!"=="opencode-ai" call :install_oh_my_opencode
@@ -1786,12 +1718,14 @@ if /I "!mgr!"=="npm-self" (
     )
     exit /b 0
 ) else (
-    echo   Uninstalling via npm...
-    call :dbg   %BLUE%[DEBUG]%NC% run: npm uninstall -g "!pkg!"
-    call npm uninstall -g "!pkg!"
-    set "RC=%errorlevel%"
-    if "%RC%"=="0" if /I "!pkg!"=="opencode-ai" call :remove_oh_my_opencode
-    exit /b %RC%
+	    echo   Uninstalling via npm...
+	    call :resolve_conda_npm
+	    if errorlevel 1 exit /b 1
+	    call :dbg   %BLUE%[DEBUG]%NC% run: "!CONDA_NPM!" uninstall -g "!pkg!"
+	    call "!CONDA_NPM!" uninstall -g "!pkg!"
+	    set "RC=%errorlevel%"
+	    if "%RC%"=="0" if /I "!pkg!"=="opencode-ai" call :remove_oh_my_opencode
+	    exit /b %RC%
 )
 
 :remove_oh_my_opencode
@@ -1844,12 +1778,12 @@ exit /b 0
 set "pkg=%~1"
 set "outvar=%~2"
 set "%outvar%="
-where npm >nul 2>nul
+call :resolve_conda_npm
 if errorlevel 1 exit /b 0
 
 REM Prefer filesystem-based detection to avoid false positives from a stale npm list.
 if "%NPM_ROOT_READY%"=="0" (
-    for /f "delims=" %%d in ('npm root -g 2^>nul') do (
+    for /f "delims=" %%d in ('"!CONDA_NPM!" root -g 2^>nul') do (
         if not "%%d"=="" set "NPM_ROOT_CACHE=%%d"
     )
     set "NPM_ROOT_READY=1"

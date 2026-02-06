@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.3] - 2026-02-06
+
+### Changed
+
+- Windows batch installer no longer checks for system-level npm; npm is conda-only on Windows.
+- npm installs/updates now use conda npm only; npm updates use `npm install -g npm@latest` within the active conda environment.
+- System npm check remains in the shell installer for macOS/Linux/WSL.
+
+### Fixed
+
+- Windows semver extraction now correctly parses tool output (fixes "The string is X.Y.Z" display).
+- Windows conda npm detection now resolves npm from conda env paths (Scripts/Library) and avoids false missing warnings.
+
+---
+
 ## [1.7.0] - 2026-02-05
 
 ### Security
