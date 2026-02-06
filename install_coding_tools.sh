@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.7.3
+# Agentic Coders Installer v1.7.4
 # Interactive installer for AI coding CLI tools
 #############################################
 
@@ -792,7 +792,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.7.3" \
+        "Agentic Coders CLI Installer v1.7.4" \
         "Toggle: skip->install->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"

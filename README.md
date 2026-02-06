@@ -1,4 +1,4 @@
-# Agentic CLI Installer v1.7.3
+# Agentic CLI Installer v1.7.4
 
 **Last Modified:** February 6, 2026
 
@@ -205,10 +205,11 @@ Backup location: ~/.local/bin.backup
 
 ## Change Log
 
-### v1.7.3 - February 6, 2026
+### v1.7.4 - February 6, 2026
 
 - **Windows npm policy**: System-level npm check removed; npm operations use conda npm only.
-- **Conda npm updates**: Node.js/npm install/update is handled via conda-forge to keep npm current within the active environment.
+- **Conda npm updates**: npm updates run via `npm install -g npm@latest` within the active conda environment.
+- **Batch parser fix**: Removed a cmd.exe parsing edge case that could stop prefetch on Windows.
 
 ### v1.7.1 - February 5, 2026
 
