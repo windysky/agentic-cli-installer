@@ -740,7 +740,7 @@ REM Also validate JSON file size before processing (max 10MB)
 set "MAX_JSON_SIZE=10485760"
 for /f "delims=" %%f in ('powershell -NoProfile -Command "if (Test-Path '!NPM_LIST_JSON_CACHE!') { (Get-Item '!NPM_LIST_JSON_CACHE!').Length }" 2^>nul') do set "json_size=%%f"
 if defined json_size if !json_size! GTR %MAX_JSON_SIZE% (
-    call :dbg %YELLOW%[WARNING]%NC% npm list JSON too large (!json_size! bytes), skipping
+    call :dbg %YELLOW%[WARNING]%NC% npm list JSON too large: !json_size! bytes; skipping
     exit /b 0
 )
 
