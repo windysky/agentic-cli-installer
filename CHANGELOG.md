@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.10] - 2026-02-07
+
+### Changed
+
+- Renamed "OpenCode Addons (oh-my-opencode)" to "OpenCode - oh-my-opencode" for cleaner menu display
+
+### Fixed
+
+- oh-my-opencode now shows "latest" instead of "Unknown" for version
+- Addon versions are not tracked on npm registry, so they display "latest" for both installed and latest
+
+---
+
 ## [1.7.9] - 2026-02-07
 
 ### Added
