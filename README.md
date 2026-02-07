@@ -79,7 +79,7 @@ Note: Run the Windows installer from an Anaconda Prompt with a non-base conda en
 
 | Tool | Package | Manager | Installation Method |
 |------|---------|----------|-------------------|
-| [MoAI Agent Development Kit](https://github.com/modu-ai/moai-adk) | `moai-adk` | native | `curl -fsSL https://raw.githubusercontent.com/modu-ai/moai-adk/696d8b473c7dddb87b3678f8eabb92ad6ef84080/install.sh | bash` |
+| [MoAI Agent Development Kit](https://github.com/modu-ai/moai-adk) | `moai-adk` | native | `curl -fsSL https://raw.githubusercontent.com/modu-ai/moai-adk/main/install.sh | bash` |
 | [Claude Code CLI](https://github.com/anthropics/claude-code) | `claude-code` | native | [Official installer](https://claude.ai/install.sh) |
 | [OpenAI Codex CLI](https://github.com/openai/codex) | `@openai/codex` | npm | `npm install -g @openai/codex` |
 | [Google Gemini CLI](https://github.com/google-gemini/gemini-cli) | `@google/gemini-cli` | npm | `npm install -g @google/gemini-cli` |
@@ -209,7 +209,7 @@ Backup location: ~/.local/bin.backup
 
 ### v1.7.5 - February 7, 2026
 
-- **Installer security hardening**: MoAI and Claude installers are now checksum-verified before execution; MoAI installer URL is commit-pinned.
+- **Installer security hardening**: Claude installer is checksum-verified before execution; MoAI installer uses upstream `main` as requested.
 - **MoAI uninstall safety**: Uninstall now removes only installer-managed MoAI binary paths and fails on partial/unsafe deletion attempts.
 - **MoAI install verification**: Native MoAI install/update now verifies `moai` is available afterward and records owned install path.
 

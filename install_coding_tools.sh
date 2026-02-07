@@ -54,9 +54,7 @@ readonly STATE_DIR="$HOME/.local/share/agentic-cli-installer"
 readonly MOAI_STATE_FILE="$STATE_DIR/moai-adk.path"
 readonly CLAUDE_INSTALL_URL="https://claude.ai/install.sh"
 readonly CLAUDE_INSTALL_SHA256="363382bed8849f78692bd2f15167a1020e1f23e7da1476ab8808903b6bebae05"
-readonly MOAI_INSTALL_COMMIT="696d8b473c7dddb87b3678f8eabb92ad6ef84080"
-readonly MOAI_INSTALL_URL="https://raw.githubusercontent.com/modu-ai/moai-adk/${MOAI_INSTALL_COMMIT}/install.sh"
-readonly MOAI_INSTALL_SHA256="12d14677820104f75ca2a7caca07a39156e8234d9e6d34e852b2734dc6a8a95c"
+readonly MOAI_INSTALL_URL="https://raw.githubusercontent.com/modu-ai/moai-adk/main/install.sh"
 
 # Tool definitions: name, package manager, package name, description
 declare -a TOOLS=(
@@ -331,14 +329,9 @@ run_moai_installer() {
         return 1
     fi
 
-    # Download MoAI-ADK installer from immutable commit URL and verify checksum.
+    # Download MoAI-ADK installer from upstream main branch.
     if ! curl -fsSL --proto '=https' --tlsv1.2 "$MOAI_INSTALL_URL" -o "$tmp"; then
         log_error "Failed to download MoAI-ADK installer."
-        rm -f "$tmp"
-        return 1
-    fi
-
-    if ! verify_file_sha256 "$tmp" "$MOAI_INSTALL_SHA256"; then
         rm -f "$tmp"
         return 1
     fi

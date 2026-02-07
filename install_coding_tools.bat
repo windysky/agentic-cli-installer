@@ -70,9 +70,7 @@ set "STATE_DIR=%USERPROFILE%\.local\share\agentic-cli-installer"
 set "MOAI_STATE_FILE=%STATE_DIR%\moai-adk.path"
 set "CLAUDE_INSTALL_URL=https://claude.ai/install.cmd"
 set "CLAUDE_INSTALL_SHA256=f94ac8a946d6faf987e867788d69a974bdb4792e89620a6de721d24ea1b76466"
-set "MOAI_INSTALL_COMMIT=696d8b473c7dddb87b3678f8eabb92ad6ef84080"
-set "MOAI_INSTALL_URL=https://raw.githubusercontent.com/modu-ai/moai-adk/%MOAI_INSTALL_COMMIT%/install.ps1"
-set "MOAI_INSTALL_SHA256=fe861ab54f3317fdae6f10335b2447fb607b830e7c74cf9ac0bf530c9c044b33"
+set "MOAI_INSTALL_URL=https://raw.githubusercontent.com/modu-ai/moai-adk/main/install.ps1"
 
 REM Tool list: name|manager|package|description
 set TOOLS_COUNT=7
@@ -596,16 +594,11 @@ if errorlevel 1 exit /b 1
 exit /b 0
 
 :run_moai_installer
-REM Download and run MoAI-ADK installer from immutable commit URL with checksum verification
+REM Download and run MoAI-ADK installer from upstream main branch
 set "moai_tmp=%TEMP%\moai_install_%RANDOM%.ps1"
 curl -fsSL "%MOAI_INSTALL_URL%" -o "%moai_tmp%"
 if errorlevel 1 (
     echo %RED%[ERROR]%NC% Failed to download MoAI-ADK installer
-    exit /b 1
-)
-call :verify_file_sha256 "%moai_tmp%" "%MOAI_INSTALL_SHA256%"
-if errorlevel 1 (
-    del "%moai_tmp%" >nul 2>nul
     exit /b 1
 )
 set "AGENTIC_MOAI_INSTALLER=%moai_tmp%"

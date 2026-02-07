@@ -9,8 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
-- Installer scripts are now integrity-checked with SHA-256 before execution on both shell and batch installers.
-- MoAI-ADK installer sources are pinned to an immutable Git commit URL rather than mutable `main`.
+- Claude installer scripts are integrity-checked with SHA-256 before execution on both shell and batch installers.
+- MoAI-ADK installer keeps tracking upstream `main` installer script for automatic release-flow compatibility.
 
 ### Fixed
 
