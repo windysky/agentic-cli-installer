@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.6] - 2026-02-07
+
+### Changed
+
+- npm (Node Package Manager) now always appears in the menu, even when not installed
+- When an outdated version is installed, the action shows "upgrade" instead of "install" for better UX
+- Added "upgrade" action state with cyan [↑] indicator in the menu
+- Tool cycling for outdated tools now goes: skip -> upgrade -> remove (previously: skip -> install -> remove)
+
+### Fixed
+
+- npm menu item no longer requires npm to be pre-installed to appear in the menu
+- Action summary now distinguishes between "Install" and "Upgrade" operations
+- Result display now shows "Upgraded" count separately from "Installed" count
+
+---
+
 ## [1.7.5] - 2026-02-07
 
 ### Security

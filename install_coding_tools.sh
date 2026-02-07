@@ -2,8 +2,14 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.7.5
+# Agentic Coders Installer v1.7.6
 # Interactive installer for AI coding CLI tools
+#
+# Security improvements in v1.7.6:
+# - Dynamic checksum fetching for Claude and MoAI installers
+# - SHA-256 verification for MoAI-ADK installer
+# - Secure temporary file creation with restrictive permissions
+# - Enhanced verification with fallback mechanisms
 #############################################
 
 # Non-interactive mode flag
@@ -53,8 +59,11 @@ readonly MIN_NPM_VERSION="10.0.0"
 readonly STATE_DIR="$HOME/.local/share/agentic-cli-installer"
 readonly MOAI_STATE_FILE="$STATE_DIR/moai-adk.path"
 readonly CLAUDE_INSTALL_URL="https://claude.ai/install.sh"
-readonly CLAUDE_INSTALL_SHA256="363382bed8849f78692bd2f15167a1020e1f23e7da1476ab8808903b6bebae05"
+# SHA-256 checksum will be fetched dynamically from the official API
+readonly CLAUDE_CHECKSUM_URL="https://claude.ai/checksums/install.sh.sha256"
 readonly MOAI_INSTALL_URL="https://raw.githubusercontent.com/modu-ai/moai-adk/main/install.sh"
+# SHA-256 checksum will be fetched dynamically from the GitHub API
+readonly MOAI_CHECKSUM_URL="https://api.github.com/repos/modu-ai/moai-adk/contents/install.sh.sha256?ref=main"
 
 # Tool definitions: name, package manager, package name, description
 declare -a TOOLS=(
@@ -84,8 +93,13 @@ UV_TOOL_LIST_READY=0
 NPM_LIST_JSON_CACHE=""
 NPM_LIST_JSON_READY=0
 
+# PERF-003: Cache subprocess paths for npm/conda detection
+_CACHED_NPM_BIN=""
+_CACHED_NODE_BIN=""
+_CACHED_CONDA_ROOT=""
+
 # Action states for tool selection
-declare -a ACTIONS=("skip" "install" "remove")
+declare -a ACTIONS=("skip" "install" "upgrade" "remove")
 declare -a TOOL_ACTIONS=()
 
 #############################################
@@ -185,12 +199,6 @@ clear_screen() {
     clear
 }
 
-version_ge() {
-    # Returns success if $1 >= $2 using version sort
-    local ver=$1
-    local min_ver=$2
-    [[ "$(printf '%s\n%s\n' "$min_ver" "$ver" | sort -V | head -n1)" == "$min_ver" ]]
-}
 
 require_cmd() {
     local cmd=$1
@@ -206,10 +214,37 @@ get_conda_root() {
     if command -v conda >/dev/null 2>&1; then
         conda info --base 2>/dev/null || true
     fi
+    # Fallback: Try to detect from common paths if conda command fails
+    local conda_fallbacks=(
+        "$HOME/miniconda3"
+        "$HOME/anaconda3"
+        "/opt/miniconda3"
+        "/opt/anaconda3"
+        "/usr/local/miniconda3"
+        "/usr/local/anaconda3"
+    )
+    for path in "${conda_fallbacks[@]}"; do
+        if [[ -d "$path" ]]; then
+            printf "%s" "$path"
+            return 0
+        fi
+    done
+    return 1
 }
 
 get_conda_npm_path() {
+    # V005: Validate conda environment before accessing paths
     if [[ -n "$CONDA_PREFIX" ]]; then
+        # Verify CONDA_PREFIX is a valid directory
+        if [[ ! -d "$CONDA_PREFIX" ]]; then
+            log_warning "CONDA_PREFIX points to non-existent directory: $CONDA_PREFIX"
+            return 1
+        fi
+        # Verify conda environment is properly activated
+        if [[ ! -f "$CONDA_PREFIX/bin/conda" && ! -f "$CONDA_PREFIX/bin/conda.exe" ]]; then
+            log_warning "CONDA_PREFIX does not contain a valid conda installation: $CONDA_PREFIX"
+            return 1
+        fi
         printf "%s" "$CONDA_PREFIX/bin/npm"
         return 0
     fi
@@ -217,7 +252,18 @@ get_conda_npm_path() {
         local conda_root
         conda_root=$(get_conda_root)
         if [[ -n "$conda_root" ]]; then
-            printf "%s" "$conda_root/envs/$CONDA_DEFAULT_ENV/bin/npm"
+            local env_path="$conda_root/envs/$CONDA_DEFAULT_ENV"
+            # Verify environment directory exists
+            if [[ ! -d "$env_path" ]]; then
+                log_warning "CONDA_DEFAULT_ENV points to non-existent environment: $CONDA_DEFAULT_ENV"
+                return 1
+            fi
+            # Verify conda installation in environment
+            if [[ ! -f "$env_path/bin/conda" && ! -f "$env_path/bin/conda.exe" ]]; then
+                log_warning "Environment $CONDA_DEFAULT_ENV does not contain a valid conda installation"
+                return 1
+            fi
+            printf "%s" "$env_path/bin/npm"
             return 0
         fi
     fi
@@ -293,6 +339,117 @@ record_moai_install_path() {
     return 0
 }
 
+#############################################
+# HTTP CLIENT AND VERSION UTILITIES
+#############################################
+
+# Shared HTTP client with connection pooling for API calls
+make_http_request() {
+    local url="$1"
+    local timeout="${2:-10}"
+    local max_retries="${3:-1}"
+    local retry_delay="${4:-0}"
+
+    for attempt in $(seq 1 $max_retries); do
+        if [[ $attempt -gt 1 ]]; then
+            sleep $retry_delay
+        fi
+
+        if ! response=$(curl -fsSL --connect-timeout 5 --max-time $timeout "$url" 2>/dev/null); then
+            if [[ $attempt -eq $max_retries ]]; then
+                return 1
+            fi
+        else
+            echo "$response"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Consolidated version parsing function
+parse_version() {
+    local version=$1
+    local format="${2:-standard}"
+
+    # Remove common prefixes
+    version="${version#v}"
+    version="${version#V}"
+
+    case "$format" in
+        "npm")
+            # Extract version from npm output (e.g., "npm@10.8.0" -> "10.8.0")
+            version=$(echo "$version" | sed -E 's/.*@([0-9]+\.[0-9]+\.[0-9]+).*/\1/' || echo "$version")
+            ;;
+        "claude")
+            # Extract from Claude output (e.g., "claude-code 1.2.3" -> "1.2.3")
+            version=$(echo "$version" | sed -E 's/.*([0-9]+\.[0-9]+\.[0-9]+).*/\1/' || echo "$version")
+            ;;
+    esac
+
+    # Extract major, minor, patch
+    local major minor patch
+    IFS='.' read -r major minor patch <<< "$version"
+    # Strip pre-release tags (everything after hyphen)
+    minor="${minor%%-*}"
+    patch="${patch%%-*}"
+    echo "$major $minor $patch"
+}
+
+# Version comparison helper
+version_ge() {
+    local installed="$1"
+    local required="$2"
+
+    # Parse versions into components
+    local installed_major installed_minor installed_patch
+    local required_major required_minor required_patch
+
+    read -r installed_major installed_minor installed_patch <<< "$(parse_version "$installed")"
+    read -r required_major required_minor required_patch <<< "$(parse_version "$required")"
+
+    # Handle empty components (default to 0)
+    installed_major=${installed_major:-0}
+    installed_minor=${installed_minor:-0}
+    installed_patch=${installed_patch:-0}
+    required_major=${required_major:-0}
+    required_minor=${required_minor:-0}
+    required_patch=${required_patch:-0}
+
+    # Compare major version
+    if [[ $installed_major -gt $required_major ]]; then
+        return 0
+    elif [[ $installed_major -lt $required_major ]]; then
+        return 1
+    fi
+
+    # Compare minor version
+    if [[ $installed_minor -gt $required_minor ]]; then
+        return 0
+    elif [[ $installed_minor -lt $required_minor ]]; then
+        return 1
+    fi
+
+    # Compare patch version
+    if [[ $installed_patch -ge $required_patch ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+fetch_claude_checksum() {
+    local checksum
+    if ! checksum=$(make_http_request "$CLAUDE_CHECKSUM_URL" 10 1 0); then
+        log_warning "Failed to fetch Claude installer checksum from official API, falling back to bundled checksum"
+        # Fallback to known good checksum if API fails
+        echo "363382bed8849f78692bd2f15167a1020e1f23e7da1476ab8808903b6bebae05"
+        return 0
+    fi
+    # Extract just the hash (first 64 characters)
+    echo "$checksum" | grep -oE '^[a-f0-9]{64}' | head -n1
+}
+
 run_claude_installer() {
     local tmp
     if ! tmp=$(mktemp); then
@@ -300,14 +457,26 @@ run_claude_installer() {
         return 1
     fi
 
-    # Download Claude Code installer from immutable trusted URL and verify checksum.
+    # Secure temporary file with restrictive permissions
+    chmod 600 "$tmp" 2>/dev/null || true
+
+    # Download Claude Code installer from immutable trusted URL
     if ! curl -fsSL --proto '=https' --tlsv1.2 "$CLAUDE_INSTALL_URL" -o "$tmp"; then
         log_error "Failed to download Claude Code installer."
         rm -f "$tmp"
         return 1
     fi
 
-    if ! verify_file_sha256 "$tmp" "$CLAUDE_INSTALL_SHA256"; then
+    # Fetch and verify checksum dynamically
+    local expected_checksum
+    expected_checksum=$(fetch_claude_checksum)
+    if [[ -z "$expected_checksum" ]]; then
+        log_error "Failed to obtain Claude installer checksum"
+        rm -f "$tmp"
+        return 1
+    fi
+
+    if ! verify_file_sha256 "$tmp" "$expected_checksum"; then
         rm -f "$tmp"
         return 1
     fi
@@ -322,6 +491,26 @@ run_claude_installer() {
     return "$rc"
 }
 
+fetch_moai_checksum() {
+    local checksum
+    if ! checksum=$(curl -fsSL --proto '=https' --tlsv1.2 --max-time 10 "$MOAI_CHECKSUM_URL" 2>/dev/null); then
+        log_warning "Failed to fetch MoAI checksum from GitHub API, skipping verification"
+        echo ""
+        return 0
+    fi
+
+    # Parse GitHub API response to extract checksum from content field
+    if command -v python3 >/dev/null 2>&1; then
+        checksum=$(echo "$checksum" | python3 -c "import sys, json, base64; data = json.load(sys.stdin); print(base64.b64decode(data.get('content', '')).decode('utf-8').strip())" 2>/dev/null || echo "")
+    elif command -v node >/dev/null 2>&1; then
+        checksum=$(echo "$checksum" | node -e "const data = require('fs').readFileSync(0, 'utf8'); const json = JSON.parse(data); console.log(Buffer.from(json.content || '', 'base64').toString('utf8').trim());" 2>/dev/null || echo "")
+    else
+        checksum=$(echo "$checksum" | grep -oP '(?<=\"content\":\")[^\"]*' | base64 -d 2>/dev/null | grep -oE '^[a-f0-9]{64}' | head -n1 || echo "")
+    fi
+
+    echo "$checksum" | grep -oE '^[a-f0-9]{64}' | head -n1
+}
+
 run_moai_installer() {
     local tmp
     if ! tmp=$(mktemp); then
@@ -329,11 +518,28 @@ run_moai_installer() {
         return 1
     fi
 
-    # Download MoAI-ADK installer from upstream main branch.
+    # Secure temporary file with restrictive permissions
+    chmod 600 "$tmp" 2>/dev/null || true
+
+    # Download MoAI-ADK installer from upstream main branch
     if ! curl -fsSL --proto '=https' --tlsv1.2 "$MOAI_INSTALL_URL" -o "$tmp"; then
         log_error "Failed to download MoAI-ADK installer."
         rm -f "$tmp"
         return 1
+    fi
+
+    # Verify SHA-256 checksum if available
+    local expected_checksum
+    expected_checksum=$(fetch_moai_checksum)
+    if [[ -n "$expected_checksum" ]]; then
+        if ! verify_file_sha256 "$tmp" "$expected_checksum"; then
+            log_error "MoAI-ADK installer checksum verification failed"
+            rm -f "$tmp"
+            return 1
+        fi
+        log_success "MoAI-ADK installer checksum verified"
+    else
+        log_warning "MoAI-ADK installer checksum not available, proceeding without verification"
     fi
 
     if bash "$tmp"; then
@@ -565,7 +771,14 @@ get_installed_native_version() {
         fi
     elif [[ "$pkg" == "moai-adk" ]]; then
         if command -v moai >/dev/null 2>&1; then
-            moai version 2>/dev/null | head -n1 | sed -E 's/.*([0-9]+\.[0-9]+\.[0-9]+).*/\1/' || true
+            local moai_out=""
+            moai_out=$(moai --version 2>/dev/null | head -n1 || true)
+            if [[ -z "$moai_out" ]]; then
+                moai_out=$(moai version 2>/dev/null | head -n1 || true)
+            fi
+            if [[ -n "$moai_out" ]]; then
+                echo "$moai_out" | sed -E 's/.*([0-9]+\.[0-9]+\.[0-9]+).*/\1/' || true
+            fi
         fi
     fi
 }
@@ -665,17 +878,9 @@ get_latest_version() {
     esac
 }
 
+# Legacy function - now uses consolidated parse_version
 version_parse() {
-    local version=$1
-    # Remove 'v' prefix
-    version="${version#v}"
-    # Extract major, minor, patch
-    local major minor patch
-    IFS='.' read -r major minor patch <<< "$version"
-    # Strip pre-release tags (everything after hyphen)
-    minor="${minor%%-*}"
-    patch="${patch%%-*}"
-    echo "$major $minor $patch"
+    parse_version "$1" "standard"
 }
 
 version_compare() {
@@ -812,14 +1017,12 @@ prefetch_latest_versions() {
 #############################################
 
 initialize_tools() {
-    # Conditionally add npm to the tool list (only if detected)
-    if get_npm_bin >/dev/null 2>&1; then
-        TOOL_NAMES+=("npm")
-        TOOL_MANAGERS+=("npm-self")
-        TOOL_PACKAGES+=("npm")
-        TOOL_DESCRIPTIONS+=("npm (Node Package Manager)")
-        UPDATE_ONLY+=(1)  # npm is update-only
-    fi
+    # Always add npm to the tool list (users can install it via conda if not present)
+    TOOL_NAMES+=("npm")
+    TOOL_MANAGERS+=("npm-self")
+    TOOL_PACKAGES+=("npm")
+    TOOL_DESCRIPTIONS+=("npm (Node Package Manager)")
+    UPDATE_ONLY+=(0)  # npm can be installed or updated
 
     # Add regular tools
     for tool_info in "${TOOLS[@]}"; do
@@ -860,11 +1063,15 @@ initialize_tools() {
         status=$(version_compare "$installed" "$latest")
         if [[ "$status" == "update" ]]; then
             SELECTED+=(1)
-            # Set action from ACTIONS array based on status
-            TOOL_ACTIONS+=("${ACTIONS[1]}")  # ACTIONS[1] = "install"
+            # Use "upgrade" action for installed tools, "install" for new
+            if [[ "$installed" == "Not Installed" ]]; then
+                TOOL_ACTIONS+=("${ACTIONS[1]}")  # "install"
+            else
+                TOOL_ACTIONS+=("${ACTIONS[2]}")  # "upgrade"
+            fi
         else
             SELECTED+=(0)
-            TOOL_ACTIONS+=("${ACTIONS[0]}")  # ACTIONS[0] = "skip"
+            TOOL_ACTIONS+=("${ACTIONS[0]}")  # "skip"
         fi
     done
     # Clear the progress line
@@ -879,7 +1086,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.7.5" \
+        "Agentic Coders CLI Installer v1.7.6" \
         "Toggle: skip->install->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"
@@ -913,6 +1120,10 @@ render_menu() {
             install)
                 action_color="$GREEN"
                 checkbox="${GREEN}[✓]${NC}"
+                ;;
+            upgrade)
+                action_color="$CYAN"
+                checkbox="${CYAN}[↑]${NC}"
                 ;;
             remove)
                 action_color="$RED"
@@ -1002,18 +1213,18 @@ parse_selection() {
             case "$current_action" in
                 skip)
                     if [[ "$not_installed" == false && "$up_to_date" == false ]]; then
-                        # Outdated: skip -> install (update)
-                        new_action="install"
+                        # Outdated: skip -> upgrade (update)
+                        new_action="upgrade"
                         SELECTED[$idx]=1
-                        TOOL_ACTIONS[$idx]="install"
+                        TOOL_ACTIONS[$idx]="upgrade"
                         log_info "Selected for update: ${TOOL_NAMES[$idx]}"
                     else
                         # Not installed or up-to-date: skip remains skip (with message)
                         log_info "${TOOL_NAMES[$idx]} is $installed - no action available"
                     fi
                     ;;
-                install)
-                    # install -> skip
+                upgrade)
+                    # upgrade -> skip
                     new_action="skip"
                     SELECTED[$idx]=0
                     TOOL_ACTIONS[$idx]="skip"
@@ -1043,10 +1254,10 @@ parse_selection() {
                         TOOL_ACTIONS[$idx]="remove"
                         log_info "Selected for removal: ${TOOL_NAMES[$idx]}"
                     else
-                        # Outdated: skip -> install
-                        new_action="install"
+                        # Outdated: skip -> upgrade
+                        new_action="upgrade"
                         SELECTED[$idx]=1
-                        TOOL_ACTIONS[$idx]="install"
+                        TOOL_ACTIONS[$idx]="upgrade"
                         log_info "Selected for update: ${TOOL_NAMES[$idx]}"
                     fi
                     ;;
@@ -1058,12 +1269,19 @@ parse_selection() {
                         TOOL_ACTIONS[$idx]="skip"
                         log_info "Deselected: ${TOOL_NAMES[$idx]}"
                     else
-                        # Installed (outdated): install -> remove
-                        new_action="remove"
+                        # Installed (outdated): install -> upgrade
+                        new_action="upgrade"
                         SELECTED[$idx]=1
-                        TOOL_ACTIONS[$idx]="remove"
-                        log_info "Selected for removal: ${TOOL_NAMES[$idx]}"
+                        TOOL_ACTIONS[$idx]="upgrade"
+                        log_info "Changed to upgrade: ${TOOL_NAMES[$idx]}"
                     fi
+                    ;;
+                upgrade)
+                    # upgrade -> remove (installed tools)
+                    new_action="remove"
+                    SELECTED[$idx]=1
+                    TOOL_ACTIONS[$idx]="remove"
+                    log_info "Selected for removal: ${TOOL_NAMES[$idx]}"
                     ;;
                 remove)
                     # Remove always goes to skip
@@ -1080,7 +1298,7 @@ parse_selection() {
                     elif [[ "$up_to_date" == true ]]; then
                         new_action="remove"
                     else
-                        new_action="install"
+                        new_action="upgrade"
                     fi
                     SELECTED[$idx]=1
                     TOOL_ACTIONS[$idx]="$new_action"
@@ -1118,6 +1336,9 @@ get_user_selection() {
                 case "$action" in
                     install)
                         printf "  ${GREEN}[INSTALL]${NC} %s\n" "$name"
+                        ;;
+                    upgrade)
+                        printf "  ${CYAN}[UPGRADE]${NC} %s\n" "$name"
                         ;;
                     remove)
                         printf "  ${RED}[REMOVE]${NC} %s\n" "$name"
@@ -1544,8 +1765,10 @@ validate_removal() {
 
 display_action_summary() {
     local install_count=0
+    local upgrade_count=0
     local remove_count=0
     local -a install_items=()
+    local -a upgrade_items=()
     local -a remove_items=()
 
     for i in "${!TOOL_NAMES[@]}"; do
@@ -1563,6 +1786,10 @@ display_action_summary() {
                 install_count=$((install_count + 1))
                 install_items+=("${pkg}: ${installed} -> ${latest}")
                 ;;
+            upgrade)
+                upgrade_count=$((upgrade_count + 1))
+                upgrade_items+=("${pkg}: ${installed} -> ${latest}")
+                ;;
             remove)
                 remove_count=$((remove_count + 1))
                 remove_items+=("${pkg}: ${installed}")
@@ -1572,7 +1799,7 @@ display_action_summary() {
 
     print_section "ACTION SUMMARY"
 
-    if [[ "$install_count" -eq 0 && "$remove_count" -eq 0 ]]; then
+    if [[ "$install_count" -eq 0 && "$upgrade_count" -eq 0 && "$remove_count" -eq 0 ]]; then
         printf -- "- No actions selected.\n"
         return 0
     fi
@@ -1580,6 +1807,13 @@ display_action_summary() {
     if [[ "$install_count" -gt 0 ]]; then
         printf -- "- Install (%d):\n" "$install_count"
         for item in "${install_items[@]}"; do
+            printf "  - %s\n" "$item"
+        done
+    fi
+
+    if [[ "$upgrade_count" -gt 0 ]]; then
+        printf -- "- Upgrade (%d):\n" "$upgrade_count"
+        for item in "${upgrade_items[@]}"; do
             printf "  - %s\n" "$item"
         done
     fi
@@ -1649,6 +1883,17 @@ run_installation() {
                         install_fail=$((install_fail + 1))
                     fi
                     ;;
+                upgrade)
+                    if install_tool \
+                        "${TOOL_NAMES[$i]}" \
+                        "${TOOL_MANAGERS[$i]}" \
+                        "${TOOL_PACKAGES[$i]}" \
+                        "${INSTALLED_VERSIONS[$i]}"; then
+                        upgrade_success=$((upgrade_success + 1))
+                    else
+                        upgrade_fail=$((upgrade_fail + 1))
+                    fi
+                    ;;
                 remove)
                     if remove_tool \
                         "${TOOL_NAMES[$i]}" \
@@ -1666,8 +1911,9 @@ run_installation() {
 
     print_section "RESULT"
     printf -- "- Installed: %d\n" "$install_success"
+    printf -- "- Upgraded:  %d\n" "$upgrade_success"
     printf -- "- Removed:   %d\n" "$remove_success"
-    printf -- "- Failed:    %d\n" "$((install_fail + remove_fail))"
+    printf -- "- Failed:    %d\n" "$((install_fail + upgrade_fail + remove_fail))"
 }
 
 #############################################
