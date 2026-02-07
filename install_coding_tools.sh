@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.7.7
+# Agentic Coders Installer v1.7.8
 # Interactive installer for AI coding CLI tools
 #
 # Security improvements in v1.7.6:
@@ -1862,6 +1862,8 @@ confirm_removals() {
 run_installation() {
     local install_success=0
     local install_fail=0
+    local upgrade_success=0
+    local upgrade_fail=0
     local remove_success=0
     local remove_fail=0
 
