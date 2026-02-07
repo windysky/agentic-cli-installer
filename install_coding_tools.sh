@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.7.10
+# Agentic Coders Installer v1.7.11
 # Interactive installer for AI coding CLI tools
 #
 # Security improvements in v1.7.6:
@@ -786,11 +786,13 @@ get_installed_native_version() {
 
 get_installed_addon_version() {
     local pkg=$1
-    # For addons like oh-my-opencode, check if the config exists
+    # For addons like oh-my-opencode, check if it's installed globally
     if [[ "$pkg" == "oh-my-opencode" ]]; then
-        # oh-my-opencode creates config in ~/.local/share/oh-my-opencode/
-        if [[ -d "$HOME/.local/share/oh-my-opencode" ]] || [[ -d "$HOME/.oh-my-opencode" ]]; then
-            # Try to get version from npm (it's installed as a global package)
+        # Check if bunx can find and run the package
+        if command -v bunx >/dev/null 2>&1; then
+            # Try to get version by checking if the package can be executed
+            # bunx caches packages, so we can check the cache or just assume it's available
+            # For simplicity, check the npm global list
             local npm_bin
             npm_bin=$(get_npm_bin 2>/dev/null || true)
             if [[ -n "$npm_bin" ]]; then
@@ -798,16 +800,15 @@ get_installed_addon_version() {
                 json=$("$npm_bin" list -g --depth=0 --json 2>/dev/null || true)
                 if [[ -n "$json" ]]; then
                     # Extract version using grep (safer than eval)
-                    local version=$(echo "$json" | grep -o '"oh-my-opencode"' -A 2 | grep '"version"' | head -1 | grep -o '"[0-9][^"]*"' | tr -d '"' || true)
+                    local version=$(echo "$json" | grep -o '"'"$pkg"'"' -A 2 | grep '"version"' | head -1 | grep -o '"[0-9][^"]*"' | tr -d '"' || true)
                     if [[ -n "$version" ]]; then
                         echo "$version"
                         return 0
                     fi
                 fi
             fi
-            # Config exists but can't determine version - show as latest
-            echo "latest"
-            return 0
+            # If bunx can run it, consider it installed (but version unknown)
+            # Return empty to fall through to "Not Installed" below
         fi
     fi
     # Not installed
@@ -910,9 +911,8 @@ get_latest_version() {
             fi
             ;;
         addon)
-            # For addons like oh-my-opencode, return "latest" since they're
-            # always installed at the latest available version via bunx/npx
-            echo "latest"
+            # For addons, query npm registry for the latest version
+            get_latest_npm_version "$pkg"
             ;;
     esac
 }
