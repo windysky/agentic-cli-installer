@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.7.9
+# Agentic Coders Installer v1.7.10
 # Interactive installer for AI coding CLI tools
 #
 # Security improvements in v1.7.6:
@@ -73,7 +73,7 @@ declare -a TOOLS=(
     "@google/gemini-cli|npm|@google/gemini-cli|Google Gemini CLI"
     "@google/jules|npm|@google/jules|Google Jules CLI"
     "opencode-ai|npm|opencode-ai|OpenCode AI CLI"
-    "oh-my-opencode|addon|oh-my-opencode|OpenCode Addons (oh-my-opencode)"
+    "oh-my-opencode|addon|oh-my-opencode|OpenCode - oh-my-opencode"
     "mistral-vibe|uv|mistral-vibe|Mistral Vibe CLI"
 )
 
@@ -805,8 +805,8 @@ get_installed_addon_version() {
                     fi
                 fi
             fi
-            # Config exists but can't determine version - assume installed
-            echo "installed"
+            # Config exists but can't determine version - show as latest
+            echo "latest"
             return 0
         fi
     fi
@@ -910,8 +910,9 @@ get_latest_version() {
             fi
             ;;
         addon)
-            # For addons, use npm to get the latest version
-            get_latest_npm_version "$pkg"
+            # For addons like oh-my-opencode, return "latest" since they're
+            # always installed at the latest available version via bunx/npx
+            echo "latest"
             ;;
     esac
 }
