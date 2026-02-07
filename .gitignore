@@ -1,146 +1,216 @@
-# Ignore everything by default
-*
-
-# Keep root files we want in the repo
-!.gitignore
-!README.md
-!install_coding_tools.sh
-!install_coding_tools.bat
-!setup.sh
-!setup.bat
-!auto_install_coding_tools
-!fix_hooks_config.py
-node_modules/
-[Dd]esktop.ini
-*.jks
-*.backup/
-htmlcov/
-.turbo/
-# Build Artifacts & Distribution
-# Updated: 2026-01-10
-*.njsproj
-*.sqlite3
-.env
-*.swo
-*.db
-.firebase/
-.LSOverride
-coverage.json
-*.secret.*
-*-secret-key.*
-# Purpose: Essential patterns for user projects
-api-key-*
-*.swp
-# Python Cache & Bytecode
-*.log
-.DocumentRevisions-V100
-.next/
-.netlify/
-*.suo
-# Certificate files
-__pycache__/
-# MoAI-ADK Package Distribution .gitignore
-*-api-key.*
-dist-ssr/
-.claude/skills/*/*/*key*
-*.backup
-# Environment files
-.claude/skills/*/*/*token*
-private-key*
-.mypy_cache/
-*.pyc
-*.egg
-dist/
-.venv/
-*-secret.*
-build/
-*.bak
-# Deployment & CI/CD
-.claude/skills/*/*/*secret*
-.pytest_cache/
-.AppleDouble
-# Version: 0.33.0
-# Linux
-ehthumbs.db
-.uv-cache/
-logs/
-.VolumeIcon.icns
-.Spotlight-V100
-*.rdb
-*.tmp
-.moai-backups/
 # ============================================
-*-backup/
-.coverage
-*.pyd
-*_secret=*
-secret-*.*
-# Windows
-# Cloud provider credentials
-# FIXED: Issue #237 - Replaced overly broad *key* and *secret* patterns
-*_key.*
-# Build Tools & Frameworks
-.claude/skills/*/.env*
-*.tsbuildinfo
-# Backups
-*.p12
-*.sln
-# Claude Code Configuration
-.DS_Store
-.env/
-.fseventsd
-*.temp
-.env.*
-.idea/
-out/
+# MoAI-ADK Package Distribution .gitignore
+# ============================================
+# Version: 0.33.0
+# Updated: 2026-01-10
+# Purpose: Essential patterns for user projects
+# ============================================
+
 # ===========================================
-*.pyo
+# Go Build Artifacts
+# ===========================================
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+cover.out
+cover.html
+cpu.prof
+mem.prof
+
+# ===========================================
+# Build Artifacts & Distribution
+# ===========================================
+build/
+dist/
 *.egg-info/
+*.egg
+
+# ===========================================
+# Python Cache & Bytecode
+# ===========================================
+__pycache__/
+.pytest_cache/
+*.pyc
+*.pyo
+*.pyd
+.mypy_cache/
 .ruff_cache/
-.vercel/
-*.sublime-workspace
-.claude/local/
-env/
+*.db
 *.sqlite
-*_secret.*
-.#*
-.vscode/
-.Trashes
-# Private keys (specific patterns to avoid false positives)
-secret-key-*
-Thumbs.db
-.claude/settings.local.*.json
-# Secrets and Credentials (CRITICAL)
-*.sublime-project
-# Virtual Environments
-.claude/.env.local*
-.cursor/
-venv/
-.tscache/
-*_token=*
-*-key.*
-.claude/skills/*/secrets/
-# Skill-specific credentials
-*.pem
-.aws/credentials
-# Node.js (for docs/Nextra)
-# Logs & Temporary Files
-# Mac
+*.sqlite3
+*.rdb
 *.dbm
-*.key.*
-*.pfx
-!.env.example
-.TemporaryItems
-.nuxt/
-*.sw?
-# Credential patterns in environment files
-*_backup_*/
-# OS Files
-# Test Coverage
+
+# ===========================================
+# Virtual Environments
+# ===========================================
+venv/
+.venv/
+env/
+.env/
 .uv_cache/
-.directory
+.uv-cache/
+
+# ===========================================
+# Test Coverage
+# ===========================================
+.coverage
+coverage.json
+htmlcov/
+
+# ===========================================
 # IDE & Editors
-.claude/settings.local.json
+# ===========================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sw?
 *~
+.cursor/
+*.sublime-project
+*.sublime-workspace
+*.njsproj
+*.sln
+*.suo
+.#*
+
+# ===========================================
+# OS Files
+# ===========================================
+# Mac
+.DS_Store
+.AppleDouble
+.LSOverride
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+
+# Windows
+[Dd]esktop.ini
+Thumbs.db
+ehthumbs.db
+
+# Linux
+.directory
+
+# ===========================================
+# Logs & Temporary Files
+# ===========================================
+*.log
+logs/
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# Security-related temporary files
+*_checksum_*.tmp
+*_install_*.tmp
+*_version_*.tmp
+agentic_*.tmp
+
+# Patch and session files
+*.patch
+*.session
+
+# Temporary fix scripts (generated during audits)
+apply_*.sh
+fix_*.sh
+
+# Audit and review documentation
+CHANGES_*.md
+FIXES_SUMMARY.md
+PERFORMANCE_FIXES*.md
+SECURITY_AUDIT*.md
+
+# ===========================================
+# Backups
+# ===========================================
+.moai-backups/
+.archive/
+*.backup/
+*-backup/
+*_backup_*/
+
+# ===========================================
+# Secrets and Credentials (CRITICAL)
+# ===========================================
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Certificate files
+*.pem
+*.p12
+*.pfx
+*.jks
+
+# Private keys (specific patterns to avoid false positives)
+# FIXED: Issue #237 - Replaced overly broad *key* and *secret* patterns
+*-key.*
+*_key.*
+*.key.*
+*-secret-key.*
+*-api-key.*
+api-key-*
+secret-key-*
+private-key*
+*-secret.*
+*_secret.*
+*.secret.*
+secret-*.*
+
+# Credential patterns in environment files
+*_secret=*
+*_token=*
+
+# Cloud provider credentials
 .aws/config
+.aws/credentials
+
+# ===========================================
+# Claude Code Configuration
+# ===========================================
+.claude/settings.local.json
+.claude/settings.local.*.json
+.claude/.env.local*
+.claude/local/
 .claude/plans/
+
+# Skill-specific credentials
+.claude/skills/*/.env*
+.claude/skills/*/secrets/
+.claude/skills/*/*/*secret*
+.claude/skills/*/*/*key*
+.claude/skills/*/*/*token*
+
+# ===========================================
+# Node.js (for docs/Nextra)
+# ===========================================
+node_modules/
+*.tsbuildinfo
+.tscache/
+.next/
+out/
+
+# ===========================================
+# Build Tools & Frameworks
+# ===========================================
+.turbo/
+.nuxt/
+dist-ssr/
+
+# ===========================================
+# Deployment & CI/CD
+# ===========================================
+.vercel/
+.netlify/
+.firebase/
