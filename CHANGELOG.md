@@ -55,7 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - oh-my-opencode added as a separate menu item (positioned after opencode-ai)
 - New "addon" manager type for optional add-on packages
-- Automatic dependency resolution: selecting oh-my-opencode automatically selects opencode-ai if not installed
+- Dependency check: oh-my-opencode installation requires opencode-ai to be installed first
 
 ### Changed
 
