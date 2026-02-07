@@ -1016,6 +1016,10 @@ prefetch_latest_versions() {
                     native)
                         latest=$(get_latest_version "$manager" "$pkg")
                         ;;
+                    addon)
+                        # For addons, query npm registry for the latest version
+                        latest=$(get_latest_npm_version "$pkg")
+                        ;;
                 esac
                 if [[ -n "$latest" ]]; then
                     break
