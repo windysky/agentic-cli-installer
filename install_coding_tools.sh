@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.7.12
+# Agentic Coders Installer v1.7.13
 # Interactive installer for AI coding CLI tools
 #
 # Version history: v1.7.6 added security improvements, v1.7.12 fixed oh-my-opencode version detection
@@ -790,14 +790,17 @@ get_installed_addon_version() {
     if [[ "$pkg" == "oh-my-opencode" ]]; then
         local opencode_config="$HOME/.config/opencode/opencode.json"
         if [[ -f "$opencode_config" ]]; then
-            # Check if "oh-my-opencode" exists in the plugins array
+            # Check if "oh-my-opencode" exists in the plugin array
+            # Note: opencode.json uses "plugin" (singular), not "plugins"
             # Try with jq if available, otherwise fall back to grep
             local has_plugin="false"
             if command -v jq >/dev/null 2>&1; then
-                has_plugin=$(jq -r '.plugins // [] | any(. == "oh-my-opencode")' "$opencode_config" 2>/dev/null || echo "false")
+                # Check if any plugin entry starts with "oh-my-opencode" (may include @version)
+                has_plugin=$(jq -r '.plugin // [] | any(startswith("oh-my-opencode"))' "$opencode_config" 2>/dev/null || echo "false")
             else
                 # Fallback: grep for the plugin name in the file
-                if grep -q '"oh-my-opencode"' "$opencode_config" 2>/dev/null; then
+                # Matches "oh-my-opencode", "oh-my-opencode@latest", etc.
+                if grep -q '"oh-my-opencode' "$opencode_config" 2>/dev/null; then
                     has_plugin="true"
                 fi
             fi
@@ -1132,7 +1135,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.7.12" \
+        "Agentic Coders CLI Installer v1.7.13" \
         "Toggle: skip->install->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"
@@ -1479,6 +1482,26 @@ get_user_selection() {
 oh_my_opencode_flags="--no-tui --claude=no --openai=no --gemini=no --copilot=no --opencode-zen=no --zai-coding-plan=no"
 
 install_oh_my_opencode() {
+    # First check if plugin is already registered in opencode.json
+    local opencode_config="$HOME/.config/opencode/opencode.json"
+    if [[ -f "$opencode_config" ]]; then
+        local has_plugin="false"
+        if command -v jq >/dev/null 2>&1; then
+            has_plugin=$(jq -r '.plugin // [] | any(startswith("oh-my-opencode"))' "$opencode_config" 2>/dev/null || echo "false")
+        else
+            if grep -q '"oh-my-opencode' "$opencode_config" 2>/dev/null; then
+                has_plugin="true"
+            fi
+        fi
+
+        if [[ "$has_plugin" == "true" ]]; then
+            printf "  oh-my-opencode already registered in opencode.json, skipping install.\n"
+            log_success "oh-my-opencode is already installed"
+            return 0
+        fi
+    fi
+
+    # Plugin not registered - try to install (may fail due to upstream bug)
     # Preferred runners: bunx, then npx
     local runner=()
     if command -v bunx >/dev/null 2>&1; then
@@ -1495,7 +1518,7 @@ install_oh_my_opencode() {
     if "${runner[@]}" 2>/dev/null; then
         log_success "Installed oh-my-opencode"
     else
-        log_warning "oh-my-opencode installer had issues (command: ${runner[*]}). Rerun manually with your desired providers."
+        log_warning "oh-my-opencode installer had issues (command: ${runner[*]}). The plugin may need to be registered manually in ~/.config/opencode/opencode.json."
     fi
 }
 
