@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.13] - 2026-02-07
+
+### Fixed
+
+- oh-my-opencode installed version detection now correctly checks `.plugin` (singular) instead of `.plugins` (plural) in opencode.json
+- jq query now uses `startswith("oh-my-opencode")` to match plugin entries with version specifiers (e.g., "oh-my-opencode@latest")
+- oh-my-opencode installation now checks if plugin is already registered in opencode.json before attempting the broken upstream installer
+- When oh-my-opencode is already registered, the installer skips the install command and reports success
+
+---
+
 ## [1.7.12] - 2026-02-07
 
 ### Fixed
