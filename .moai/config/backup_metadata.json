@@ -1,0 +1,16 @@
+{
+  "timestamp": "20260207_121359",
+  "description": "config_backup",
+  "backed_up_items": [
+    ".moai/config/config.yaml",
+    ".moai/config/multilingual-triggers.yaml"
+  ],
+  "excluded_items": [
+    "sections"
+  ],
+  "excluded_dirs": [
+    "sections"
+  ],
+  "project_root": ".",
+  "backup_type": "config"
+}
