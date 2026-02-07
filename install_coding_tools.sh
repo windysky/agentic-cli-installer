@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.7.6
+# Agentic Coders Installer v1.7.7
 # Interactive installer for AI coding CLI tools
 #
 # Security improvements in v1.7.6:
@@ -233,16 +233,16 @@ get_conda_root() {
 }
 
 get_conda_npm_path() {
-    # V005: Validate conda environment before accessing paths
+    # Get npm path from active conda environment
     if [[ -n "$CONDA_PREFIX" ]]; then
-        # Verify CONDA_PREFIX is a valid directory
-        if [[ ! -d "$CONDA_PREFIX" ]]; then
-            log_warning "CONDA_PREFIX points to non-existent directory: $CONDA_PREFIX"
+        # Verify CONDA_PREFIX is a valid directory with bin subdirectory
+        if [[ ! -d "$CONDA_PREFIX/bin" ]]; then
+            log_warning "CONDA_PREFIX/bin does not exist: $CONDA_PREFIX"
             return 1
         fi
-        # Verify conda environment is properly activated
-        if [[ ! -f "$CONDA_PREFIX/bin/conda" && ! -f "$CONDA_PREFIX/bin/conda.exe" ]]; then
-            log_warning "CONDA_PREFIX does not contain a valid conda installation: $CONDA_PREFIX"
+        # Check if npm exists in the conda environment
+        if [[ ! -x "$CONDA_PREFIX/bin/npm" ]]; then
+            # npm not installed in this conda environment (not an error)
             return 1
         fi
         printf "%s" "$CONDA_PREFIX/bin/npm"
@@ -258,9 +258,9 @@ get_conda_npm_path() {
                 log_warning "CONDA_DEFAULT_ENV points to non-existent environment: $CONDA_DEFAULT_ENV"
                 return 1
             fi
-            # Verify conda installation in environment
-            if [[ ! -f "$env_path/bin/conda" && ! -f "$env_path/bin/conda.exe" ]]; then
-                log_warning "Environment $CONDA_DEFAULT_ENV does not contain a valid conda installation"
+            # Check if npm exists in this environment
+            if [[ ! -x "$env_path/bin/npm" ]]; then
+                # npm not installed in this conda environment (not an error)
                 return 1
             fi
             printf "%s" "$env_path/bin/npm"
