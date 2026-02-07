@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.9] - 2026-02-07
+
+### Added
+
+- oh-my-opencode added as a separate menu item (positioned after opencode-ai)
+- New "addon" manager type for optional add-on packages
+- Automatic dependency resolution: selecting oh-my-opencode automatically selects opencode-ai if not installed
+
+### Changed
+
+- oh-my-opencode is no longer automatically installed with opencode-ai
+- Users can now choose whether to install oh-my-opencode independently
+
+### Fixed
+
+- oh-my-opencode installation no longer dumps minified JavaScript source code to console
+- Verbose output from bunx/npx during oh-my-opencode installation is now suppressed (stderr redirected to /dev/null)
+- oh-my-opencode errors now show clean warning messages instead of raw stack traces
+
+---
+
 ## [1.7.8] - 2026-02-07
 
 ### Fixed
