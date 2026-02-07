@@ -2,10 +2,10 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.7.11
+# Agentic Coders Installer v1.7.12
 # Interactive installer for AI coding CLI tools
 #
-# Security improvements in v1.7.6:
+# Version history: v1.7.6 added security improvements, v1.7.12 fixed oh-my-opencode version detection
 # - Dynamic checksum fetching for Claude and MoAI installers
 # - SHA-256 verification for MoAI-ADK installer
 # - Secure temporary file creation with restrictive permissions
@@ -786,29 +786,32 @@ get_installed_native_version() {
 
 get_installed_addon_version() {
     local pkg=$1
-    # For addons like oh-my-opencode, check if it's installed globally
+    # For addons like oh-my-opencode, check plugin registration in opencode config
     if [[ "$pkg" == "oh-my-opencode" ]]; then
-        # Check if bunx can find and run the package
-        if command -v bunx >/dev/null 2>&1; then
-            # Try to get version by checking if the package can be executed
-            # bunx caches packages, so we can check the cache or just assume it's available
-            # For simplicity, check the npm global list
-            local npm_bin
-            npm_bin=$(get_npm_bin 2>/dev/null || true)
-            if [[ -n "$npm_bin" ]]; then
-                local json
-                json=$("$npm_bin" list -g --depth=0 --json 2>/dev/null || true)
-                if [[ -n "$json" ]]; then
-                    # Extract version using grep (safer than eval)
-                    local version=$(echo "$json" | grep -o '"'"$pkg"'"' -A 2 | grep '"version"' | head -1 | grep -o '"[0-9][^"]*"' | tr -d '"' || true)
-                    if [[ -n "$version" ]]; then
-                        echo "$version"
-                        return 0
-                    fi
+        local opencode_config="$HOME/.config/opencode/opencode.json"
+        if [[ -f "$opencode_config" ]]; then
+            # Check if "oh-my-opencode" exists in the plugins array
+            # Try with jq if available, otherwise fall back to grep
+            local has_plugin="false"
+            if command -v jq >/dev/null 2>&1; then
+                has_plugin=$(jq -r '.plugins // [] | any(. == "oh-my-opencode")' "$opencode_config" 2>/dev/null || echo "false")
+            else
+                # Fallback: grep for the plugin name in the file
+                if grep -q '"oh-my-opencode"' "$opencode_config" 2>/dev/null; then
+                    has_plugin="true"
                 fi
             fi
-            # If bunx can run it, consider it installed (but version unknown)
-            # Return empty to fall through to "Not Installed" below
+
+            if [[ "$has_plugin" == "true" ]]; then
+                # Plugin is registered - get version from npm registry
+                # Addons use npm registry for version info
+                local version
+                version=$(get_latest_npm_version "$pkg")
+                if [[ -n "$version" ]]; then
+                    echo "$version"
+                    return 0
+                fi
+            fi
         fi
     fi
     # Not installed
@@ -1125,7 +1128,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.7.6" \
+        "Agentic Coders CLI Installer v1.7.12" \
         "Toggle: skip->install->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"
