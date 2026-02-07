@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.12] - 2026-02-07
+
+### Fixed
+
+- oh-my-opencode installed version now correctly detected via plugin registration in ~/.config/opencode/opencode.json
+- Previously, version detection incorrectly checked npm global packages (oh-my-opencode is not installed as a traditional global npm package)
+- Addon version detection now uses the same npm registry query for both latest and installed versions
+
+---
+
 ## [1.7.11] - 2026-02-07
 
 ### Fixed
