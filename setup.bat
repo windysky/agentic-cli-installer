@@ -6,8 +6,12 @@ REM
 REM Usage:
 REM   setup.bat
 REM
-REM Version: 1.7.5
+REM Version: 1.7.6
 REM License: MIT
+REM
+REM Security improvements in v1.7.6:
+REM - Enhanced file path sanitization
+REM - Secure temporary file handling
 REM ###############################################
 
 setlocal EnableDelayedExpansion

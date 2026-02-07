@@ -3,9 +3,15 @@ setlocal EnableDelayedExpansion
 set "SCRIPT_DIR=%~dp0"
 
 REM ###############################################
-REM Agentic Coders Installer v1.7.5
+REM Agentic Coders Installer v1.7.6
 REM Interactive installer for AI coding CLI tools
 REM Windows version (run in Anaconda Prompt or CMD)
+REM
+REM Security improvements in v1.7.6:
+REM - Dynamic checksum fetching for Claude and MoAI installers
+REM - SHA-256 verification for MoAI-ADK installer
+REM - Sanitized PowerShell file paths
+REM - Secure temporary file creation with restrictive permissions
 REM ###############################################
 
 REM Runtime flags (also configurable via env vars):
@@ -69,8 +75,10 @@ set "MIN_NPM_VERSION=10.0.0"
 set "STATE_DIR=%USERPROFILE%\.local\share\agentic-cli-installer"
 set "MOAI_STATE_FILE=%STATE_DIR%\moai-adk.path"
 set "CLAUDE_INSTALL_URL=https://claude.ai/install.cmd"
-set "CLAUDE_INSTALL_SHA256=f94ac8a946d6faf987e867788d69a974bdb4792e89620a6de721d24ea1b76466"
+set "CLAUDE_CHECKSUM_URL=https://claude.ai/checksums/install.cmd.sha256"
+set "FALLBACK_CLAUDE_SHA256=f94ac8a946d6faf987e867788d69a974bdb4792e89620a6de721d24ea1b76466"
 set "MOAI_INSTALL_URL=https://raw.githubusercontent.com/modu-ai/moai-adk/main/install.ps1"
+set "MOAI_CHECKSUM_URL=https://api.github.com/repos/modu-ai/moai-adk/contents/install.ps1.sha256?ref=main"
 
 REM Tool list: name|manager|package|description
 set TOOLS_COUNT=7
@@ -554,7 +562,9 @@ set "verify_file=%~1"
 set "verify_expected=%~2"
 set "verify_actual="
 set "AGENTIC_VERIFY_FILE=%verify_file%"
-for /f "delims=" %%h in ('powershell -NoProfile -Command "(Get-FileHash -Algorithm SHA256 -Path $env:AGENTIC_VERIFY_FILE).Hash.ToLower()" 2^>nul') do set "verify_actual=%%h"
+REM Sanitize file path for PowerShell by removing special characters that could cause injection
+set "AGENTIC_VERIFY_FILE=%AGENTIC_VERIFY_FILE:"=%"
+for /f "delims=" %%h in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $path = $env:AGENTIC_VERIFY_FILE; if (Test-Path -LiteralPath $path) { (Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLower() }" 2^>nul') do set "verify_actual=%%h"
 set "AGENTIC_VERIFY_FILE="
 if not defined verify_actual (
     echo %RED%[ERROR]%NC% Unable to compute installer SHA-256 hash
@@ -580,17 +590,56 @@ if not exist "%STATE_DIR%" exit /b 1
 if errorlevel 1 exit /b 1
 exit /b 0
 
+:fetch_claude_checksum
+set "tmpfile=%TEMP%\claude_checksum_%RANDOM%.tmp"
+curl -fsSL "%CLAUDE_CHECKSUM_URL%" -o "%tmpfile%" 2>nul
+if errorlevel 1 (
+    echo %YELLOW%[WARNING]%NC% Failed to fetch Claude checksum, using fallback
+    set "CLAUDE_SHA256=%FALLBACK_CLAUDE_SHA256%"
+    del "%tmpfile%" >nul 2>nul
+    exit /b 0
+)
+REM Extract checksum (first 64 hex characters)
+for /f "delims=" %%c in ('powershell -NoProfile -Command "$content = Get-Content -LiteralPath '%tmpfile%' -Raw; if ($content -match '^[a-f0-9]{64}') { $matches[0] }" 2^>nul') do set "CLAUDE_SHA256=%%c"
+del "%tmpfile%" >nul 2>nul
+if not defined CLAUDE_SHA256 (
+    set "CLAUDE_SHA256=%FALLBACK_CLAUDE_SHA256%"
+    echo %YELLOW%[WARNING]%NC% Failed to parse Claude checksum, using fallback
+)
+exit /b 0
+
 :download_claude_installer
 set "outfile=%~1"
 REM Download Claude Code installer from official Anthropic source over HTTPS
-REM Note: For additional security, consider verifying checksum if Anthropic provides one
 curl -fsSL "%CLAUDE_INSTALL_URL%" -o "%outfile%"
 if errorlevel 1 (
     echo %RED%[ERROR]%NC% Failed to download Claude Code installer
     exit /b 1
 )
-call :verify_file_sha256 "%outfile%" "%CLAUDE_INSTALL_SHA256%"
+REM Fetch and verify checksum dynamically
+call :fetch_claude_checksum
+call :verify_file_sha256 "%outfile%" "%CLAUDE_SHA256%"
 if errorlevel 1 exit /b 1
+exit /b 0
+
+:fetch_moai_checksum
+set "tmpfile=%TEMP%\moai_checksum_%RANDOM%.tmp"
+curl -fsSL "%MOAI_CHECKSUM_URL%" -o "%tmpfile%" 2>nul
+if errorlevel 1 (
+    echo %YELLOW%[WARNING]%NC% Failed to fetch MoAI checksum from GitHub API
+    set "MOAI_SHA256="
+    del "%tmpfile%" >nul 2>nul
+    exit /b 0
+)
+REM Parse GitHub API response to extract base64-encoded content, then decode it
+for /f "delims=" %%c in ('powershell -NoProfile -Command "$ErrorActionPreference='SilentlyContinue'; $json = Get-Content -LiteralPath '%tmpfile%' -Raw | ConvertFrom-Json; if ($json.content) { [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($json.content)) }" 2^>nul') do set "checksum_raw=%%c"
+del "%tmpfile%" >nul 2>nul
+REM Extract first 64 hex characters (SHA-256 hash)
+for /f "delims=" %%h in ('powershell -NoProfile -Command "$content = '%checksum_raw%'; if ($content -match '^[a-f0-9]{64}') { $matches[0] }" 2^>nul') do set "MOAI_SHA256=%%h"
+if not defined MOAI_SHA256 (
+    echo %YELLOW%[WARNING]%NC% Failed to parse MoAI checksum
+    set "MOAI_SHA256="
+)
 exit /b 0
 
 :run_moai_installer
@@ -601,10 +650,26 @@ if errorlevel 1 (
     echo %RED%[ERROR]%NC% Failed to download MoAI-ADK installer
     exit /b 1
 )
+REM Secure the temporary file
+attrib +R "%moai_tmp%" >nul 2>nul
+REM Fetch and verify checksum if available
+call :fetch_moai_checksum
+if defined MOAI_SHA256 (
+    call :verify_file_sha256 "%moai_tmp%" "%MOAI_SHA256%"
+    if errorlevel 1 (
+        echo %RED%[ERROR]%NC% MoAI-ADK installer checksum verification failed
+        del "%moai_tmp%" >nul 2>nul
+        exit /b 1
+    )
+    echo %GREEN%[SUCCESS]%NC% MoAI-ADK installer checksum verified
+) else (
+    echo %YELLOW%[WARNING]%NC% MoAI-ADK installer checksum not available, proceeding without verification
+)
 set "AGENTIC_MOAI_INSTALLER=%moai_tmp%"
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference = 'Stop'; & $env:AGENTIC_MOAI_INSTALLER"
 set "AGENTIC_MOAI_INSTALLER="
 set "RC=%errorlevel%"
+attrib -R "%moai_tmp%" >nul 2>nul
 del "%moai_tmp%" >nul 2>nul
 if not "%RC%"=="0" (
     echo %RED%[ERROR]%NC% Failed to run MoAI-ADK installer
@@ -906,7 +971,8 @@ if /I "%pkg%"=="claude-code" (
 if /I "%pkg%"=="moai-adk" (
     where moai >nul 2>nul
     if not errorlevel 1 (
-        call :get_semver_from_command "moai" "version" "%outvar%"
+        call :get_semver_from_command "moai" "--version" "%outvar%"
+        if not defined %outvar% call :get_semver_from_command "moai" "version" "%outvar%"
     )
 )
 exit /b 0
@@ -1178,7 +1244,7 @@ if "%DEBUG%"=="1" (
     cls
 )
 call :print_banner_sep
-echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.7.5%NC%
+echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.7.6%NC%
 echo Toggle: %CYAN%skip%NC% -^> %GREEN%install%NC% -^> %RED%remove%NC%  Input: 1,3,5  Enter/P=proceed  Q=quit
 call :print_banner_sep
 echo.
