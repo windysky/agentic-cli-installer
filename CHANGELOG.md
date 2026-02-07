@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.5] - 2026-02-07
+
+### Security
+
+- Installer scripts are now integrity-checked with SHA-256 before execution on both shell and batch installers.
+- MoAI-ADK installer sources are pinned to an immutable Git commit URL rather than mutable `main`.
+
+### Fixed
+
+- MoAI-ADK uninstall logic now removes only installer-managed paths and refuses unsafe broad PATH-based deletion.
+- MoAI-ADK uninstall now returns failure on partial deletion or missing managed path instead of reporting false success.
+- Windows native MoAI installation now verifies `moai` is actually available after installer execution.
+
+---
+
 ## [1.7.4] - 2026-02-06
 
 ### Changed

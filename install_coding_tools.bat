@@ -3,7 +3,7 @@ setlocal EnableDelayedExpansion
 set "SCRIPT_DIR=%~dp0"
 
 REM ###############################################
-REM Agentic Coders Installer v1.7.4
+REM Agentic Coders Installer v1.7.5
 REM Interactive installer for AI coding CLI tools
 REM Windows version (run in Anaconda Prompt or CMD)
 REM ###############################################
@@ -66,10 +66,17 @@ REM Node.js 22.9.0+ is required for modern npm (npm 11.x)
 REM npm 10+ is sufficient for most modern tools
 set "MIN_NODEJS_VERSION=22.9.0"
 set "MIN_NPM_VERSION=10.0.0"
+set "STATE_DIR=%USERPROFILE%\.local\share\agentic-cli-installer"
+set "MOAI_STATE_FILE=%STATE_DIR%\moai-adk.path"
+set "CLAUDE_INSTALL_URL=https://claude.ai/install.cmd"
+set "CLAUDE_INSTALL_SHA256=f94ac8a946d6faf987e867788d69a974bdb4792e89620a6de721d24ea1b76466"
+set "MOAI_INSTALL_COMMIT=696d8b473c7dddb87b3678f8eabb92ad6ef84080"
+set "MOAI_INSTALL_URL=https://raw.githubusercontent.com/modu-ai/moai-adk/%MOAI_INSTALL_COMMIT%/install.ps1"
+set "MOAI_INSTALL_SHA256=fe861ab54f3317fdae6f10335b2447fb607b830e7c74cf9ac0bf530c9c044b33"
 
 REM Tool list: name|manager|package|description
 set TOOLS_COUNT=7
-set "TOOL_1=moai-adk|uv|moai-adk|MoAI Agent Development Kit"
+set "TOOL_1=moai-adk|native|moai-adk|MoAI Agent Development Kit"
 set "TOOL_2=claude-code|native|claude-code|Claude Code CLI"
 set "TOOL_3=@openai/codex|npm|@openai/codex|OpenAI Codex CLI"
 set "TOOL_4=@google/gemini-cli|npm|@google/gemini-cli|Google Gemini CLI"
@@ -110,11 +117,11 @@ set "GITHUB_RATE_LIMIT_RESET=0"
 
 REM Load tool definitions
 set "NAME_1=MoAI Agent Development Kit"
-set "MGR_1=uv"
+set "MGR_1=native"
 set "PKG_1=moai-adk"
 set "DESC_1=MoAI Agent Development Kit"
-set "BIN_1=moai-adk"
-set "VERARG_1=--version"
+set "BIN_1=moai"
+set "VERARG_1=version"
 
 set "NAME_2=Claude Code CLI"
 set "MGR_2=native"
@@ -544,14 +551,71 @@ REM System npm is not used on Windows; conda npm is required.
 echo %BLUE%[INFO]%NC% Skipping system npm check on Windows ^(conda npm only^).
 exit /b 0
 
+:verify_file_sha256
+set "verify_file=%~1"
+set "verify_expected=%~2"
+set "verify_actual="
+set "AGENTIC_VERIFY_FILE=%verify_file%"
+for /f "delims=" %%h in ('powershell -NoProfile -Command "(Get-FileHash -Algorithm SHA256 -Path $env:AGENTIC_VERIFY_FILE).Hash.ToLower()" 2^>nul') do set "verify_actual=%%h"
+set "AGENTIC_VERIFY_FILE="
+if not defined verify_actual (
+    echo %RED%[ERROR]%NC% Unable to compute installer SHA-256 hash
+    exit /b 1
+)
+if /I not "%verify_actual%"=="%verify_expected%" (
+    echo %RED%[ERROR]%NC% Installer checksum mismatch.
+    echo Expected: %verify_expected%
+    echo Actual:   %verify_actual%
+    exit /b 1
+)
+exit /b 0
+
+:record_moai_install_path
+set "MOAI_BIN_PATH="
+for /f "delims=" %%p in ('where moai 2^>nul') do (
+    if not defined MOAI_BIN_PATH set "MOAI_BIN_PATH=%%p"
+)
+if not defined MOAI_BIN_PATH exit /b 1
+if not exist "%STATE_DIR%" mkdir "%STATE_DIR%" >nul 2>nul
+if not exist "%STATE_DIR%" exit /b 1
+>"%MOAI_STATE_FILE%" echo %MOAI_BIN_PATH%
+if errorlevel 1 exit /b 1
+exit /b 0
+
 :download_claude_installer
 set "outfile=%~1"
 REM Download Claude Code installer from official Anthropic source over HTTPS
 REM Note: For additional security, consider verifying checksum if Anthropic provides one
-curl -fsSL https://claude.ai/install.cmd -o "%outfile%"
+curl -fsSL "%CLAUDE_INSTALL_URL%" -o "%outfile%"
 if errorlevel 1 (
     echo %RED%[ERROR]%NC% Failed to download Claude Code installer
     exit /b 1
+)
+call :verify_file_sha256 "%outfile%" "%CLAUDE_INSTALL_SHA256%"
+if errorlevel 1 exit /b 1
+exit /b 0
+
+:run_moai_installer
+REM Download and run MoAI-ADK installer from immutable commit URL with checksum verification
+set "moai_tmp=%TEMP%\moai_install_%RANDOM%.ps1"
+curl -fsSL "%MOAI_INSTALL_URL%" -o "%moai_tmp%"
+if errorlevel 1 (
+    echo %RED%[ERROR]%NC% Failed to download MoAI-ADK installer
+    exit /b 1
+)
+call :verify_file_sha256 "%moai_tmp%" "%MOAI_INSTALL_SHA256%"
+if errorlevel 1 (
+    del "%moai_tmp%" >nul 2>nul
+    exit /b 1
+)
+set "AGENTIC_MOAI_INSTALLER=%moai_tmp%"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference = 'Stop'; & $env:AGENTIC_MOAI_INSTALLER"
+set "AGENTIC_MOAI_INSTALLER="
+set "RC=%errorlevel%"
+del "%moai_tmp%" >nul 2>nul
+if not "%RC%"=="0" (
+    echo %RED%[ERROR]%NC% Failed to run MoAI-ADK installer
+    exit /b %RC%
 )
 exit /b 0
 
@@ -804,12 +868,13 @@ REM Get npm's own latest version
 	)
 	exit /b 0
 
-REM Get latest version for native tools (e.g., Claude Code)
+REM Get latest version for native tools (e.g., Claude Code, MoAI-ADK)
 :get_latest_native_version
 set "pkg=%~1"
 set "outvar=%~2"
 set "%outvar%="
 if /I "%pkg%"=="claude-code" goto get_latest_native_claude
+if /I "%pkg%"=="moai-adk" goto get_latest_native_moai
 exit /b 0
 
 :get_latest_native_claude
@@ -823,7 +888,18 @@ if exist "%tmpfile%" (
 )
 exit /b 0
 
-REM Get installed version for native tools (e.g., Claude Code)
+:get_latest_native_moai
+set "tmpfile=%TEMP%\moai_adk_version_%RANDOM%.tmp"
+powershell -NoProfile -Command "$ProgressPreference = 'SilentlyContinue'; $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); $uri = 'https://api.github.com/repos/modu-ai/moai-adk/releases/latest?ts=' + $ts; $headers = @{ 'User-Agent'='agentic-cli-installer'; 'Accept'='application/vnd.github+json' }; try { $result = Invoke-RestMethod -UseBasicParsing -Uri $uri -Headers $headers -TimeoutSec 10 -ErrorAction Stop; if ($result -and $result.tag_name) { $tag = $result.tag_name; $tag = $tag -replace '^go-',''; $tag = $tag -replace '^v',''; Write-Output $tag } } catch { }" >"%tmpfile%" 2>nul
+if exist "%tmpfile%" (
+    for /f "usebackq delims=" %%v in ("%tmpfile%") do (
+        if not "%%v"=="" set "%outvar%=%%v"
+    )
+    del "%tmpfile%" >nul 2>nul
+)
+exit /b 0
+
+REM Get installed version for native tools (e.g., Claude Code, MoAI-ADK)
 :get_installed_native_version
 set "pkg=%~1"
 set "outvar=%~2"
@@ -832,6 +908,12 @@ if /I "%pkg%"=="claude-code" (
     where claude >nul 2>nul
     if not errorlevel 1 (
         call :get_semver_from_command "claude" "--version" "%outvar%"
+    )
+)
+if /I "%pkg%"=="moai-adk" (
+    where moai >nul 2>nul
+    if not errorlevel 1 (
+        call :get_semver_from_command "moai" "version" "%outvar%"
     )
 )
 exit /b 0
@@ -1103,7 +1185,7 @@ if "%DEBUG%"=="1" (
     cls
 )
 call :print_banner_sep
-echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.7.4%NC%
+echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.7.5%NC%
 echo Toggle: %CYAN%skip%NC% -^> %GREEN%install%NC% -^> %RED%remove%NC%  Input: 1,3,5  Enter/P=proceed  Q=quit
 call :print_banner_sep
 echo.
@@ -1561,6 +1643,7 @@ set "remove_fail=0"
 
 :install_tool_native
 	if /I "!pkg!"=="claude-code" goto install_tool_claude
+	if /I "!pkg!"=="moai-adk" goto install_tool_moai
 	exit /b 0
 
 :install_tool_claude
@@ -1619,6 +1702,32 @@ set "remove_fail=0"
 	set "RC=%errorlevel%"
 	del "%TEMP%\install.cmd" >nul 2>nul
 	if %RC% NEQ 0 exit /b %RC%
+	exit /b 0
+
+:install_tool_moai
+	set "BEFORE_MOAI_VERSION="
+	call :get_installed_native_version "moai-adk" BEFORE_MOAI_VERSION
+	if /I "!inst!"=="Not Installed" (
+		echo   Installing MoAI-ADK (native installer)...
+	) else (
+		echo   Updating MoAI-ADK (native installer)...
+	)
+	call :dbg   %BLUE%[DEBUG]%NC% run: moai installer
+	call :run_moai_installer
+	if errorlevel 1 exit /b 1
+	set "AFTER_MOAI_VERSION="
+	call :get_installed_native_version "moai-adk" AFTER_MOAI_VERSION
+	if not defined AFTER_MOAI_VERSION (
+		echo %RED%[ERROR]%NC% MoAI-ADK installer completed but `moai` command is not available.
+		exit /b 1
+	)
+	if /I not "!inst!"=="Not Installed" if defined BEFORE_MOAI_VERSION if /I "!AFTER_MOAI_VERSION!"=="!BEFORE_MOAI_VERSION!" (
+		echo %YELLOW%[WARNING]%NC% MoAI-ADK version did not change after update attempt ^(!AFTER_MOAI_VERSION!^)
+	)
+	call :record_moai_install_path
+	if errorlevel 1 (
+		echo %YELLOW%[WARNING]%NC% MoAI-ADK installed but ownership marker could not be written.
+	)
 	exit /b 0
 
 :install_tool_npm
@@ -1713,6 +1822,39 @@ if /I "!mgr!"=="npm-self" (
         REM Check if removal was successful
         if exist "%USERPROFILE%\.local\bin\claude.exe" (
             echo %RED%[ERROR]%NC% Failed to remove Claude Code binary
+            exit /b 1
+        )
+    ) else if /I "!pkg!"=="moai-adk" (
+        echo   Uninstalling native...
+        if not exist "%MOAI_STATE_FILE%" (
+            echo %RED%[ERROR]%NC% Missing MoAI ownership marker at "%MOAI_STATE_FILE%". Refusing unsafe uninstall.
+            exit /b 1
+        )
+        set "MOAI_TARGET="
+        set /p MOAI_TARGET=<"%MOAI_STATE_FILE%"
+        if not defined MOAI_TARGET (
+            echo %RED%[ERROR]%NC% MoAI ownership marker is empty. Refusing uninstall.
+            exit /b 1
+        )
+        set "REMOVED=0"
+        set "FAILED=0"
+        if exist "!MOAI_TARGET!" (
+            del "!MOAI_TARGET!" >nul 2>nul
+            if errorlevel 1 set "FAILED=1"
+            if exist "!MOAI_TARGET!" set "FAILED=1"
+            if not exist "!MOAI_TARGET!" set "REMOVED=1"
+        )
+        for /f "delims=" %%p in ('where moai 2^>nul') do (
+            if /I "%%p"=="!MOAI_TARGET!" set "FAILED=1"
+        )
+        del "%MOAI_STATE_FILE%" >nul 2>nul
+        if errorlevel 1 set "FAILED=1"
+        if "!FAILED!"=="1" (
+            echo %RED%[ERROR]%NC% Failed to remove managed MoAI-ADK binary
+            exit /b 1
+        )
+        if "!REMOVED!"=="0" (
+            echo %RED%[ERROR]%NC% Managed MoAI-ADK binary was not found at "!MOAI_TARGET!"
             exit /b 1
         )
     )

@@ -1,6 +1,6 @@
-# Agentic CLI Installer v1.7.4
+# Agentic CLI Installer v1.7.5
 
-**Last Modified:** February 6, 2026
+**Last Modified:** February 7, 2026
 
 An interactive installer that manages multiple AI coding CLI tools from one place. It detects installed versions, fetches latest versions, and lets you install, update, or remove tools in a single run.
 
@@ -9,8 +9,8 @@ An interactive installer that manages multiple AI coding CLI tools from one plac
 ### Prerequisites
 
 - `curl` (required for all installation methods)
-- Python 3.11+ (required for `moai-adk` via `uv tool`)
-- `uv` for `moai-adk` and `mistral-vibe`: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- Python 3.11+ (required for `uv tool` installs like `mistral-vibe`)
+- `uv` for `mistral-vibe`: `curl -LsSf https://astral.sh/uv/install.sh | sh`
 - Node.js >= 22.9.0 for npm tools (installed via conda-forge in the active conda environment; npm updates use `npm install -g npm@latest` within conda)
 
 Note: npm operations use the active conda environment's npm. On Windows, system npm is not checked or used.
@@ -72,12 +72,14 @@ Note: Run the Windows installer from an Anaconda Prompt with a non-base conda en
 - **Non-interactive mode** with `--yes`/`-y` flag for automation
 - **Auto-install script** for processing multiple conda environments
 - **Conda-scoped npm** on Windows (no system npm check)
+- **Installer integrity checks** using SHA-256 verification before running remote installers
+- **Managed uninstall safety** for MoAI-ADK using installer-owned path markers
 
 ## Supported Tools
 
 | Tool | Package | Manager | Installation Method |
 |------|---------|----------|-------------------|
-| [MoAI Agent Development Kit](https://github.com/modu-ai/moai-adk) | `moai-adk` | uv | `uv tool install moai-adk` |
+| [MoAI Agent Development Kit](https://github.com/modu-ai/moai-adk) | `moai-adk` | native | `curl -fsSL https://raw.githubusercontent.com/modu-ai/moai-adk/696d8b473c7dddb87b3678f8eabb92ad6ef84080/install.sh | bash` |
 | [Claude Code CLI](https://github.com/anthropics/claude-code) | `claude-code` | native | [Official installer](https://claude.ai/install.sh) |
 | [OpenAI Codex CLI](https://github.com/openai/codex) | `@openai/codex` | npm | `npm install -g @openai/codex` |
 | [Google Gemini CLI](https://github.com/google-gemini/gemini-cli) | `@google/gemini-cli` | npm | `npm install -g @google/gemini-cli` |
@@ -204,6 +206,12 @@ Backup location: ~/.local/bin.backup
 ```
 
 ## Change Log
+
+### v1.7.5 - February 7, 2026
+
+- **Installer security hardening**: MoAI and Claude installers are now checksum-verified before execution; MoAI installer URL is commit-pinned.
+- **MoAI uninstall safety**: Uninstall now removes only installer-managed MoAI binary paths and fails on partial/unsafe deletion attempts.
+- **MoAI install verification**: Native MoAI install/update now verifies `moai` is available afterward and records owned install path.
 
 ### v1.7.4 - February 6, 2026
 

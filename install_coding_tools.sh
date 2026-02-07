@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.7.4
+# Agentic Coders Installer v1.7.5
 # Interactive installer for AI coding CLI tools
 #############################################
 
@@ -50,10 +50,17 @@ readonly NC='\033[0m' # No Color
 # npm 10+ is sufficient for most modern tools
 readonly MIN_NODEJS_VERSION="22.9.0"
 readonly MIN_NPM_VERSION="10.0.0"
+readonly STATE_DIR="$HOME/.local/share/agentic-cli-installer"
+readonly MOAI_STATE_FILE="$STATE_DIR/moai-adk.path"
+readonly CLAUDE_INSTALL_URL="https://claude.ai/install.sh"
+readonly CLAUDE_INSTALL_SHA256="363382bed8849f78692bd2f15167a1020e1f23e7da1476ab8808903b6bebae05"
+readonly MOAI_INSTALL_COMMIT="696d8b473c7dddb87b3678f8eabb92ad6ef84080"
+readonly MOAI_INSTALL_URL="https://raw.githubusercontent.com/modu-ai/moai-adk/${MOAI_INSTALL_COMMIT}/install.sh"
+readonly MOAI_INSTALL_SHA256="12d14677820104f75ca2a7caca07a39156e8234d9e6d34e852b2734dc6a8a95c"
 
 # Tool definitions: name, package manager, package name, description
 declare -a TOOLS=(
-    "moai-adk|uv|moai-adk|MoAI Agent Development Kit"
+    "moai-adk|native|moai-adk|MoAI Agent Development Kit"
     "claude-code|native|claude-code|Claude Code CLI"
     "@openai/codex|npm|@openai/codex|OpenAI Codex CLI"
     "@google/gemini-cli|npm|@google/gemini-cli|Google Gemini CLI"
@@ -248,6 +255,46 @@ get_npm_version_from_path() {
     fi
 }
 
+sha256_file() {
+    local file=$1
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$file" | awk '{print $1}'
+        return 0
+    fi
+    if command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$file" | awk '{print $1}'
+        return 0
+    fi
+    return 1
+}
+
+verify_file_sha256() {
+    local file=$1
+    local expected=$2
+    local actual
+    actual=$(sha256_file "$file" 2>/dev/null || true)
+    if [[ -z "$actual" ]]; then
+        log_error "No SHA-256 tool available to verify installer integrity."
+        return 1
+    fi
+    if [[ "$actual" != "$expected" ]]; then
+        log_error "Installer checksum mismatch. expected=$expected actual=$actual"
+        return 1
+    fi
+    return 0
+}
+
+record_moai_install_path() {
+    local moai_bin
+    moai_bin=$(command -v moai 2>/dev/null || true)
+    if [[ -z "$moai_bin" ]]; then
+        return 1
+    fi
+    mkdir -p "$STATE_DIR"
+    printf "%s\n" "$moai_bin" > "$MOAI_STATE_FILE"
+    return 0
+}
+
 run_claude_installer() {
     local tmp
     if ! tmp=$(mktemp); then
@@ -255,11 +302,43 @@ run_claude_installer() {
         return 1
     fi
 
-    # Download Claude Code installer
-    # Note: This downloads from official Anthropic source over HTTPS with TLS 1.2+
-    # For additional security, consider verifying checksum if Anthropic provides one
-    if ! curl -fsSL --proto '=https' --tlsv1.2 https://claude.ai/install.sh -o "$tmp"; then
+    # Download Claude Code installer from immutable trusted URL and verify checksum.
+    if ! curl -fsSL --proto '=https' --tlsv1.2 "$CLAUDE_INSTALL_URL" -o "$tmp"; then
         log_error "Failed to download Claude Code installer."
+        rm -f "$tmp"
+        return 1
+    fi
+
+    if ! verify_file_sha256 "$tmp" "$CLAUDE_INSTALL_SHA256"; then
+        rm -f "$tmp"
+        return 1
+    fi
+
+    if bash "$tmp"; then
+        rm -f "$tmp"
+        return 0
+    fi
+
+    local rc=$?
+    rm -f "$tmp"
+    return "$rc"
+}
+
+run_moai_installer() {
+    local tmp
+    if ! tmp=$(mktemp); then
+        log_error "Failed to create temporary file for installer."
+        return 1
+    fi
+
+    # Download MoAI-ADK installer from immutable commit URL and verify checksum.
+    if ! curl -fsSL --proto '=https' --tlsv1.2 "$MOAI_INSTALL_URL" -o "$tmp"; then
+        log_error "Failed to download MoAI-ADK installer."
+        rm -f "$tmp"
+        return 1
+    fi
+
+    if ! verify_file_sha256 "$tmp" "$MOAI_INSTALL_SHA256"; then
         rm -f "$tmp"
         return 1
     fi
@@ -358,7 +437,6 @@ get_installed_uv_version() {
     # Parse uv tool list output to find package version, strip 'v' prefix
     # uv tool list output format: "package-name version" or "package-name v1.0.0"
     # Example formats:
-    #   moai-adk v0.41.2
     #   mistral-vibe 1.3.4
     #   @anthropic-ai/claude-code 2.1.2
 
@@ -492,6 +570,10 @@ get_installed_native_version() {
         if command -v claude >/dev/null 2>&1; then
             claude --version 2>/dev/null | head -n1 | sed -E 's/.*([0-9]+\.[0-9]+\.[0-9]+).*/\1/' || true
         fi
+    elif [[ "$pkg" == "moai-adk" ]]; then
+        if command -v moai >/dev/null 2>&1; then
+            moai version 2>/dev/null | head -n1 | sed -E 's/.*([0-9]+\.[0-9]+\.[0-9]+).*/\1/' || true
+        fi
     fi
 }
 
@@ -566,11 +648,23 @@ get_latest_version() {
                     claude-code)
                         repo="anthropics/claude-code"
                         ;;
+                    moai-adk)
+                        repo="modu-ai/moai-adk"
+                        ;;
                 esac
 
                 if [[ -n "$repo" ]]; then
                     if response=$(github_api_get_with_retry "https://api.github.com/repos/${repo}/releases/latest?ts=${cache_bust}"); then
-                        echo "$response" | python3 -c "import sys, json; data = sys.stdin.read().strip(); print(json.loads(data)['tag_name'].lstrip('v')) if data else None" 2>/dev/null || true
+                        local tag
+                        tag=$(echo "$response" | python3 -c "import sys, json; data = sys.stdin.read().strip(); print(json.loads(data)['tag_name']) if data else None" 2>/dev/null || true)
+                        if [[ "$tag" == "None" ]] || [[ "$tag" == "null" ]]; then
+                            tag=""
+                        fi
+                        tag=${tag#go-}
+                        tag=${tag#v}
+                        if [[ -n "$tag" ]]; then
+                            echo "$tag"
+                        fi
                     fi
                 fi
             fi
@@ -792,7 +886,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.7.4" \
+        "Agentic Coders CLI Installer v1.7.5" \
         "Toggle: skip->install->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"
@@ -1257,6 +1351,35 @@ install_tool() {
                         fi
                     fi
                 fi
+            elif [[ "$pkg" == "moai-adk" ]]; then
+                local before_version after_version
+                before_version=$(get_installed_native_version "$pkg")
+                if [[ "$installed_version" == "Not Installed" ]]; then
+                    printf "Installing via native installer...\n"
+                else
+                    printf "Updating via native installer...\n"
+                fi
+                if run_moai_installer; then
+                    after_version=$(get_installed_native_version "$pkg")
+                    if [[ -z "$after_version" ]]; then
+                        log_error "MoAI-ADK installer completed but moai command is not available."
+                        return 1
+                    fi
+                    if [[ "$installed_version" != "Not Installed" ]] && [[ -n "$before_version" ]] && [[ "$after_version" == "$before_version" ]]; then
+                        log_warning "MoAI-ADK version did not change after update attempt (${after_version})."
+                    fi
+                    if ! record_moai_install_path; then
+                        log_warning "MoAI-ADK installed but installer ownership marker could not be written."
+                    fi
+                    if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+                        printf "  ${YELLOW}Note: $HOME/.local/bin should be in your PATH${NC}\n"
+                    fi
+                    log_success "Installed/updated ${name} (${after_version})"
+                    return 0
+                else
+                    log_error "Failed to install/update ${name}"
+                    return 1
+                fi
             fi
             ;;
         npm-self)
@@ -1346,31 +1469,48 @@ remove_tool() {
                     return 1
                 fi
             elif [[ "$pkg" == "moai-adk" ]]; then
-                printf "  Uninstalling MoAI-ADK...\n"
-                # MoAI-ADK typically installs via uv tool, so use uv to uninstall
-                if command -v uv >/dev/null 2>&1; then
-                    if uv tool uninstall moai-adk 2>/dev/null; then
-                        log_success "Removed ${name}"
-                        return 0
-                    else
-                        # Fallback: remove binary directly if it exists
-                        local removed=false
-                        if [[ -f "$HOME/.local/bin/moai-adk" ]]; then
-                            rm -f "$HOME/.local/bin/moai-adk"
-                            removed=true
-                        fi
-                        if $removed; then
-                            log_success "Removed ${name}"
-                            return 0
-                        else
-                            log_error "Failed to remove ${name}"
-                            return 1
-                        fi
-                    fi
-                else
-                    log_error "uv is not installed, cannot remove moai-adk"
+                printf "Uninstalling (native)...\n"
+                local removed=false
+                local failed=false
+                local target=""
+                if [[ -f "$MOAI_STATE_FILE" ]]; then
+                    target=$(head -n1 "$MOAI_STATE_FILE" 2>/dev/null || true)
+                fi
+                if [[ -z "$target" ]]; then
+                    log_error "Missing MoAI ownership marker at $MOAI_STATE_FILE. Refusing unsafe uninstall."
                     return 1
                 fi
+                if [[ -e "$target" ]]; then
+                    if rm -f "$target"; then
+                        if [[ -e "$target" ]]; then
+                            failed=true
+                        else
+                            removed=true
+                        fi
+                    else
+                        failed=true
+                    fi
+                fi
+                if command -v moai >/dev/null 2>&1; then
+                    local current_moai
+                    current_moai=$(command -v moai 2>/dev/null || true)
+                    if [[ "$current_moai" == "$target" ]]; then
+                        failed=true
+                    fi
+                fi
+                if [[ -f "$MOAI_STATE_FILE" ]]; then
+                    rm -f "$MOAI_STATE_FILE" || failed=true
+                fi
+                if $failed; then
+                    log_error "Failed to remove ${name}"
+                    return 1
+                fi
+                if $removed; then
+                    log_success "Removed ${name}"
+                    return 0
+                fi
+                log_error "Failed to remove ${name}: managed binary not found at $target"
+                return 1
             elif [[ "$pkg" == "opencode-ai" ]]; then
                 printf "  Uninstalling OpenCode AI CLI...\n"
                 # OpenCode AI CLI typically installs to ~/.local/bin
