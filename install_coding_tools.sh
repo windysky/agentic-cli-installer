@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.7.8
+# Agentic Coders Installer v1.7.9
 # Interactive installer for AI coding CLI tools
 #
 # Security improvements in v1.7.6:
@@ -73,6 +73,7 @@ declare -a TOOLS=(
     "@google/gemini-cli|npm|@google/gemini-cli|Google Gemini CLI"
     "@google/jules|npm|@google/jules|Google Jules CLI"
     "opencode-ai|npm|opencode-ai|OpenCode AI CLI"
+    "oh-my-opencode|addon|oh-my-opencode|OpenCode Addons (oh-my-opencode)"
     "mistral-vibe|uv|mistral-vibe|Mistral Vibe CLI"
 )
 
@@ -783,6 +784,36 @@ get_installed_native_version() {
     fi
 }
 
+get_installed_addon_version() {
+    local pkg=$1
+    # For addons like oh-my-opencode, check if the config exists
+    if [[ "$pkg" == "oh-my-opencode" ]]; then
+        # oh-my-opencode creates config in ~/.local/share/oh-my-opencode/
+        if [[ -d "$HOME/.local/share/oh-my-opencode" ]] || [[ -d "$HOME/.oh-my-opencode" ]]; then
+            # Try to get version from npm (it's installed as a global package)
+            local npm_bin
+            npm_bin=$(get_npm_bin 2>/dev/null || true)
+            if [[ -n "$npm_bin" ]]; then
+                local json
+                json=$("$npm_bin" list -g --depth=0 --json 2>/dev/null || true)
+                if [[ -n "$json" ]]; then
+                    # Extract version using grep (safer than eval)
+                    local version=$(echo "$json" | grep -o '"oh-my-opencode"' -A 2 | grep '"version"' | head -1 | grep -o '"[0-9][^"]*"' | tr -d '"' || true)
+                    if [[ -n "$version" ]]; then
+                        echo "$version"
+                        return 0
+                    fi
+                fi
+            fi
+            # Config exists but can't determine version - assume installed
+            echo "installed"
+            return 0
+        fi
+    fi
+    # Not installed
+    return 1
+}
+
 # Check for npm-installed Claude Code (for migration)
 check_npm_claude_code() {
     local npm_bin
@@ -817,6 +848,9 @@ get_tool_version() {
             ;;
         native)
             installed=$(get_installed_native_version "$pkg")
+            ;;
+        addon)
+            installed=$(get_installed_addon_version "$pkg")
             ;;
     esac
 
@@ -874,6 +908,10 @@ get_latest_version() {
                     fi
                 fi
             fi
+            ;;
+        addon)
+            # For addons, use npm to get the latest version
+            get_latest_npm_version "$pkg"
             ;;
     esac
 }
@@ -1308,6 +1346,26 @@ parse_selection() {
         fi
     done
 
+    # Dependency resolution: if oh-my-opencode is selected, ensure opencode-ai is selected
+    for i in "${!TOOL_NAMES[@]}"; do
+        if [[ "${TOOL_NAMES[$i]}" == "oh-my-opencode" && "${SELECTED[$i]}" -eq 1 ]]; then
+            # Find opencode-ai index
+            for j in "${!TOOL_NAMES[@]}"; do
+                if [[ "${TOOL_NAMES[$j]}" == "opencode-ai" ]]; then
+                    local opencode_installed="${INSTALLED_VERSIONS[$j]}"
+                    # If opencode-ai is not installed, automatically select it
+                    if [[ "$opencode_installed" == "Not Installed" ]]; then
+                        SELECTED[$j]=1
+                        TOOL_ACTIONS[$j]="install"
+                        log_info "Auto-selected opencode-ai (required for oh-my-opencode)"
+                    fi
+                    break
+                fi
+            done
+            break
+        fi
+    done
+
     return 0
 }
 
@@ -1425,10 +1483,11 @@ install_oh_my_opencode() {
     fi
 
     printf "  Installing oh-my-opencode via %s...\n" "${runner[0]}"
-    if "${runner[@]}"; then
+    # Suppress verbose output and minified code dumps - only show errors
+    if "${runner[@]}" 2>/dev/null; then
         log_success "Installed oh-my-opencode"
     else
-        log_warning "oh-my-opencode installer failed (command: ${runner[*]}). Rerun manually with your desired providers."
+        log_warning "oh-my-opencode installer had issues (command: ${runner[*]}). Rerun manually with your desired providers."
     fi
 }
 
@@ -1444,10 +1503,11 @@ remove_oh_my_opencode() {
     fi
 
     printf "  Removing oh-my-opencode via %s...\n" "${runner[0]}"
-    if "${runner[@]}"; then
+    # Suppress verbose output - only show errors
+    if "${runner[@]}" 2>/dev/null; then
         log_success "Removed oh-my-opencode"
     else
-        log_warning "oh-my-opencode removal failed (command: ${runner[*]}). Manual cleanup may be required."
+        log_warning "oh-my-opencode removal had issues. Manual cleanup may be required."
     fi
 }
 
@@ -1495,9 +1555,6 @@ install_tool() {
                 printf "Installing via npm...\n"
                 if "$npm_bin" install -g "$pkg"; then
                     log_success "Installed ${name}"
-                    if [[ "$pkg" == "opencode-ai" ]]; then
-                        install_oh_my_opencode
-                    fi
                     return 0
                 else
                     log_error "Failed to install ${name}"
@@ -1507,14 +1564,50 @@ install_tool() {
                 printf "Updating via npm...\n"
                 if "$npm_bin" install -g "$pkg@latest"; then
                     log_success "Updated ${name}"
-                    if [[ "$pkg" == "opencode-ai" ]]; then
-                        install_oh_my_opencode
-                    fi
                     return 0
                 else
                     log_error "Failed to update ${name}"
                     return 1
                 fi
+            fi
+            ;;
+        addon)
+            # Addon manager: for optional add-ons like oh-my-opencode
+            # Check if the base package is installed (opencode-ai for oh-my-opencode)
+            local base_package=""
+            local base_check_cmd=""
+            if [[ "$pkg" == "oh-my-opencode" ]]; then
+                base_package="opencode-ai"
+                base_check_cmd="opencode --version"
+            fi
+
+            # Check if base package is installed
+            if [[ -n "$base_check_cmd" ]]; then
+                if ! command -v "${base_check_cmd%% *}" >/dev/null 2>&1 && ! "${base_check_cmd}" >/dev/null 2>&1; then
+                    log_error "Cannot install ${name}: ${base_package} must be installed first."
+                    log_info "Please select ${base_package} for installation first."
+                    return 1
+                fi
+            fi
+
+            if [[ "$installed_version" == "Not Installed" ]]; then
+                printf "Installing addon...\n"
+                if [[ "$pkg" == "oh-my-opencode" ]]; then
+                    install_oh_my_opencode
+                    return $?
+                fi
+                log_error "Unknown addon: $pkg"
+                return 1
+            else
+                printf "Addon is installed. Reinstalling...\n"
+                if [[ "$pkg" == "oh-my-opencode" ]]; then
+                    # Remove first, then install
+                    remove_oh_my_opencode
+                    install_oh_my_opencode
+                    return $?
+                fi
+                log_error "Unknown addon: $pkg"
+                return 1
             fi
             ;;
         native)
@@ -1651,15 +1744,21 @@ remove_tool() {
                 return 1
             fi
             if "$npm_bin" uninstall -g "$pkg"; then
-                if [[ "$pkg" == "opencode-ai" ]]; then
-                    remove_oh_my_opencode
-                fi
                 log_success "Removed ${name}"
                 return 0
             else
                 log_error "Failed to remove ${name}"
                 return 1
             fi
+            ;;
+        addon)
+            printf "Removing addon...\n"
+            if [[ "$pkg" == "oh-my-opencode" ]]; then
+                remove_oh_my_opencode
+                return $?
+            fi
+            log_error "Unknown addon: $pkg"
+            return 1
             ;;
         native)
             if [[ "$pkg" == "claude-code" ]]; then
