@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.17] - 2026-02-07
+
+### Added
+
+- Automatic Playwright MCP server installation for Claude Code browser automation
+  - Checks ~/.claude.json for existing playwright MCP configuration
+  - Uses "claude mcp add playwright --scope user" to enable globally
+  - Playwright MCP becomes available in ALL projects after installation
+- New install_playwright_mcp() function for managing Playwright MCP server
+
+### Changed
+
+- setup_claude_sandbox() now also installs/enables Playwright MCP server globally
+- Claude Code installation now includes: Playwright CLI, Playwright MCP, seccomp filter, and bubblewrap check
+
+---
+
 ## [1.7.16] - 2026-02-07
 
 ### Added
