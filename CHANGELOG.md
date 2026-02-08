@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.15] - 2026-02-07
+
+### Added
+
+- Automatic seccomp filter installation/update for Claude Code sandbox security
+  - Installs @anthropic-ai/sandbox-runtime via npm when Claude Code is installed or updated
+  - Automatically updates seccomp filter to latest version on each Claude Code update
+- System-level bubblewrap check with installation instructions (optional, non-blocking)
+- New setup_claude_sandbox() function called after Claude Code installation/updates
+
+### Changed
+
+- Claude Code installation now includes sandbox dependency setup
+- Claude Code updates (via `claude update` or re-install) now refresh seccomp filter
+
+---
+
 ## [1.7.14] - 2026-02-07
 
 ### Fixed
