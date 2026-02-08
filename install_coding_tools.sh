@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.7.15
+# Agentic Coders Installer v1.7.16
 # Interactive installer for AI coding CLI tools
 #
 # Version history: v1.7.6 added security improvements, v1.7.12 fixed oh-my-opencode version detection
@@ -439,7 +439,52 @@ setup_claude_sandbox() {
     # Install/update seccomp filter (automatic)
     install_seccomp_filter
 
+    # Install/update Playwright CLI (automatic)
+    install_playwright_cli
+
     printf "${GREEN}[SUCCESS]${NC} Claude Code sandbox setup complete\n\n"
+}
+
+# Install or update Playwright CLI for Claude Code browser automation
+install_playwright_cli() {
+    local npm_bin
+    npm_bin=$(get_npm_bin || true)
+
+    if [[ -z "$npm_bin" ]]; then
+        log_warning "npm not found, skipping Playwright CLI installation"
+        return 0
+    fi
+
+    local package="@playwright/cli"
+    local current_version=""
+    local latest_version=""
+
+    # Check if currently installed
+    if current_version=$("$npm_bin" list -g --depth=0 --json 2>/dev/null | grep -o "\"$package\":\"[^\"]*\"" | cut -d'"' -f4); then
+        if [[ "$current_version" != "null" && -n "$current_version" ]]; then
+            printf "  ${BLUE}[INFO]${NC} Playwright CLI already installed (${current_version})\n"
+            # Try to get latest version
+            latest_version=$(curl -s "https://registry.npmjs.org/$package" | grep -o '"latest":"[^"]*"' | cut -d'"' -f4 2>/dev/null || echo "")
+            if [[ -n "$latest_version" && "$current_version" != "$latest_version" ]]; then
+                printf "  ${BLUE}[INFO]${NC} Updating Playwright CLI (${current_version} -> ${latest_version})...\n"
+                if "$npm_bin" install -g "$package@latest" >/dev/null 2>&1; then
+                    log_success "Playwright CLI updated to ${latest_version}"
+                else
+                    log_warning "Failed to update Playwright CLI (continuing anyway)"
+                fi
+            fi
+            return 0
+        fi
+    fi
+
+    # Not installed - install it
+    printf "  ${BLUE}[INFO]${NC} Installing Playwright CLI for Claude Code browser automation...\n"
+    if "$npm_bin" install -g "$package" >/dev/null 2>&1; then
+        log_success "Playwright CLI installed"
+    else
+        log_warning "Failed to install Playwright CLI (continuing anyway)"
+    fi
+    return 0
 }
 
 # Consolidated version parsing function
@@ -1211,7 +1256,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.7.15" \
+        "Agentic Coders CLI Installer v1.7.16" \
         "Toggle: skip->install->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"

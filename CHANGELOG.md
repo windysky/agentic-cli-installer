@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.16] - 2026-02-07
+
+### Added
+
+- Automatic Playwright CLI installation/update for Claude Code browser automation
+  - Installs @playwright/cli via npm when Claude Code is installed or updated
+  - Automatically updates Playwright CLI to latest version on each Claude Code update
+- New install_playwright_cli() function for managing Playwright CLI dependencies
+
+---
+
 ## [1.7.15] - 2026-02-07
 
 ### Added
