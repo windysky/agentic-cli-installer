@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.7.16
+# Agentic Coders Installer v1.7.17
 # Interactive installer for AI coding CLI tools
 #
 # Version history: v1.7.6 added security improvements, v1.7.12 fixed oh-my-opencode version detection
@@ -442,6 +442,9 @@ setup_claude_sandbox() {
     # Install/update Playwright CLI (automatic)
     install_playwright_cli
 
+    # Install/enable Playwright MCP globally (automatic)
+    install_playwright_mcp
+
     printf "${GREEN}[SUCCESS]${NC} Claude Code sandbox setup complete\n\n"
 }
 
@@ -483,6 +486,44 @@ install_playwright_cli() {
         log_success "Playwright CLI installed"
     else
         log_warning "Failed to install Playwright CLI (continuing anyway)"
+    fi
+    return 0
+}
+
+# Install or enable Playwright MCP server globally (for Claude Code browser automation)
+install_playwright_mcp() {
+    local claude_json="$HOME/.claude.json"
+
+    # Check if playwright MCP is already configured globally
+    if [[ -f "$claude_json" ]]; then
+        # Check if playwright exists in mcpServers
+        if grep -q '"playwright"' "$claude_json" 2>/dev/null; then
+            # Check if it's in the mcpServers section (not just a project reference)
+            if python3 -c "import json; data = json.load(open('$claude_json')); print('playwright' in data.get('mcpServers', {}))" 2>/dev/null; then
+                printf "  ${BLUE}[INFO]${NC} Playwright MCP already configured globally\n"
+                return 0
+            fi
+        fi
+    fi
+
+    # Playwright MCP not configured - add it globally
+    printf "  ${BLUE}[INFO]${NC} Installing Playwright MCP globally...\n"
+
+    # Use claude mcp add command with --scope user flag
+    if command -v claude >/dev/null 2>&1; then
+        if claude mcp add playwright /bin/bash -l -c "exec npx -y @playwright/mcp@latest" --scope user >/dev/null 2>&1; then
+            log_success "Playwright MCP added globally (available in all projects)"
+        else
+            # Fallback: try simpler command
+            if claude mcp add playwright npx @playwright/mcp@latest --scope user >/dev/null 2>&1; then
+                log_success "Playwright MCP added globally"
+            else
+                log_warning "Failed to add Playwright MCP via claude mcp command (continuing anyway)"
+            fi
+        fi
+    else
+        log_warning "claude command not found, skipping Playwright MCP installation"
+        log_info "  To manually install: claude mcp add playwright npx @playwright/mcp@latest --scope user"
     fi
     return 0
 }
@@ -1256,7 +1297,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.7.16" \
+        "Agentic Coders CLI Installer v1.7.17" \
         "Toggle: skip->install->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"
