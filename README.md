@@ -1,6 +1,6 @@
-# Agentic CLI Installer v1.7.5
+# Agentic CLI Installer v1.7.17
 
-**Last Modified:** February 7, 2026
+**Last Modified:** February 8, 2026
 
 An interactive installer that manages multiple AI coding CLI tools from one place. It detects installed versions, fetches latest versions, and lets you install, update, or remove tools in a single run.
 
@@ -206,6 +206,35 @@ Backup location: ~/.local/bin.backup
 ```
 
 ## Change Log
+
+### v1.7.17 - February 8, 2026
+
+- **Playwright MCP auto-installation**: Automatically installs and enables Playwright MCP server globally when Claude Code is installed or updated
+- **Global MCP configuration**: Uses `claude mcp add --scope user` for project-independent Playwright MCP availability
+
+### v1.7.16 - February 7, 2026
+
+- **Playwright CLI auto-installation**: Automatically installs and updates `@playwright/cli` for Claude Code browser automation
+
+### v1.7.15 - February 7, 2026
+
+- **Seccomp filter auto-installation**: Automatically installs `@anthropic-ai/sandbox-runtime` for Claude Code sandbox security
+- **Bubblewrap availability check**: Warns if bubblewrap is missing (optional, non-blocking)
+- **Sandbox dependency orchestration**: New `setup_claude_sandbox()` function for coordinated dependency management
+
+### v1.7.14 - February 7, 2026
+
+- **log_warning() fix**: Now outputs to stderr instead of stdout, preventing warning capture by command substitution
+- **MoAI-ADK update fix**: Resolved checksum mismatch issue caused by log_warning output being captured
+
+### v1.7.13 - February 7, 2026
+
+- **oh-my-opencode fix**: Version detection now checks `.plugin` (singular) instead of `.plugins` (plural) in opencode.json
+- **oh-my-opencode install fix**: Checks if plugin is already registered before attempting installation (avoids upstream bug)
+
+### v1.7.12 - February 7, 2026
+
+- **oh-my-opencode version detection**: Fixed version detection via plugin registration in ~/.config/opencode/opencode.json
 
 ### v1.7.5 - February 7, 2026
 
