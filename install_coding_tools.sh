@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.7.14
+# Agentic Coders Installer v1.7.15
 # Interactive installer for AI coding CLI tools
 #
 # Version history: v1.7.6 added security improvements, v1.7.12 fixed oh-my-opencode version detection
@@ -368,6 +368,80 @@ make_http_request() {
     return 1
 }
 
+#############################################
+# CLAUDE CODE SANDBOX DEPENDENCIES
+#############################################
+
+# Check for bubblewrap availability and warn if missing
+check_bubblewrap() {
+    if command -v bwrap >/dev/null 2>&1; then
+        return 0
+    fi
+
+    # bubblewrap not found - show warning with installation instructions
+    printf "\n  ${YELLOW}[WARNING]${NC} bubblewrap (bwrap) is not installed\n"
+    printf "  ${YELLOW}[WARNING]${NC} This is optional but recommended for Claude Code sandbox security\n\n"
+    printf "  ${CYAN}To install bubblewrap:${NC}\n"
+    printf "    ${GREEN}sudo apt install bubblewrap${NC}\n\n"
+    printf "  ${YELLOW}Note: Installation will continue without bubblewrap${NC}\n\n"
+    return 0
+}
+
+# Install or update seccomp filter for Claude Code sandbox
+install_seccomp_filter() {
+    local npm_bin
+    npm_bin=$(get_npm_bin || true)
+
+    if [[ -z "$npm_bin" ]]; then
+        log_warning "npm not found, skipping seccomp filter installation"
+        return 0
+    fi
+
+    local package="@anthropic-ai/sandbox-runtime"
+    local current_version=""
+    local latest_version=""
+
+    # Check if currently installed
+    if current_version=$("$npm_bin" list -g --depth=0 --json 2>/dev/null | grep -o "\"$package\":\"[^\"]*\"" | cut -d'"' -f4); then
+        if [[ "$current_version" != "null" && -n "$current_version" ]]; then
+            printf "  ${BLUE}[INFO]${NC} seccomp filter already installed (${current_version})\n"
+            # Try to get latest version
+            latest_version=$(curl -s "https://registry.npmjs.org/$package" | grep -o '"latest":"[^"]*"' | cut -d'"' -f4 2>/dev/null || echo "")
+            if [[ -n "$latest_version" && "$current_version" != "$latest_version" ]]; then
+                printf "  ${BLUE}[INFO]${NC} Updating seccomp filter (${current_version} -> ${latest_version})...\n"
+                if "$npm_bin" install -g "$package@latest" >/dev/null 2>&1; then
+                    log_success "seccomp filter updated to ${latest_version}"
+                else
+                    log_warning "Failed to update seccomp filter (continuing anyway)"
+                fi
+            fi
+            return 0
+        fi
+    fi
+
+    # Not installed - install it
+    printf "  ${BLUE}[INFO]${NC} Installing seccomp filter for Claude Code sandbox...\n"
+    if "$npm_bin" install -g "$package" >/dev/null 2>&1; then
+        log_success "seccomp filter installed"
+    else
+        log_warning "Failed to install seccomp filter (continuing anyway)"
+    fi
+    return 0
+}
+
+# Setup Claude Code sandbox dependencies (called after installation)
+setup_claude_sandbox() {
+    printf "\n${CYAN}[CLAUDE CODE SANDBOX SETUP]${NC}\n"
+
+    # Check bubblewrap (optional, just warn if missing)
+    check_bubblewrap
+
+    # Install/update seccomp filter (automatic)
+    install_seccomp_filter
+
+    printf "${GREEN}[SUCCESS]${NC} Claude Code sandbox setup complete\n\n"
+}
+
 # Consolidated version parsing function
 parse_version() {
     local version=$1
@@ -484,6 +558,8 @@ run_claude_installer() {
 
     if bash "$tmp"; then
         rm -f "$tmp"
+        # Setup sandbox dependencies after successful installation
+        setup_claude_sandbox
         return 0
     fi
 
@@ -1135,7 +1211,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.7.14" \
+        "Agentic Coders CLI Installer v1.7.15" \
         "Toggle: skip->install->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"
@@ -1676,6 +1752,8 @@ install_tool() {
                     printf "Updating...\n"
                     if claude update 2>/dev/null; then
                         log_success "Updated ${name}"
+                        # Setup sandbox dependencies after successful update
+                        setup_claude_sandbox
                         return 0
                     else
                         # Try running the installer again if update fails
