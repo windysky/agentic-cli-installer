@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.14] - 2026-02-07
+
+### Fixed
+
+- log_warning() now outputs to stderr instead of stdout (prevents warning messages from being captured by command substitution)
+- MoAI-ADK update now works correctly - previously failed with checksum mismatch due to log_warning output being captured as expected checksum value
+- log_warning() now consistent with log_error() which already outputs to stderr
+
+---
+
 ## [1.7.13] - 2026-02-07
 
 ### Fixed
