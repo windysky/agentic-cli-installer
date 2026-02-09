@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.7.17
+# Agentic Coders Installer v1.7.18
 # Interactive installer for AI coding CLI tools
 #
 # Version history: v1.7.6 added security improvements, v1.7.12 fixed oh-my-opencode version detection
@@ -14,7 +14,6 @@ set -euo pipefail
 
 # Non-interactive mode flag
 AUTO_YES=false
-SKIP_SYSTEM_NPM=false
 
 # Parse command-line arguments
 while [[ $# -gt 0 ]]; do
@@ -23,15 +22,10 @@ while [[ $# -gt 0 ]]; do
             AUTO_YES=true
             shift
             ;;
-        --skip-system-npm)
-            SKIP_SYSTEM_NPM=true
-            shift
-            ;;
         --help|-h)
             printf "Usage: %s [--yes|-y] [--help|-h]\n" "$0"
             printf "\nOptions:\n"
             printf "  --yes, -y        Non-interactive mode (auto-proceed with defaults)\n"
-            printf "  --skip-system-npm  Skip system-level npm check (use with caution)\n"
             printf "  --help, -h       Show this help message\n"
             exit 0
             ;;
@@ -74,7 +68,6 @@ declare -a TOOLS=(
     "@google/jules|npm|@google/jules|Google Jules CLI"
     "opencode-ai|npm|opencode-ai|OpenCode AI CLI"
     "oh-my-opencode|addon|oh-my-opencode|OpenCode - oh-my-opencode"
-    "mistral-vibe|uv|mistral-vibe|Mistral Vibe CLI"
 )
 
 # Arrays to store tool information
@@ -1297,7 +1290,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.7.17" \
+        "Agentic Coders CLI Installer v1.7.18" \
         "Toggle: skip->install->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"
@@ -2216,103 +2209,6 @@ run_installation() {
 # DEPENDENCY CHECKS
 #############################################
 
-# System-level npm check for MCP servers (native Claude Code requirement)
-# MCP servers need system npm, not conda npm
-ensure_system_npm() {
-    if [[ "$SKIP_SYSTEM_NPM" == true ]]; then
-        printf "${YELLOW}[WARNING]${NC} Skipping system npm check (requested by flag). Claude MCP servers may not work without system npm.\n"
-        return 0
-    fi
-
-    printf "${BLUE}[INFO]${NC} Checking system-level npm (outside conda)...\n"
-
-    local base_path="/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/local/bin"
-    local original_path="$PATH"
-    local system_npm_path=""
-    local npm_version=""
-
-    # Prefer system locations by temporarily removing conda from PATH
-    PATH="$base_path"
-    if command -v npm >/dev/null 2>&1; then
-        system_npm_path=$(command -v npm)
-        npm_version=$(npm --version 2>/dev/null | head -n1 || true)
-    fi
-    PATH="$original_path"
-
-    # If npm resolves inside conda, treat as missing (we require system-level npm)
-    # Use trailing slash to ensure proper path comparison (avoid matching /prefix/path2)
-    if [[ -n "$CONDA_PREFIX" && -n "$system_npm_path" && "$system_npm_path" == "${CONDA_PREFIX}/"* ]]; then
-        system_npm_path=""
-        npm_version=""
-    fi
-
-    local install_cmd="curl -q https://www.npmjs.com/install.sh | sudo bash"
-
-    install_system_npm() {
-        if ! command -v sudo >/dev/null 2>&1; then
-            log_error "sudo not available. Please install npm manually:"
-            printf "  ${CYAN}%s${NC}\n" "$install_cmd"
-            return 1
-        fi
-        printf "${BLUE}[INFO]${NC} Validating sudo access (you may be prompted for your password)...\n"
-        if ! sudo -v >/dev/null 2>&1; then
-            log_error "sudo authentication failed or was cancelled."
-            return 1
-        fi
-        printf "${BLUE}[INFO]${NC} Installing/Updating npm system-wide...\n"
-        if curl -q https://www.npmjs.com/install.sh 2>/dev/null | sudo bash; then
-            hash -r npm 2>/dev/null || true
-            PATH="$base_path:$original_path"
-            if command -v npm >/dev/null 2>&1; then
-                system_npm_path=$(command -v npm)
-                npm_version=$(npm --version 2>/dev/null | head -n1 || true)
-            fi
-            if [[ -n "$npm_version" ]]; then
-                log_success "System npm ready (${npm_version}) at ${system_npm_path}"
-                return 0
-            fi
-            log_error "npm installation finished but npm not found on PATH."
-            return 1
-        else
-            log_error "Failed to install/update system npm"
-            return 1
-        fi
-    }
-
-    if [[ -z "$system_npm_path" ]]; then
-        printf "${YELLOW}[WARNING]${NC} System npm not found. Claude MCP servers (used by Claude Code) need a system-level npm to install MCP packages.\n"
-        printf "Recommended command: ${CYAN}%s${NC}\n" "$install_cmd"
-        if [[ "$AUTO_YES" == true ]]; then
-            install_system_npm || printf "${YELLOW}[WARNING]${NC} Could not install system npm automatically; continuing, but Claude MCP may fail.\n"
-        else
-            printf "Install system npm now? [y/N]: "
-            read -r response
-            case "$response" in
-                [Yy]|[Yy][Ee][Ss]) install_system_npm || printf "${YELLOW}[WARNING]${NC} System npm install failed; continuing, but Claude MCP may fail.\n" ;;
-                *) printf "${YELLOW}[WARNING]${NC} Proceeding without system npm. Claude MCP features may not work until you install it.\n" ;;
-            esac
-        fi
-    elif [[ -n "$npm_version" ]]; then
-        if version_ge "$npm_version" "$MIN_NPM_VERSION"; then
-            printf "${BLUE}[INFO]${NC} System npm found: %s (at %s)\n" "$npm_version" "$system_npm_path"
-            return 0
-        fi
-        printf "${YELLOW}[WARNING]${NC} System npm %s is below required %s.\n" "$npm_version" "$MIN_NPM_VERSION"
-        printf "Update system npm now? [y/N]: "
-        read -r resp_update
-        case "$resp_update" in
-            [Yy]|[Yy][Ee][Ss])
-                install_system_npm || printf "${YELLOW}[WARNING]${NC} System npm update failed; continuing, but Claude MCP may fail.\n"
-                ;;
-            *)
-                printf "${YELLOW}[WARNING]${NC} Skipping system npm update. Claude MCP features may not work until you update it.\n"
-                ;;
-        esac
-    fi
-
-    return 0
-}
-
 ensure_npm_prerequisite() {
     local has_npm_tool=0
     for tool in "${TOOLS[@]}"; do
@@ -2355,6 +2251,38 @@ ensure_npm_prerequisite() {
         log_error "npm installation via conda completed but npm is still not available."
         return 1
     fi
+
+    # Ensure Node.js meets minimum version inside the conda environment
+    local node_version
+    node_version=$(node --version 2>/dev/null | sed 's/^v//' | head -n1 || true)
+    if [[ -z "$node_version" ]]; then
+        log_warning "Node.js not found in the active conda environment. Installing nodejs>=${MIN_NODEJS_VERSION}..."
+        if ! conda install -y -c conda-forge "nodejs>=${MIN_NODEJS_VERSION}"; then
+            log_error "Failed to install Node.js via conda."
+            return 1
+        fi
+        hash -r 2>/dev/null || true
+        conda_npm=$(get_conda_npm_path || true)
+        node_version=$(node --version 2>/dev/null | sed 's/^v//' | head -n1 || true)
+    elif ! version_ge "$node_version" "$MIN_NODEJS_VERSION"; then
+        log_warning "Node.js version ${node_version:-unknown} is below required ${MIN_NODEJS_VERSION}. Updating via conda..."
+        if ! conda install -y -c conda-forge "nodejs>=${MIN_NODEJS_VERSION}"; then
+            log_error "Failed to install/update Node.js via conda."
+            return 1
+        fi
+        hash -r 2>/dev/null || true
+        conda_npm=$(get_conda_npm_path || true)
+        node_version=$(node --version 2>/dev/null | sed 's/^v//' | head -n1 || true)
+    fi
+    if [[ -z "$node_version" ]]; then
+        log_error "Node.js update completed but version is still unavailable."
+        return 1
+    fi
+    if ! version_ge "$node_version" "$MIN_NODEJS_VERSION"; then
+        log_error "Node.js update completed but version is still insufficient: ${node_version}"
+        return 1
+    fi
+    log_success "Node.js ready (${node_version})"
 
     local npm_version
     npm_version=$(get_npm_version_from_path "$conda_npm")
@@ -2505,9 +2433,6 @@ main() {
         printf "              ${CYAN}sudo yum install curl${NC} (RHEL/CentOS)\n"
         exit 1
     fi
-
-    # Require system-level npm (outside conda) before proceeding (non-fatal)
-    ensure_system_npm
 
     # Initialize tool information
     initialize_tools

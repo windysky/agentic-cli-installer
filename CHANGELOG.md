@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.18] - 2026-02-09
+
+### Changed
+
+- Enforce Node.js >= 22.9.0 inside conda when npm tools are selected; npm still self-updates via `npm install -g npm@latest`.
+- Remove system-level npm requirement; only conda npm/Node is needed.
+- Align MoAI install with native installer and clean up pip-installed moai-adk before install/update.
+- Remove `mistral-vibe` from tool list (no uv-managed tools remain).
+
+---
+
 ## [1.7.17] - 2026-02-07
 
 ### Added
