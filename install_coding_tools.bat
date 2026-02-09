@@ -3,11 +3,11 @@ setlocal EnableDelayedExpansion
 set "SCRIPT_DIR=%~dp0"
 
 REM ###############################################
-REM Agentic Coders Installer v1.7.17
+REM Agentic Coders Installer v1.7.18
 REM Interactive installer for AI coding CLI tools
 REM Windows version (run in Anaconda Prompt or CMD)
 REM
-REM Recent improvements (v1.7.13-v1.7.17):
+REM Recent improvements (v1.7.13-v1.7.18):
 REM - oh-my-opencode plugin detection fix
 REM - log_warning outputs to stderr
 REM - Seccomp filter, Playwright CLI, and Playwright MCP auto-installation
@@ -86,14 +86,13 @@ set "MOAI_INSTALL_URL=https://raw.githubusercontent.com/modu-ai/moai-adk/main/in
 set "MOAI_CHECKSUM_URL=https://api.github.com/repos/modu-ai/moai-adk/contents/install.ps1.sha256?ref=main"
 
 REM Tool list: name|manager|package|description
-set TOOLS_COUNT=7
+set TOOLS_COUNT=6
 set "TOOL_1=moai-adk|native|moai-adk|MoAI Agent Development Kit"
 set "TOOL_2=claude-code|native|claude-code|Claude Code CLI"
 set "TOOL_3=@openai/codex|npm|@openai/codex|OpenAI Codex CLI"
 set "TOOL_4=@google/gemini-cli|npm|@google/gemini-cli|Google Gemini CLI"
 set "TOOL_5=@google/jules|npm|@google/jules|Google Jules CLI"
 set "TOOL_6=opencode-ai|npm|opencode-ai|OpenCode AI CLI"
-set "TOOL_7=mistral-vibe|uv|mistral-vibe|Mistral Vibe CLI"
 
 REM Action states: 0=skip, 1=install, 2=remove
 set ACTION_SKIP=0
@@ -168,13 +167,6 @@ set "PKG_6=opencode-ai"
 set "DESC_6=OpenCode AI CLI"
 set "BIN_6=opencode"
 set "VERARG_6=--version"
-
-set "NAME_7=Mistral Vibe CLI"
-set "MGR_7=uv"
-set "PKG_7=mistral-vibe"
-set "DESC_7=Mistral Vibe CLI"
-set "BIN_7=vibe"
-set "VERARG_7=--version"
 
 REM ###############################################
 REM MAIN EXECUTION
@@ -499,6 +491,61 @@ call :resolve_conda_npm
 if errorlevel 1 (
     echo %RED%[ERROR]%NC% npm installation via conda completed but npm is still not available.
     exit /b 1
+)
+
+REM Ensure Node.js meets minimum version inside the conda environment
+set "NODE_VERSION="
+if defined CONDA_NODE (
+    for /f "delims=" %%v in ('"%CONDA_NODE%" --version 2^>nul') do (
+        if not "%%v"=="" set "NODE_VERSION=%%v"
+    )
+)
+if not defined NODE_VERSION (
+    for /f "delims=" %%v in ('node --version 2^>nul') do (
+        if not "%%v"=="" set "NODE_VERSION=%%v"
+    )
+)
+if defined NODE_VERSION (
+    if /I "!NODE_VERSION:~0,1!"=="v" set "NODE_VERSION=!NODE_VERSION:~1!"
+)
+set "NEED_NODE_UPDATE=0"
+if not defined NODE_VERSION (
+    set "NEED_NODE_UPDATE=1"
+) else (
+    powershell -NoProfile -Command "try { if ([version]'!NODE_VERSION!' -ge [version]'%MIN_NODEJS_VERSION%') { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>nul
+    if errorlevel 1 set "NEED_NODE_UPDATE=1"
+)
+if "!NEED_NODE_UPDATE!"=="1" (
+    echo %YELLOW%[WARNING]%NC% Node.js !NODE_VERSION! is below required %MIN_NODEJS_VERSION%. Updating via conda...
+    call conda install -y -c conda-forge "nodejs>=%MIN_NODEJS_VERSION%"
+    if errorlevel 1 (
+        echo %RED%[ERROR]%NC% Failed to install/update Node.js via conda.
+        exit /b 1
+    )
+    call :resolve_conda_npm
+    if errorlevel 1 (
+        echo %RED%[ERROR]%NC% npm/Node path not found after Node.js update.
+        exit /b 1
+    )
+    set "NODE_VERSION="
+    if defined CONDA_NODE (
+        for /f "delims=" %%v in ('"%CONDA_NODE%" --version 2^>nul') do (
+            if not "%%v"=="" set "NODE_VERSION=%%v"
+        )
+    )
+    if defined NODE_VERSION (
+        if /I "!NODE_VERSION:~0,1!"=="v" set "NODE_VERSION=!NODE_VERSION:~1!"
+    )
+    if not defined NODE_VERSION (
+        echo %RED%[ERROR]%NC% Node.js update completed but version is unavailable.
+        exit /b 1
+    )
+    powershell -NoProfile -Command "try { if ([version]'!NODE_VERSION!' -ge [version]'%MIN_NODEJS_VERSION%') { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>nul
+    if errorlevel 1 (
+        echo %RED%[ERROR]%NC% Node.js version remains below %MIN_NODEJS_VERSION% (^!NODE_VERSION!^)
+        exit /b 1
+    )
+    echo %GREEN%[SUCCESS]%NC% Node.js ready (^!NODE_VERSION!^) in conda env
 )
 
 call :dbg %BLUE%[DEBUG]%NC% querying conda npm --version
@@ -1249,7 +1296,7 @@ if "%DEBUG%"=="1" (
     cls
 )
 call :print_banner_sep
-echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.7.17%NC%
+echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.7.18%NC%
 echo Toggle: %CYAN%skip%NC% -^> %GREEN%install%NC% -^> %RED%remove%NC%  Input: 1,3,5  Enter/P=proceed  Q=quit
 call :print_banner_sep
 echo.

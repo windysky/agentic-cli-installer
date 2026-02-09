@@ -1,6 +1,6 @@
-# Agentic CLI Installer v1.7.17
+# Agentic CLI Installer v1.7.18
 
-**Last Modified:** February 8, 2026
+**Last Modified:** February 9, 2026
 
 An interactive installer that manages multiple AI coding CLI tools from one place. It detects installed versions, fetches latest versions, and lets you install, update, or remove tools in a single run.
 
@@ -9,11 +9,10 @@ An interactive installer that manages multiple AI coding CLI tools from one plac
 ### Prerequisites
 
 - `curl` (required for all installation methods)
-- Python 3.11+ (required for `uv tool` installs like `mistral-vibe`)
-- `uv` for `mistral-vibe`: `curl -LsSf https://astral.sh/uv/install.sh | sh`
-- Node.js >= 22.9.0 for npm tools (installed via conda-forge in the active conda environment; npm updates use `npm install -g npm@latest` within conda)
+- Active conda environment with Node.js >= 22.9.0 (installed via conda-forge; npm self-updates run inside the env)
+- `bunx` or `npx` for oh-my-opencode addon (comes with Node/npm)
 
-Note: npm operations use the active conda environment's npm. On Windows, system npm is not checked or used.
+Note: npm operations use the active conda environment's npm/Node. No uv-managed tools are included.
 
 ### Installation
 
@@ -85,9 +84,8 @@ Note: Run the Windows installer from an Anaconda Prompt with a non-base conda en
 | [Google Gemini CLI](https://github.com/google-gemini/gemini-cli) | `@google/gemini-cli` | npm | `npm install -g @google/gemini-cli` |
 | [Google Jules CLI](https://jules.google) | `@google/jules` | npm | `npm install -g @google/jules` |
 | [OpenCode AI CLI](https://github.com/opencode-ai/opencode) | `opencode-ai` | npm | `npm install -g opencode-ai` |
-| [Mistral Vibe CLI](https://github.com/mistralai/mistral-vibe) | `mistral-vibe` | uv | `uv tool install mistral-vibe` |
 
-Note: npm installs run using the active conda environment's npm (Windows does not use system npm).
+Note: npm installs run using the active conda environment's npm/Node (Windows does not use system npm). No uv-managed tools are included.
 
 ## Usage
 
@@ -206,6 +204,13 @@ Backup location: ~/.local/bin.backup
 ```
 
 ## Change Log
+
+### v1.7.18 - February 9, 2026
+
+- **Node floor enforcement**: Conda installs/updates `nodejs>=22.9.0` when npm tools are selected; npm self-update remains via `npm install -g npm@latest` inside the env.
+- **Removed system npm requirement**: Startup system-npm probe removed; only conda npm/Node is required.
+- **MoAI installer alignment**: MoAI uses the native installer (no uv); pip-installed moai-adk is removed before install/update.
+- **Removed mistral-vibe**: Tool list trimmed to currently supported tools; uv is no longer needed.
 
 ### v1.7.17 - February 8, 2026
 
