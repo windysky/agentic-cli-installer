@@ -1071,8 +1071,8 @@ if defined CONDA_PREFIX set "HAS_NPM=1"
 if defined CONDA_DEFAULT_ENV set "HAS_NPM=1"
 if "%HAS_NPM%"=="1" (
     REM Shift all existing tools up by 1
-    REM TOOLS_COUNT is still 7 at this point, so we loop from 7 down to 1
-    for /L %%i in (7,-1,1) do (
+    REM Loop based on current TOOLS_COUNT to avoid hardcoded index drift
+    for /L %%i in (%TOOLS_COUNT%,-1,1) do (
         set /a "new_idx=%%i+1"
         call set "NAME_!new_idx!=%%NAME_%%i%%"
         call set "MGR_!new_idx!=%%MGR_%%i%%"
