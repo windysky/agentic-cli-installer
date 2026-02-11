@@ -792,7 +792,6 @@ get_installed_uv_version() {
     # Parse uv tool list output to find package version, strip 'v' prefix
     # uv tool list output format: "package-name version" or "package-name v1.0.0"
     # Example formats:
-    #   mistral-vibe 1.3.4
     #   @anthropic-ai/claude-code 2.1.2
 
     # Try multiple matching approaches for robustness
