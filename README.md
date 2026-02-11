@@ -1,6 +1,6 @@
-# Agentic CLI Installer v1.7.18
+# Agentic CLI Installer v1.7.19
 
-**Last Modified:** February 9, 2026
+**Last Modified:** February 11, 2026
 
 An interactive installer that manages multiple AI coding CLI tools from one place. It detects installed versions, fetches latest versions, and lets you install, update, or remove tools in a single run.
 
@@ -204,6 +204,12 @@ Backup location: ~/.local/bin.backup
 ```
 
 ## Change Log
+
+### v1.7.19 - February 11, 2026
+
+- **Windows tool index fix**: Replaced hardcoded shift index with dynamic `TOOLS_COUNT` in batch initialization, preventing index drift when tool lists change.
+- **Release consistency update**: Version strings and release notes aligned across scripts and docs.
+- **Documentation cleanup**: Removed stale installer references after tool list updates.
 
 ### v1.7.18 - February 9, 2026
 
