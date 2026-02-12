@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Initialize conda for this shell
 # Try to find conda.sh and activate it
 if [ -f "$HOME/miniconda3/etc/profile.d/conda.sh" ]; then
@@ -19,10 +21,15 @@ envs=$(conda env list | grep -v "^#" | awk '{print $1}' | grep -v "^$" | awk '$1
 
 INSTALLER_SH="${INSTALLER_SH:-}"
 if [[ -z "$INSTALLER_SH" ]]; then
-    if command -v install_coding_tools.sh >/dev/null 2>&1; then
-        INSTALLER_SH="install_coding_tools.sh"
+    if [[ -x "${SCRIPT_DIR}/install_coding_tools.sh" ]]; then
+        INSTALLER_SH="${SCRIPT_DIR}/install_coding_tools.sh"
     else
-        INSTALLER_SH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/install_coding_tools.sh"
+        installer_on_path=$(command -v install_coding_tools.sh 2>/dev/null || true)
+        if [[ -n "${installer_on_path:-}" && -x "$installer_on_path" ]]; then
+            INSTALLER_SH="$installer_on_path"
+        else
+            INSTALLER_SH="${SCRIPT_DIR}/install_coding_tools.sh"
+        fi
     fi
 fi
 
