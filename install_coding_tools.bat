@@ -86,13 +86,14 @@ set "MOAI_INSTALL_URL=https://raw.githubusercontent.com/modu-ai/moai-adk/main/in
 set "MOAI_CHECKSUM_URL=https://api.github.com/repos/modu-ai/moai-adk/contents/install.ps1.sha256?ref=main"
 
 REM Tool list: name|manager|package|description
-set TOOLS_COUNT=6
+set TOOLS_COUNT=7
 set "TOOL_1=moai-adk|native|moai-adk|MoAI Agent Development Kit"
 set "TOOL_2=claude-code|native|claude-code|Claude Code CLI"
 set "TOOL_3=@openai/codex|npm|@openai/codex|OpenAI Codex CLI"
 set "TOOL_4=@google/gemini-cli|npm|@google/gemini-cli|Google Gemini CLI"
 set "TOOL_5=@google/jules|npm|@google/jules|Google Jules CLI"
 set "TOOL_6=opencode-ai|npm|opencode-ai|OpenCode AI CLI"
+set "TOOL_7=oh-my-opencode|addon|oh-my-opencode|OpenCode - oh-my-opencode"
 
 REM Action states: 0=skip, 1=install, 2=remove
 set ACTION_SKIP=0
@@ -167,6 +168,13 @@ set "PKG_6=opencode-ai"
 set "DESC_6=OpenCode AI CLI"
 set "BIN_6=opencode"
 set "VERARG_6=--version"
+
+set "NAME_7=OpenCode - oh-my-opencode"
+set "MGR_7=addon"
+set "PKG_7=oh-my-opencode"
+set "DESC_7=OpenCode - oh-my-opencode"
+set "BIN_7="
+set "VERARG_7="
 
 REM ###############################################
 REM MAIN EXECUTION
@@ -459,6 +467,7 @@ set "NPM_VERSION="
 for /L %%i in (1,1,%TOOLS_COUNT%) do (
     call set "MGR_CHECK=%%MGR_%%i%%"
     if /I "!MGR_CHECK!"=="npm" set "has_npm_tool=1"
+    if /I "!MGR_CHECK!"=="addon" set "has_npm_tool=1"
 )
 
 call :dbg %BLUE%[DEBUG]%NC% has_npm_tool=!has_npm_tool!
@@ -781,6 +790,7 @@ for /L %%i in (1,1,%TOOLS_COUNT%) do (
         call set "mgr=%%mgr%%"
         if /I "!mgr!"=="npm" set "needs_npm=1"
         if /I "!mgr!"=="npm-self" set "needs_npm=1"
+        if /I "!mgr!"=="addon" set "needs_npm=1"
     )
 )
 if "%needs_npm%"=="1" exit /b 0
@@ -921,6 +931,53 @@ if defined json_size if !json_size! GTR %MAX_JSON_SIZE% (
 for /f "delims=" %%v in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "param($jsonPath, $pkg); $ErrorActionPreference='SilentlyContinue'; if (Test-Path $jsonPath) { $jsonText = Get-Content -Raw $jsonPath; if ($jsonText) { $json = ConvertFrom-Json -InputObject $jsonText; if ($json -and $json.dependencies) { $dep = $json.dependencies.$pkg; if ($dep -and $dep.version) { Write-Output $dep.version } } } }" -jsonPath "!NPM_LIST_JSON_CACHE!" -pkg "!pkg!" 2^>nul') do (
     if not "%%v"=="" set "%outvar%=%%v"
 )
+exit /b 0
+
+REM ###############################################
+REM ADDON VERSION DETECTION (OpenCode addons)
+REM ###############################################
+
+:find_opencode_config
+set "OPENCODE_CONFIG="
+if exist "%USERPROFILE%\.config\opencode\opencode.json" set "OPENCODE_CONFIG=%USERPROFILE%\.config\opencode\opencode.json"
+if not defined OPENCODE_CONFIG if defined APPDATA if exist "%APPDATA%\opencode\opencode.json" set "OPENCODE_CONFIG=%APPDATA%\opencode\opencode.json"
+if not defined OPENCODE_CONFIG if defined LOCALAPPDATA if exist "%LOCALAPPDATA%\opencode\opencode.json" set "OPENCODE_CONFIG=%LOCALAPPDATA%\opencode\opencode.json"
+exit /b 0
+
+:get_oh_my_opencode_plugin_spec
+set "outvar=%~1"
+set "%outvar%="
+call :find_opencode_config
+if not defined OPENCODE_CONFIG exit /b 0
+
+for /f "delims=" %%v in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "param($p); try { $j = Get-Content -LiteralPath $p -Raw | ConvertFrom-Json; $arr = $j.plugin; if ($arr) { foreach($x in $arr) { if ($x -like 'oh-my-opencode*') { Write-Output $x; break } } } } catch { }" -p "%OPENCODE_CONFIG%" 2^>nul') do (
+    if not "%%v"=="" if not defined %outvar% set "%outvar%=%%v"
+)
+exit /b 0
+
+:get_installed_addon_version
+set "pkg=%~1"
+set "outvar=%~2"
+set "%outvar%="
+
+if /I not "%pkg%"=="oh-my-opencode" exit /b 0
+
+set "PLUGIN_SPEC="
+call :get_oh_my_opencode_plugin_spec PLUGIN_SPEC
+if not defined PLUGIN_SPEC exit /b 0
+
+REM If the plugin spec includes an explicit version (oh-my-opencode@x.y.z), prefer that.
+set "PLUGIN_VER="
+for /f "delims=" %%v in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "param($s); if ($s -match '^oh-my-opencode@(.+)$') { $Matches[1] }" -s "%PLUGIN_SPEC%" 2^>nul') do (
+    if not "%%v"=="" if not defined PLUGIN_VER set "PLUGIN_VER=%%v"
+)
+if defined PLUGIN_VER (
+    set "%outvar%=%PLUGIN_VER%"
+    exit /b 0
+)
+
+REM No explicit version in config; fall back to latest from npm.
+call :get_latest_npm_version "oh-my-opencode" %outvar%
 exit /b 0
 
 :get_latest_pypi_version
@@ -1169,6 +1226,8 @@ exit /b 0
 	    call :get_latest_npm_self_version VERSION
 	) else if /I "!p_mgr!"=="npm" (
 	    call :get_latest_npm_version "!p_pkg!" VERSION
+	) else if /I "!p_mgr!"=="addon" (
+	    call :get_latest_npm_version "!p_pkg!" VERSION
 	) else if /I "!p_mgr!"=="native" (
 	    call :get_latest_native_version "!p_pkg!" VERSION
 	)
@@ -1231,6 +1290,8 @@ if "%DEBUG%"=="1" (
         call :get_installed_npm_version "!pkg!" INST
     ) else if /I "!mgr!"=="uv" (
         call :get_installed_uv_version "!pkg!" INST
+    ) else if /I "!mgr!"=="addon" (
+        call :get_installed_addon_version "!pkg!" INST
     ) else if /I "!mgr!"=="native" (
         call :get_installed_native_version "!pkg!" INST
     )
@@ -1394,6 +1455,41 @@ for /f "tokens=1*" %%a in ("%input%") do (
     set "input=%%b"
     call :cycle_selection "!token!"
     if not "!input!"=="" goto parse_loop
+)
+
+call :resolve_addon_dependencies
+exit /b 0
+
+:resolve_addon_dependencies
+set "oh_idx=0"
+set "opencode_idx=0"
+
+for /L %%i in (1,1,%TOOLS_COUNT%) do (
+    call set "pkg=%%PKG_%%i%%"
+    call set "pkg=%%pkg%%"
+    if /I "!pkg!"=="oh-my-opencode" set "oh_idx=%%i"
+    if /I "!pkg!"=="opencode-ai" set "opencode_idx=%%i"
+)
+
+if "%oh_idx%"=="0" exit /b 0
+if "%opencode_idx%"=="0" exit /b 0
+
+call set "oh_act=%%ACT_%oh_idx%%%"
+call set "oh_act=%%oh_act%%"
+
+REM If oh-my-opencode is selected for install/update, ensure opencode-ai is installed first.
+if "%oh_act%"=="1" (
+    call set "op_inst=%%INST_%opencode_idx%%%"
+    call set "op_inst=%%op_inst%%"
+    call set "op_act=%%ACT_%opencode_idx%%%"
+    call set "op_act=%%op_act%%"
+    if /I "%op_inst%"=="Not Installed" (
+        if "%op_act%"=="0" (
+            set "ACT_%opencode_idx%=1"
+            set "SEL_%opencode_idx%=1"
+            echo %BLUE%[INFO]%NC% Auto-selected OpenCode AI CLI (required for oh-my-opencode)
+        )
+    )
 )
 exit /b 0
 
@@ -1631,6 +1727,20 @@ for /L %%i in (1,1,%TOOLS_COUNT%) do (
                 set /a missing_count+=1
                 set "missing_!missing_count!=npm (required for !name!^)"
             )
+        ) else if "!mgr!"=="addon" (
+            call :resolve_conda_npm
+            if errorlevel 1 (
+                set /a missing_count+=1
+                set "missing_!missing_count!=npm (required for !name!^)"
+            )
+            where bunx >nul 2>nul
+            if errorlevel 1 (
+                where npx >nul 2>nul
+                if errorlevel 1 (
+                    set /a missing_count+=1
+                    set "missing_!missing_count!=bunx/npx (required for !name!^)"
+                )
+            )
         ) else if "!mgr!"=="native" (
             REM Native tools use their own installer, just need curl
             where curl >nul 2>nul
@@ -1721,6 +1831,7 @@ set "remove_fail=0"
 	REM can break cmd.exe parsing and produce "... was unexpected at this time."
 	if /I "!mgr!"=="npm-self" goto install_tool_npm_self
 	if /I "!mgr!"=="uv" goto install_tool_uv
+	if /I "!mgr!"=="addon" goto install_tool_addon
 	if /I "!mgr!"=="native" goto install_tool_native
 	goto install_tool_npm
 
@@ -1751,6 +1862,27 @@ set "remove_fail=0"
 		call :dbg   %BLUE%[DEBUG]%NC% run: uv tool install "!pkg!" --force
 		call uv tool install "!pkg!" --force
 		exit /b %errorlevel%
+
+:install_tool_addon
+	if /I "!pkg!"=="oh-my-opencode" goto install_tool_addon_ohmy
+	echo   %RED%[ERROR]%NC% Unknown addon: !pkg!
+	exit /b 1
+
+:install_tool_addon_ohmy
+	where opencode >nul 2>nul
+	if errorlevel 1 (
+		echo   %RED%[ERROR]%NC% Cannot install oh-my-opencode: opencode-ai must be installed first.
+		exit /b 1
+	)
+	if /I "!inst!"=="Not Installed" (
+		echo   Installing addon...
+		call :install_oh_my_opencode
+		exit /b 0
+	)
+	echo   Addon is installed. Reinstalling...
+	call :remove_oh_my_opencode
+	call :install_oh_my_opencode
+	exit /b 0
 
 :install_tool_native
 	if /I "!pkg!"=="claude-code" goto install_tool_claude
@@ -1853,7 +1985,6 @@ set "remove_fail=0"
 		call "!CONDA_NPM!" install -g "!pkg!"
 		set "RC=%errorlevel%"
 		if not "%RC%"=="0" exit /b %RC%
-		if /I "!pkg!"=="opencode-ai" call :install_oh_my_opencode
 		exit /b 0
 
 :install_tool_npm_update
@@ -1864,10 +1995,15 @@ set "remove_fail=0"
 		call "!CONDA_NPM!" install -g "!pkg!@latest"
 		set "RC=%errorlevel%"
 		if not "%RC%"=="0" exit /b %RC%
-		if /I "!pkg!"=="opencode-ai" call :install_oh_my_opencode
 		exit /b 0
 
 :install_oh_my_opencode
+		set "PLUGIN_SPEC="
+		call :get_oh_my_opencode_plugin_spec PLUGIN_SPEC
+		if defined PLUGIN_SPEC (
+			echo   oh-my-opencode already registered in opencode.json, skipping install.
+			exit /b 0
+		)
 		echo   Installing oh-my-opencode plugin...
 		set "OHMY_RUNNER="
 		where bunx >nul 2>nul
@@ -1882,7 +2018,7 @@ set "remove_fail=0"
 		)
 		for /f "tokens=1" %%r in ("%OHMY_RUNNER%") do set "OHMY_EXE=%%r"
 		call :dbg   %BLUE%[DEBUG]%NC% run: %OHMY_RUNNER%
-		call %OHMY_RUNNER%
+		call %OHMY_RUNNER% 2>nul
 		if errorlevel 1 (
 		    echo   %YELLOW%[WARNING]%NC% oh-my-opencode installer failed ^(command: %OHMY_RUNNER%^)
 		) else (
@@ -1920,6 +2056,14 @@ if /I "!mgr!"=="npm-self" (
     call :dbg   %BLUE%[DEBUG]%NC% run: uv tool uninstall "!pkg!"
     call uv tool uninstall "!pkg!"
     exit /b %errorlevel%
+	) else if /I "!mgr!"=="addon" (
+	    echo   Removing addon...
+	    if /I "!pkg!"=="oh-my-opencode" (
+	        call :remove_oh_my_opencode
+	        exit /b 0
+	    )
+	    echo %RED%[ERROR]%NC% Unknown addon: !pkg!
+	    exit /b 1
 ) else if /I "!mgr!"=="native" (
     if /I "!pkg!"=="claude-code" (
         echo   Uninstalling native...
@@ -1977,7 +2121,6 @@ if /I "!mgr!"=="npm-self" (
 	    call :dbg   %BLUE%[DEBUG]%NC% run: "!CONDA_NPM!" uninstall -g "!pkg!"
 	    call "!CONDA_NPM!" uninstall -g "!pkg!"
 	    set "RC=%errorlevel%"
-	    if "%RC%"=="0" if /I "!pkg!"=="opencode-ai" call :remove_oh_my_opencode
 	    exit /b %RC%
 )
 
@@ -1996,7 +2139,7 @@ if /I "!mgr!"=="npm-self" (
     )
     for /f "tokens=1" %%r in ("%OHMY_RUNNER%") do set "OHMY_EXE=%%r"
     call :dbg   %BLUE%[DEBUG]%NC% run: %OHMY_RUNNER%
-    call %OHMY_RUNNER%
+    call %OHMY_RUNNER% 2>nul
     if errorlevel 1 (
         echo   %YELLOW%[WARNING]%NC% oh-my-opencode removal failed ^(command: %OHMY_RUNNER%^)
     ) else (
