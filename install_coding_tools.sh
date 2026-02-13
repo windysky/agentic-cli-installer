@@ -595,9 +595,8 @@ version_ge() {
 fetch_claude_checksum() {
     local checksum
     if ! checksum=$(make_http_request "$CLAUDE_CHECKSUM_URL" 10 1 0); then
-        log_warning "Failed to fetch Claude installer checksum from official API, falling back to bundled checksum"
-        # Fallback to known good checksum if API fails
-        echo "363382bed8849f78692bd2f15167a1020e1f23e7da1476ab8808903b6bebae05"
+        log_warning "Failed to fetch Claude installer checksum from official API; proceeding without installer verification"
+        echo ""
         return 0
     fi
     # Extract just the hash (first 64 characters)
@@ -624,15 +623,13 @@ run_claude_installer() {
     # Fetch and verify checksum dynamically
     local expected_checksum
     expected_checksum=$(fetch_claude_checksum)
-    if [[ -z "$expected_checksum" ]]; then
-        log_error "Failed to obtain Claude installer checksum"
-        rm -f "$tmp"
-        return 1
-    fi
-
-    if ! verify_file_sha256 "$tmp" "$expected_checksum"; then
-        rm -f "$tmp"
-        return 1
+    if [[ -n "$expected_checksum" ]]; then
+        if ! verify_file_sha256 "$tmp" "$expected_checksum"; then
+            rm -f "$tmp"
+            return 1
+        fi
+    else
+        log_warning "Skipping Claude installer checksum verification (checksum unavailable)"
     fi
 
     if bash "$tmp"; then

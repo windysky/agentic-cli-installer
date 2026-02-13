@@ -655,17 +655,18 @@ exit /b 0
 set "tmpfile=%TEMP%\claude_checksum_%RANDOM%.tmp"
 curl -fsSL "%CLAUDE_CHECKSUM_URL%" -o "%tmpfile%" 2>nul
 if errorlevel 1 (
-    echo %YELLOW%[WARNING]%NC% Failed to fetch Claude checksum, using fallback
-    set "CLAUDE_SHA256=%FALLBACK_CLAUDE_SHA256%"
+    echo %YELLOW%[WARNING]%NC% Failed to fetch Claude installer checksum; proceeding without installer verification
+    set "CLAUDE_SHA256="
     del "%tmpfile%" >nul 2>nul
     exit /b 0
 )
 REM Extract checksum (first 64 hex characters)
-for /f "delims=" %%c in ('powershell -NoProfile -Command "$content = Get-Content -LiteralPath '%tmpfile%' -Raw; if ($content -match '^[a-f0-9]{64}') { $matches[0] }" 2^>nul') do set "CLAUDE_SHA256=%%c"
+REM Use PowerShell params instead of embedding paths (handles parentheses and special chars in %TEMP%).
+for /f "delims=" %%c in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "param($p); try { $content = Get-Content -LiteralPath $p -Raw; if ($content -match '^[a-f0-9]{64}') { $Matches[0] } } catch { }" -p "%tmpfile%" 2^>nul') do set "CLAUDE_SHA256=%%c"
 del "%tmpfile%" >nul 2>nul
 if not defined CLAUDE_SHA256 (
-    set "CLAUDE_SHA256=%FALLBACK_CLAUDE_SHA256%"
-    echo %YELLOW%[WARNING]%NC% Failed to parse Claude checksum, using fallback
+    set "CLAUDE_SHA256="
+    echo %YELLOW%[WARNING]%NC% Failed to parse Claude installer checksum; proceeding without installer verification
 )
 exit /b 0
 
@@ -679,8 +680,38 @@ if errorlevel 1 (
 )
 REM Fetch and verify checksum dynamically
 call :fetch_claude_checksum
-call :verify_file_sha256 "%outfile%" "%CLAUDE_SHA256%"
-if errorlevel 1 exit /b 1
+if defined CLAUDE_SHA256 (
+    call :verify_file_sha256 "%outfile%" "%CLAUDE_SHA256%"
+    if errorlevel 1 exit /b 1
+) else (
+    echo %YELLOW%[WARNING]%NC% Skipping Claude installer checksum verification (checksum unavailable)
+)
+exit /b 0
+
+:best_effort_verify_claude_signature
+set "sig_path=%~1"
+if "%sig_path%"=="" exit /b 0
+if not exist "%sig_path%" exit /b 0
+
+set "SIG_STATUS="
+set "SIG_SUBJECT="
+for /f "delims=" %%s in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "param($p); $ErrorActionPreference='SilentlyContinue'; $sig = Get-AuthenticodeSignature -LiteralPath $p; if ($sig) { $sig.Status }" -p "%sig_path%" 2^>nul') do (
+    if not "%%s"=="" if not defined SIG_STATUS set "SIG_STATUS=%%s"
+)
+for /f "delims=" %%s in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "param($p); $ErrorActionPreference='SilentlyContinue'; $sig = Get-AuthenticodeSignature -LiteralPath $p; if ($sig -and $sig.SignerCertificate) { $sig.SignerCertificate.Subject }" -p "%sig_path%" 2^>nul') do (
+    if not "%%s"=="" if not defined SIG_SUBJECT set "SIG_SUBJECT=%%s"
+)
+
+if /I "%SIG_STATUS%"=="Valid" (
+    echo   %GREEN%[SUCCESS]%NC% Claude Code binary signature: Valid
+) else (
+    if defined SIG_STATUS (
+        echo   %YELLOW%[WARNING]%NC% Claude Code binary signature status: %SIG_STATUS%
+    ) else (
+        echo   %YELLOW%[WARNING]%NC% Claude Code binary signature could not be verified
+    )
+    if defined SIG_SUBJECT echo   %YELLOW%[WARNING]%NC% Signer: %SIG_SUBJECT%
+)
 exit /b 0
 
 :fetch_moai_checksum
@@ -693,7 +724,7 @@ if errorlevel 1 (
     exit /b 0
 )
 REM Parse GitHub API response to extract base64-encoded content, then decode it
-for /f "delims=" %%c in ('powershell -NoProfile -Command "$ErrorActionPreference='SilentlyContinue'; $json = Get-Content -LiteralPath '%tmpfile%' -Raw | ConvertFrom-Json; if ($json.content) { [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($json.content)) }" 2^>nul') do set "checksum_raw=%%c"
+for /f "delims=" %%c in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "param($p); $ErrorActionPreference='SilentlyContinue'; try { $json = Get-Content -LiteralPath $p -Raw | ConvertFrom-Json; if ($json -and $json.content) { [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($json.content)) } } catch { }" -p "%tmpfile%" 2^>nul') do set "checksum_raw=%%c"
 del "%tmpfile%" >nul 2>nul
 REM Extract first 64 hex characters (SHA-256 hash)
 for /f "delims=" %%h in ('powershell -NoProfile -Command "$content = '%checksum_raw%'; if ($content -match '^[a-f0-9]{64}') { $matches[0] }" 2^>nul') do set "MOAI_SHA256=%%h"
@@ -1927,6 +1958,7 @@ set "remove_fail=0"
 	set "RC=%errorlevel%"
 	del "%TEMP%\install.cmd" >nul 2>nul
 	if %RC% NEQ 0 exit /b %RC%
+	call :best_effort_verify_claude_signature "%USERPROFILE%\.local\bin\claude.exe"
 	exit /b 0
 
 :install_tool_claude_update
@@ -1945,6 +1977,7 @@ set "remove_fail=0"
 	set "RC=%errorlevel%"
 	del "%TEMP%\install.cmd" >nul 2>nul
 	if %RC% NEQ 0 exit /b %RC%
+	call :best_effort_verify_claude_signature "%USERPROFILE%\.local\bin\claude.exe"
 	exit /b 0
 
 :install_tool_moai
