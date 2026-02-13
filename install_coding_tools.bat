@@ -574,7 +574,7 @@ if errorlevel 1 (
     echo Updating npm via conda npm...
     call "!CONDA_NPM!" install -g npm@latest
     if errorlevel 1 (
-        echo %RED%[ERROR]%NC% npm update failed. Please run: npm install -g npm@latest (within the conda env)
+        echo %RED%[ERROR]%NC% npm update failed. Please run: npm install -g npm@latest ^(within the conda env^)
         exit /b 1
     )
     for /f "delims=" %%v in ('"!CONDA_NPM!" --version 2^>nul') do (
@@ -639,11 +639,28 @@ if /I not "%verify_actual%"=="%verify_expected%" (
 )
 exit /b 0
 
-:record_moai_install_path
+:find_moai_binary
+set "outvar=%~1"
+set "%outvar%="
 set "MOAI_BIN_PATH="
 for /f "delims=" %%p in ('where moai 2^>nul') do (
     if not defined MOAI_BIN_PATH set "MOAI_BIN_PATH=%%p"
 )
+if not defined MOAI_BIN_PATH if defined MOAI_INSTALL_DIR (
+    if exist "%MOAI_INSTALL_DIR%\moai.exe" set "MOAI_BIN_PATH=%MOAI_INSTALL_DIR%\moai.exe"
+)
+if not defined MOAI_BIN_PATH (
+    if exist "%LOCALAPPDATA%\Programs\moai\moai.exe" set "MOAI_BIN_PATH=%LOCALAPPDATA%\Programs\moai\moai.exe"
+)
+if not defined MOAI_BIN_PATH if exist "%MOAI_STATE_FILE%" (
+    set /p MOAI_BIN_PATH=<"%MOAI_STATE_FILE%"
+)
+if defined MOAI_BIN_PATH if not exist "%MOAI_BIN_PATH%" set "MOAI_BIN_PATH="
+if defined MOAI_BIN_PATH set "%outvar%=%MOAI_BIN_PATH%"
+exit /b 0
+
+:record_moai_install_path
+call :find_moai_binary MOAI_BIN_PATH
 if not defined MOAI_BIN_PATH exit /b 1
 if not exist "%STATE_DIR%" mkdir "%STATE_DIR%" >nul 2>nul
 if not exist "%STATE_DIR%" exit /b 1
@@ -684,7 +701,7 @@ if defined CLAUDE_SHA256 (
     call :verify_file_sha256 "%outfile%" "%CLAUDE_SHA256%"
     if errorlevel 1 exit /b 1
 ) else (
-    echo %YELLOW%[WARNING]%NC% Skipping Claude installer checksum verification (checksum unavailable)
+    echo %YELLOW%[WARNING]%NC% Skipping Claude installer checksum verification ^(checksum unavailable^)
 )
 exit /b 0
 
@@ -723,11 +740,11 @@ if errorlevel 1 (
     del "%tmpfile%" >nul 2>nul
     exit /b 0
 )
-REM Parse GitHub API response to extract base64-encoded content, then decode it
-for /f "delims=" %%c in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "param($p); $ErrorActionPreference='SilentlyContinue'; try { $json = Get-Content -LiteralPath $p -Raw | ConvertFrom-Json; if ($json -and $json.content) { [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($json.content)) } } catch { }" -p "%tmpfile%" 2^>nul') do set "checksum_raw=%%c"
+REM Parse GitHub API response and extract the first 64-hex SHA directly.
+REM Avoid embedding decoded text in cmd command-lines because special chars can break parser.
+set "MOAI_SHA256="
+for /f "delims=" %%h in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "param($p); $ErrorActionPreference='SilentlyContinue'; try { $json = Get-Content -LiteralPath $p -Raw | ConvertFrom-Json; if ($json -and $json.content) { $decoded = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($json.content)); if ($decoded -match '^[a-f0-9]{64}') { $Matches[0] } } } catch { }" -p "%tmpfile%" 2^>nul') do set "MOAI_SHA256=%%h"
 del "%tmpfile%" >nul 2>nul
-REM Extract first 64 hex characters (SHA-256 hash)
-for /f "delims=" %%h in ('powershell -NoProfile -Command "$content = '%checksum_raw%'; if ($content -match '^[a-f0-9]{64}') { $matches[0] }" 2^>nul') do set "MOAI_SHA256=%%h"
 if not defined MOAI_SHA256 (
     echo %YELLOW%[WARNING]%NC% Failed to parse MoAI checksum
     set "MOAI_SHA256="
@@ -1109,10 +1126,10 @@ if /I "%pkg%"=="claude-code" (
     )
 )
 if /I "%pkg%"=="moai-adk" (
-    where moai >nul 2>nul
-    if not errorlevel 1 (
-        call :get_semver_from_command "moai" "--version" "%outvar%"
-        if not defined %outvar% call :get_semver_from_command "moai" "version" "%outvar%"
+    call :find_moai_binary MOAI_BIN
+    if defined MOAI_BIN (
+        call :get_semver_from_command "!MOAI_BIN!" "--version" "%outvar%"
+        if not defined %outvar% call :get_semver_from_command "!MOAI_BIN!" "version" "%outvar%"
     )
 )
 exit /b 0
@@ -1143,9 +1160,13 @@ if "%installed%"=="Not Installed" echo missing& exit /b 0
 if "%latest%"=="" echo unknown& exit /b 0
 
 REM Use PowerShell for proper semver comparison
-for /f "delims=" %%r in ('powershell -NoProfile -Command "try { $v1 = [version]('%installed%'); $v2 = [version]('%latest%'); if ($v1 -ge $v2) { Write-Output 'current' } else { Write-Output 'update' } } catch { Write-Output 'update' }"') do (
+set "AGENTIC_VC_INSTALLED=%installed%"
+set "AGENTIC_VC_LATEST=%latest%"
+for /f "delims=" %%r in ('powershell -NoProfile -Command "$i = $env:AGENTIC_VC_INSTALLED; $l = $env:AGENTIC_VC_LATEST; try { $v1 = [version]$i; $v2 = [version]$l; if ($v1 -ge $v2) { 'current' } else { 'update' } } catch { 'update' }" 2^>nul') do (
     set "%outvar%=%%r"
 )
+set "AGENTIC_VC_INSTALLED="
+set "AGENTIC_VC_LATEST="
 exit /b 0
 
 REM ###############################################
@@ -1518,7 +1539,7 @@ if "%oh_act%"=="1" (
         if "%op_act%"=="0" (
             set "ACT_%opencode_idx%=1"
             set "SEL_%opencode_idx%=1"
-            echo %BLUE%[INFO]%NC% Auto-selected OpenCode AI CLI (required for oh-my-opencode)
+            echo %BLUE%[INFO]%NC% Auto-selected OpenCode AI CLI ^(required for oh-my-opencode^)
         )
     )
 )
@@ -1927,7 +1948,7 @@ set "remove_fail=0"
 	goto install_tool_claude_post_migrate
 
 :install_tool_claude_migrate
-		echo   %YELLOW%Detected npm-installed Claude Code (deprecated method)%NC%
+		echo   %YELLOW%Detected npm-installed Claude Code ^(deprecated method^)%NC%
 		echo   %YELLOW%The npm installation method is deprecated. Migrating to native installer...%NC%
 		echo   Removing npm version...
 		call :resolve_conda_npm
@@ -1984,9 +2005,9 @@ set "remove_fail=0"
 	set "BEFORE_MOAI_VERSION="
 	call :get_installed_native_version "moai-adk" BEFORE_MOAI_VERSION
 	if /I "!inst!"=="Not Installed" (
-		echo   Installing MoAI-ADK (native installer)...
+		echo   Installing MoAI-ADK ^(native installer^)...
 	) else (
-		echo   Updating MoAI-ADK (native installer)...
+		echo   Updating MoAI-ADK ^(native installer^)...
 	)
 	call :dbg   %BLUE%[DEBUG]%NC% run: moai installer
 	call :run_moai_installer
@@ -1994,8 +2015,15 @@ set "remove_fail=0"
 	set "AFTER_MOAI_VERSION="
 	call :get_installed_native_version "moai-adk" AFTER_MOAI_VERSION
 	if not defined AFTER_MOAI_VERSION (
-		echo %RED%[ERROR]%NC% MoAI-ADK installer completed but `moai` command is not available.
-		exit /b 1
+		call :find_moai_binary AFTER_MOAI_BIN
+		if defined AFTER_MOAI_BIN (
+			echo %YELLOW%[WARNING]%NC% MoAI-ADK installed but version could not be detected in this session.
+			echo %YELLOW%[WARNING]%NC% Binary detected at "!AFTER_MOAI_BIN!".
+			set "AFTER_MOAI_VERSION=Installed"
+		) else (
+			echo %RED%[ERROR]%NC% MoAI-ADK installer completed but `moai` command is not available.
+			exit /b 1
+		)
 	)
 	if /I not "!inst!"=="Not Installed" if defined BEFORE_MOAI_VERSION if /I "!AFTER_MOAI_VERSION!"=="!BEFORE_MOAI_VERSION!" (
 		echo %YELLOW%[WARNING]%NC% MoAI-ADK version did not change after update attempt ^(!AFTER_MOAI_VERSION!^)
