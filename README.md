@@ -1,4 +1,4 @@
-# Agentic CLI Installer v1.7.20
+# Agentic CLI Installer v1.7.21
 
 **Last Modified:** February 14, 2026
 
@@ -204,6 +204,11 @@ Backup location: ~/.local/bin.backup
 ```
 
 ## Change Log
+
+### v1.7.21 - February 14, 2026
+
+- **GitHub CLI auto-installation**: Automatically installs `gh` via conda-forge when moai-adk is selected
+- **Authentication reminder**: Shows `gh auth login` reminder after moai-adk installation
 
 ### v1.7.20 - February 14, 2026
 
