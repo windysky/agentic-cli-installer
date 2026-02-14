@@ -1,27 +1,74 @@
 # Project Handoff
 
-## Repo
+## 1. Project Overview
 
-- Name: agentic-cli-installer
-- Purpose: Install/update/remove AI coding CLIs via `install_coding_tools.sh` (Unix) or `install_coding_tools.bat` (Windows)
+- **Name:** agentic-cli-installer
+- **Purpose:** Interactive installer for AI coding CLI tools (install/update/remove)
+- **Scripts:** `install_coding_tools.sh` (Unix/WSL), `install_coding_tools.bat` (Windows)
+- **Last updated:** 2026-02-14
+- **Last coding CLI used:** Claude Code CLI (claude-opus-4-6)
 
-## Recent Changes (2026-02-12)
+## 2. Current State
 
-- Fixed `auto_install_coding_tools` so it reliably locates `install_coding_tools.sh` when invoked from outside the project directory (prefers the script next to `auto_install_coding_tools`, e.g. `~/.local/bin/install_coding_tools.sh`).
-- Aligned Windows installer with Unix feature set by adding `oh-my-opencode` as a first-class menu item in `install_coding_tools.bat`.
-  - Selecting `oh-my-opencode` auto-selects `opencode-ai` if it is not installed.
-  - `oh-my-opencode` no longer auto-installs/removes as a side-effect of installing/removing `opencode-ai`.
-  - Addon install skips if it is already registered in `opencode.json`.
-- Claude Code native installer now succeeds even when `https://claude.ai/checksums/*` returns 403 (installer-script checksum verification is skipped when checksum is unavailable; Windows does a best-effort Authenticode signature check of `claude.exe`).
+| Component | Status | Notes |
+|-----------|--------|-------|
+| v1.7.21 Release | Completed | GitHub CLI auto-installation for moai-adk |
+| v1.7.20 Release | Completed | Line ending normalization |
+| v1.7.19 Release | Completed | Windows tool index fix |
+| v1.7.18 Release | Completed | Node.js floor enforcement |
+| v1.7.17 Release | Completed | Playwright MCP auto-installation |
+| v1.7.13-1.7.16 | Completed | oh-my-opencode fixes, sandbox dependencies |
+
+## 3. Execution Plan Status
+
+All planned features for v1.7.x series are complete.
+
+| Version | Status | Date |
+|---------|--------|------|
+| v1.7.21 | Completed | 2026-02-14 |
+| v1.7.20 | Completed | 2026-02-14 |
+| v1.7.19 | Completed | 2026-02-11 |
+| v1.7.18 | Completed | 2026-02-09 |
+
+## 4. Outstanding Work
+
+No active work items. All requested features have been implemented and pushed to `origin/master`.
+
+## 5. Risks, Open Questions, and Assumptions
+
+| Item | Status | Notes |
+|------|--------|-------|
+| Claude installer checksum API | Mitigated | Falls back to hardcoded checksum when API returns 403 |
+| oh-my-opencode upstream bug | Mitigated | Skips install when already registered in opencode.json |
+| Mixed line endings in .bat | Resolved | Normalized to CRLF in v1.7.20 |
+
+## 6. Verification Status
+
+| Feature | Verification | Result | Date |
+|---------|-------------|--------|------|
+| GitHub CLI auto-install | Code review | Implemented correctly | 2026-02-14 |
+| Line ending normalization | `file` command | CRLF only | 2026-02-14 |
+| Git push | `git status` | Synced with origin | 2026-02-14 |
+
+## 7. Restart Instructions
+
+**Starting Point:**
+- Repository is at v1.7.21, all changes committed and pushed
+- No pending work items
+
+**Recommended Next Actions:**
+1. Test the installer by running `~/.local/bin/install_coding_tools.sh`
+2. Verify GitHub CLI installation when selecting moai-adk
+3. Add similar gh CLI support to Windows batch file if needed
 
 ## How To Deploy Locally
 
 - Unix/WSL: `./setup.sh --force --configure-path`
-- Windows: run `setup.bat` to copy `install_coding_tools.bat` into `%USERPROFILE%\.local\bin\install_coding_tools.bat`
+- Windows: run `setup.bat` to copy `install_coding_tools.bat` into `%USERPROFILE%\.local\bin\`
 
 ## Quick Verification
 
 - From any directory:
-  - `~/.local/bin/auto_install_coding_tools` should find and execute `~/.local/bin/install_coding_tools.sh`.
+  - `~/.local/bin/auto_install_coding_tools` should find and execute `~/.local/bin/install_coding_tools.sh`
 - On Windows:
-  - `install_coding_tools.bat` menu should include `OpenCode - oh-my-opencode`.
+  - `install_coding_tools.bat` menu should include `OpenCode - oh-my-opencode`
