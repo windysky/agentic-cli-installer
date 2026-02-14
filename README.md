@@ -1,6 +1,6 @@
-# Agentic CLI Installer v1.7.19
+# Agentic CLI Installer v1.7.20
 
-**Last Modified:** February 11, 2026
+**Last Modified:** February 14, 2026
 
 An interactive installer that manages multiple AI coding CLI tools from one place. It detects installed versions, fetches latest versions, and lets you install, update, or remove tools in a single run.
 
@@ -204,6 +204,10 @@ Backup location: ~/.local/bin.backup
 ```
 
 ## Change Log
+
+### v1.7.20 - February 14, 2026
+
+- **Line ending fix**: Normalized `install_coding_tools.bat` to consistent CRLF format (prevents mixed line ending issues)
 
 ### v1.7.19 - February 11, 2026
 
