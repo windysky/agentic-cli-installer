@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.21] - 2026-02-14
+
+### Added
+
+- GitHub CLI (`gh`) auto-installation when moai-adk is selected
+  - Checks if `gh` is already installed before attempting installation
+  - Installs via `conda install -c conda-forge gh` if missing
+- Post-installation reminder to authenticate with `gh auth login` before using moai commands
+
+---
+
+## [1.7.21] - 2026-02-14
+
+### Added
+
+- GitHub CLI (`gh`) auto-installation when moai-adk is selected
+  - Installs via `conda install -c conda-forge gh` if not already installed
+  - Shows authentication reminder after moai-adk installation: `gh auth login`
+  - Required for moai-adk to interact with GitHub repositories
+
+---
+
 ## [1.7.20] - 2026-02-14
 
 ### Fixed

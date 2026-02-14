@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.7.20
+# Agentic Coders Installer v1.7.21
 # Interactive installer for AI coding CLI tools
 #
 # Version history: v1.7.6 added security improvements, v1.7.12 fixed oh-my-opencode version detection
@@ -439,6 +439,53 @@ setup_claude_sandbox() {
     install_playwright_mcp
 
     printf "${GREEN}[SUCCESS]${NC} Claude Code sandbox setup complete\n\n"
+}
+
+# Install or update GitHub CLI via conda (required for moai-adk)
+install_gh_cli() {
+    printf "\n${CYAN}[MOAI DEPENDENCY]${NC} Checking GitHub CLI...\n"
+
+    # Check if gh is already installed
+    if command -v gh >/dev/null 2>&1; then
+        local current_version
+        current_version=$(gh --version 2>/dev/null | head -n1 | awk '{print $3}' || echo "unknown")
+        printf "  ${GREEN}[OK]${NC} GitHub CLI already installed (${current_version})\n"
+        return 0
+    fi
+
+    # Check if conda is available
+    if ! command -v conda >/dev/null 2>&1; then
+        log_warning "conda not found, cannot install GitHub CLI"
+        printf "  ${YELLOW}Please install manually: conda install -c conda-forge gh${NC}\n"
+        return 0
+    fi
+
+    # Install gh via conda-forge
+    printf "  ${BLUE}[INFO]${NC} Installing GitHub CLI via conda-forge...\n"
+    if conda install -y -c conda-forge gh 2>/dev/null; then
+        if command -v gh >/dev/null 2>&1; then
+            local new_version
+            new_version=$(gh --version 2>/dev/null | head -n1 | awk '{print $3}' || echo "installed")
+            log_success "GitHub CLI installed (${new_version})"
+            return 0
+        else
+            log_warning "GitHub CLI installed but 'gh' command not found in PATH"
+            printf "  ${YELLOW}You may need to restart your terminal or activate conda environment${NC}\n"
+            return 0
+        fi
+    else
+        log_warning "Failed to install GitHub CLI via conda"
+        printf "  ${YELLOW}Please install manually: conda install -c conda-forge gh${NC}\n"
+        return 0
+    fi
+}
+
+# Show GitHub CLI authentication reminder
+show_gh_auth_reminder() {
+    printf "\n${CYAN}[IMPORTANT]${NC} GitHub CLI Authentication Required\n"
+    printf "  ${YELLOW}Before running moai commands, authenticate with GitHub:${NC}\n"
+    printf "  ${GREEN}gh auth login${NC}\n"
+    printf "  This will allow moai-adk to interact with GitHub repositories.\n\n"
 }
 
 # Install or update Playwright CLI for Claude Code browser automation
@@ -1286,7 +1333,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.7.19" \
+        "Agentic Coders CLI Installer v1.7.21" \
         "Toggle: skip->install->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"
@@ -1845,6 +1892,10 @@ install_tool() {
             elif [[ "$pkg" == "moai-adk" ]]; then
                 local before_version after_version
                 before_version=$(get_installed_native_version "$pkg")
+
+                # Install GitHub CLI dependency for moai-adk
+                install_gh_cli
+
                 if [[ "$installed_version" == "Not Installed" ]]; then
                     printf "Installing via native installer...\n"
                 else
@@ -1866,6 +1917,10 @@ install_tool() {
                         printf "  ${YELLOW}Note: $HOME/.local/bin should be in your PATH${NC}\n"
                     fi
                     log_success "Installed/updated ${name} (${after_version})"
+
+                    # Show GitHub CLI authentication reminder
+                    show_gh_auth_reminder
+
                     return 0
                 else
                     log_error "Failed to install/update ${name}"
