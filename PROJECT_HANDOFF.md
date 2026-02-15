@@ -22,7 +22,7 @@
 
 ## 3. Execution Plan Status
 
-All planned features for v1.7.x series are complete.
+All planned features for v1.7.x and v1.8.0 are complete.
 
 | Version | Status | Date |
 |---------|--------|------|
@@ -51,6 +51,9 @@ No active work items. All requested features have been implemented and pushed to
 
 | Feature | Verification | Result | Date |
 |---------|-------------|--------|------|
+| Windows oh-my-opencode detection | Code review | Fallback findstr added | 2026-02-14 |
+| Windows npm comparison | Code review | Delayed expansion fixed | 2026-02-14 |
+| Windows cache invalidation | Code review | Cache cleared after removal | 2026-02-14 |
 | GitHub CLI auto-install | Code review | Implemented correctly | 2026-02-14 |
 | Line ending normalization | `file` command | CRLF only | 2026-02-14 |
 | Git push | `git status` | Synced with origin | 2026-02-14 |
@@ -58,13 +61,13 @@ No active work items. All requested features have been implemented and pushed to
 ## 7. Restart Instructions
 
 **Starting Point:**
-- Repository is at v1.7.21, all changes committed and pushed
+- Repository is at v1.8.0, all changes committed and pushed
 - No pending work items
 
 **Recommended Next Actions:**
-1. Test the installer by running `~/.local/bin/install_coding_tools.sh`
-2. Verify GitHub CLI installation when selecting moai-adk
-3. Add similar gh CLI support to Windows batch file if needed
+1. Test the installer on Windows to verify oh-my-opencode detection now works
+2. Verify Jules removal no longer shows stale "installed" status
+3. Verify npm doesn't show unnecessary update messages
 
 ## How To Deploy Locally
 
