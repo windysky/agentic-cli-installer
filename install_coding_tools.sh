@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.8.0
+# Agentic Coders Installer v1.8.1
 # Interactive installer for AI coding CLI tools
 #
 # Version history: v1.7.6 added security improvements, v1.7.12 fixed oh-my-opencode version detection
@@ -486,6 +486,49 @@ show_gh_auth_reminder() {
     printf "  ${YELLOW}Before running moai commands, authenticate with GitHub:${NC}\n"
     printf "  ${GREEN}gh auth login${NC}\n"
     printf "  This will allow moai-adk to interact with GitHub repositories.\n\n"
+}
+
+# Install or verify jq (required for moai-adk to safely edit settings.json)
+# Without jq, moai-adk falls back to sed-based JSON editing which corrupts pretty-printed JSON
+install_jq() {
+    printf "\n${CYAN}[MOAI DEPENDENCY]${NC} Checking jq (JSON processor)...\n"
+
+    # Check if jq is already installed
+    if command -v jq >/dev/null 2>&1; then
+        local current_version
+        current_version=$(jq --version 2>/dev/null | head -n1 || echo "unknown")
+        printf "  ${GREEN}[OK]${NC} jq already installed (${current_version})\n"
+        return 0
+    fi
+
+    # Check if conda is available
+    if ! command -v conda >/dev/null 2>&1; then
+        log_warning "conda not found, cannot install jq"
+        printf "  ${YELLOW}[WARNING] Without jq, moai-adk may corrupt ~/.claude/settings.json${NC}\n"
+        printf "  ${YELLOW}Please install manually: conda install -c conda-forge jq${NC}\n"
+        return 0
+    fi
+
+    # Install jq via conda-forge
+    printf "  ${BLUE}[INFO]${NC} Installing jq via conda-forge...\n"
+    printf "  ${BLUE}[INFO]${NC} (jq is required to safely edit Claude Code settings.json)${NC}\n"
+    if conda install -y -c conda-forge jq 2>/dev/null; then
+        if command -v jq >/dev/null 2>&1; then
+            local new_version
+            new_version=$(jq --version 2>/dev/null | head -n1 || echo "installed")
+            log_success "jq installed (${new_version})"
+            return 0
+        else
+            log_warning "jq installed but command not found in PATH"
+            printf "  ${YELLOW}You may need to restart your terminal or activate conda environment${NC}\n"
+            return 0
+        fi
+    else
+        log_warning "Failed to install jq via conda"
+        printf "  ${YELLOW}[WARNING] Without jq, moai-adk may corrupt ~/.claude/settings.json${NC}\n"
+        printf "  ${YELLOW}Please install manually: conda install -c conda-forge jq${NC}\n"
+        return 0
+    fi
 }
 
 # Install or update Playwright CLI for Claude Code browser automation
@@ -1333,7 +1376,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.8.0" \
+        "Agentic Coders CLI Installer v1.8.1" \
         "Toggle: skip->install->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"
@@ -1892,6 +1935,9 @@ install_tool() {
             elif [[ "$pkg" == "moai-adk" ]]; then
                 local before_version after_version
                 before_version=$(get_installed_native_version "$pkg")
+
+                # Install jq dependency for moai-adk (prevents settings.json corruption)
+                install_jq
 
                 # Install GitHub CLI dependency for moai-adk
                 install_gh_cli

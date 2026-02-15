@@ -1,6 +1,6 @@
-# Agentic CLI Installer v1.8.0
+# Agentic CLI Installer v1.8.1
 
-**Last Modified:** February 14, 2026
+**Last Modified:** February 15, 2026
 
 An interactive installer that manages multiple AI coding CLI tools from one place. It detects installed versions, fetches latest versions, and lets you install, update, or remove tools in a single run.
 
@@ -204,6 +204,11 @@ Backup location: ~/.local/bin.backup
 ```
 
 ## Change Log
+
+### v1.8.1 - February 15, 2026
+
+- **jq auto-installation**: Automatically installs `jq` via conda when moai-adk is selected
+- **Prevents settings.json corruption**: jq is required by moai-adk to safely edit JSON; without it, sed-based fallback corrupts pretty-printed files
 
 ### v1.8.0 - February 14, 2026
 
