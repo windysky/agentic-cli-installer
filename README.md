@@ -1,4 +1,4 @@
-# Agentic CLI Installer v1.7.21
+# Agentic CLI Installer v1.8.0
 
 **Last Modified:** February 14, 2026
 
@@ -204,6 +204,13 @@ Backup location: ~/.local/bin.backup
 ```
 
 ## Change Log
+
+### v1.8.0 - February 14, 2026
+
+- **Windows oh-my-opencode detection fix**: Added fallback text search when PowerShell JSON parsing fails
+- **Windows oh-my-opencode verification**: Added post-install verification to confirm plugin registration
+- **Windows npm comparison fix**: Fixed delayed expansion in version comparison
+- **Windows cache invalidation**: Invalidate npm cache after package removal
 
 ### v1.7.21 - February 14, 2026
 
