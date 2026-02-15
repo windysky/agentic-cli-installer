@@ -3,12 +3,12 @@ setlocal EnableDelayedExpansion
 set "SCRIPT_DIR=%~dp0"
 
 REM ###############################################
-REM Agentic Coders Installer v1.8.0
+REM Agentic Coders Installer v1.8.1
 REM Interactive installer for AI coding CLI tools
 REM Windows version (run in Anaconda Prompt or CMD)
 REM
-REM Recent improvements (v1.7.13-v1.8.0):
-REM - v1.8.0: Fixed version cache refresh after install/remove, improved oh-my-opencode detection
+REM Recent improvements (v1.7.13-v1.8.1):
+REM - v1.8.1: Added jq auto-installation to prevent moai-adk settings.json corruption
 REM - v1.7.20: Normalized line endings to CRLF for consistency
 REM - oh-my-opencode plugin detection fix
 REM - log_warning outputs to stderr
@@ -1421,7 +1421,7 @@ if "%DEBUG%"=="1" (
     cls
 )
 call :print_banner_sep
-echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.8.0%NC%
+echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.8.1%NC%
 echo Toggle: %CYAN%skip%NC% -^> %GREEN%install%NC% -^> %RED%remove%NC%  Input: 1,3,5  Enter/P=proceed  Q=quit
 call :print_banner_sep
 echo.
@@ -2013,9 +2013,63 @@ set "remove_fail=0"
 	call :best_effort_verify_claude_signature "%USERPROFILE%\.local\bin\claude.exe"
 	exit /b 0
 
+REM Install or verify jq (required for moai-adk to safely edit settings.json)
+REM Without jq, moai-adk falls back to sed-based JSON editing which corrupts pretty-printed JSON
+:install_jq
+	echo.
+	echo %CYAN%[MOAI DEPENDENCY]%NC% Checking jq ^(JSON processor^)...
+
+	REM Check if jq is already installed
+	where jq >nul 2>nul
+	if not errorlevel 1 (
+		for /f "delims=" %%v in ('jq --version 2^>nul') do (
+			if not "%%v"=="" echo   %GREEN%[OK]%NC% jq already installed ^(%%v^)
+		)
+		exit /b 0
+	)
+
+	REM Check if conda is available
+	if not defined CONDA_PREFIX (
+		call :resolve_conda_npm
+	)
+	where conda >nul 2>nul
+	if errorlevel 1 (
+		echo   %YELLOW%[WARNING]%NC% conda not found, cannot install jq
+		echo   %YELLOW%[WARNING]%NC% Without jq, moai-adk may corrupt %%USERPROFILE%%\.claude\settings.json
+		echo   %YELLOW%Please install manually: conda install -c conda-forge jq%NC%
+		exit /b 0
+	)
+
+	REM Install jq via conda-forge
+	echo   %BLUE%[INFO]%NC% Installing jq via conda-forge...
+	echo   %BLUE%[INFO]%NC% ^(jq is required to safely edit Claude Code settings.json^)
+	call conda install -y -c conda-forge jq >nul 2>nul
+	if errorlevel 1 (
+		echo   %YELLOW%[WARNING]%NC% Failed to install jq via conda
+		echo   %YELLOW%[WARNING]%NC% Without jq, moai-adk may corrupt %%USERPROFILE%%\.claude\settings.json
+		echo   %YELLOW%Please install manually: conda install -c conda-forge jq%NC%
+		exit /b 0
+	)
+
+	REM Verify installation
+	where jq >nul 2>nul
+	if not errorlevel 1 (
+		for /f "delims=" %%v in ('jq --version 2^>nul') do (
+			echo   %GREEN%[SUCCESS]%NC% jq installed ^(%%v^)
+		)
+	) else (
+		echo   %YELLOW%[WARNING]%NC% jq installed but command not found in PATH
+		echo   %YELLOW%You may need to restart your terminal or activate conda environment%NC%
+	)
+	exit /b 0
+
 :install_tool_moai
 	set "BEFORE_MOAI_VERSION="
 	call :get_installed_native_version "moai-adk" BEFORE_MOAI_VERSION
+
+	REM Install jq dependency for moai-adk (prevents settings.json corruption)
+	call :install_jq
+
 	if /I "!inst!"=="Not Installed" (
 		echo   Installing MoAI-ADK ^(native installer^)...
 	) else (
