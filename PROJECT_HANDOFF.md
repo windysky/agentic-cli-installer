@@ -12,6 +12,7 @@
 
 | Component | Status | Notes |
 |-----------|--------|-------|
+| v1.8.0 Release | Completed | Windows oh-my-opencode detection and cache fixes |
 | v1.7.21 Release | Completed | GitHub CLI auto-installation for moai-adk |
 | v1.7.20 Release | Completed | Line ending normalization |
 | v1.7.19 Release | Completed | Windows tool index fix |
@@ -25,6 +26,7 @@ All planned features for v1.7.x series are complete.
 
 | Version | Status | Date |
 |---------|--------|------|
+| v1.8.0 | Completed | 2026-02-14 |
 | v1.7.21 | Completed | 2026-02-14 |
 | v1.7.20 | Completed | 2026-02-14 |
 | v1.7.19 | Completed | 2026-02-11 |
@@ -41,6 +43,9 @@ No active work items. All requested features have been implemented and pushed to
 | Claude installer checksum API | Mitigated | Falls back to hardcoded checksum when API returns 403 |
 | oh-my-opencode upstream bug | Mitigated | Skips install when already registered in opencode.json |
 | Mixed line endings in .bat | Resolved | Normalized to CRLF in v1.7.20 |
+| Windows oh-my-opencode detection | Resolved | Added fallback text search in v1.8.0 |
+| Windows npm version comparison | Resolved | Fixed delayed expansion in v1.8.0 |
+| Windows npm cache invalidation | Resolved | Clear cache after removal in v1.8.0 |
 
 ## 6. Verification Status
 

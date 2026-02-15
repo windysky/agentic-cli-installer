@@ -3,11 +3,12 @@ setlocal EnableDelayedExpansion
 set "SCRIPT_DIR=%~dp0"
 
 REM ###############################################
-REM Agentic Coders Installer v1.7.20
+REM Agentic Coders Installer v1.8.0
 REM Interactive installer for AI coding CLI tools
 REM Windows version (run in Anaconda Prompt or CMD)
 REM
-REM Recent improvements (v1.7.13-v1.7.20):
+REM Recent improvements (v1.7.13-v1.8.0):
+REM - v1.8.0: Fixed version cache refresh after install/remove, improved oh-my-opencode detection
 REM - v1.7.20: Normalized line endings to CRLF for consistency
 REM - oh-my-opencode plugin detection fix
 REM - log_warning outputs to stderr
@@ -569,9 +570,11 @@ if not defined NPM_VERSION (
     exit /b 1
 )
 
-powershell -NoProfile -Command "try { if ([version]'%NPM_VERSION%' -ge [version]'%MIN_NPM_VERSION%') { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>nul
+REM Use delayed expansion for version comparison
+set "AGENTIC_NPM_VER=!NPM_VERSION!"
+powershell -NoProfile -Command "try { if ([version]$env:AGENTIC_NPM_VER -ge [version]'%MIN_NPM_VERSION%') { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>nul
 if errorlevel 1 (
-    echo %YELLOW%[WARNING]%NC% npm version %NPM_VERSION% is below required %MIN_NPM_VERSION%.
+    echo %YELLOW%[WARNING]%NC% npm version !NPM_VERSION! is below required %MIN_NPM_VERSION%.
     echo Updating npm via conda npm...
     call "!CONDA_NPM!" install -g npm@latest
     if errorlevel 1 (
@@ -581,7 +584,8 @@ if errorlevel 1 (
     for /f "delims=" %%v in ('"!CONDA_NPM!" --version 2^>nul') do (
         if not "%%v"=="" set "NPM_VERSION=%%v"
     )
-    powershell -NoProfile -Command "try { if ([version]'%NPM_VERSION%' -ge [version]'%MIN_NPM_VERSION%') { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>nul
+    set "AGENTIC_NPM_VER=!NPM_VERSION!"
+    powershell -NoProfile -Command "try { if ([version]$env:AGENTIC_NPM_VER -ge [version]'%MIN_NPM_VERSION%') { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>nul
     if errorlevel 1 (
         echo %RED%[ERROR]%NC% npm update completed but version is still insufficient: !NPM_VERSION!
         exit /b 1
@@ -589,7 +593,7 @@ if errorlevel 1 (
     echo %GREEN%[SUCCESS]%NC% npm updated to !NPM_VERSION!
     exit /b 0
 ) else (
-    echo %BLUE%[INFO]%NC% npm version %NPM_VERSION% detected. Minimum required: %MIN_NPM_VERSION%.
+    echo %BLUE%[INFO]%NC% npm version !NPM_VERSION! detected. Minimum required: %MIN_NPM_VERSION%.
 )
 exit /b 0
 
@@ -999,8 +1003,15 @@ set "%outvar%="
 call :find_opencode_config
 if not defined OPENCODE_CONFIG exit /b 0
 
+REM Try PowerShell first for proper JSON parsing
 for /f "delims=" %%v in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "param($p); try { $j = Get-Content -LiteralPath $p -Raw | ConvertFrom-Json; $arr = $j.plugin; if ($arr) { foreach($x in $arr) { if ($x -like 'oh-my-opencode*') { Write-Output $x; break } } } } catch { }" -p "%OPENCODE_CONFIG%" 2^>nul') do (
     if not "%%v"=="" if not defined %outvar% set "%outvar%=%%v"
+)
+
+REM Fallback: Use findstr for simple text search if PowerShell failed
+if not defined %outvar% (
+    findstr /C:"oh-my-opencode" "%OPENCODE_CONFIG%" >nul 2>nul
+    if not errorlevel 1 set "%outvar%=oh-my-opencode@latest"
 )
 exit /b 0
 
@@ -1410,7 +1421,7 @@ if "%DEBUG%"=="1" (
     cls
 )
 call :print_banner_sep
-echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.7.20%NC%
+echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.8.0%NC%
 echo Toggle: %CYAN%skip%NC% -^> %GREEN%install%NC% -^> %RED%remove%NC%  Input: 1,3,5  Enter/P=proceed  Q=quit
 call :print_banner_sep
 echo.
@@ -2084,7 +2095,15 @@ set "remove_fail=0"
 		if errorlevel 1 (
 		    echo   %YELLOW%[WARNING]%NC% oh-my-opencode installer failed ^(command: %OHMY_RUNNER%^)
 		) else (
-		    echo   %GREEN%[SUCCESS]%NC% Installed oh-my-opencode via %OHMY_EXE%
+		    REM Verify the plugin was registered
+		    set "VERIFY_SPEC="
+		    call :get_oh_my_opencode_plugin_spec VERIFY_SPEC
+		    if defined VERIFY_SPEC (
+		        echo   %GREEN%[SUCCESS]%NC% Installed oh-my-opencode via %OHMY_EXE%
+		    ) else (
+		        echo   %YELLOW%[WARNING]%NC% oh-my-opencode ran but plugin not detected in opencode.json
+		        echo   %YELLOW%[WARNING]%NC% You may need to register it manually
+		    )
 		)
 		exit /b 0
 	
@@ -2183,6 +2202,9 @@ if /I "!mgr!"=="npm-self" (
 	    call :dbg   %BLUE%[DEBUG]%NC% run: "!CONDA_NPM!" uninstall -g "!pkg!"
 	    call "!CONDA_NPM!" uninstall -g "!pkg!"
 	    set "RC=%errorlevel%"
+	    REM Invalidate npm cache after uninstall so version refreshes on next run
+	    set "NPM_LIST_JSON_READY=0"
+	    set "NPM_LIST_JSON_CACHE="
 	    exit /b %RC%
 )
 

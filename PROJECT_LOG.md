@@ -1,5 +1,54 @@
 # Project Log
 
+## Session 2026-02-14 (Evening)
+
+**Coding CLI used:** Claude Code CLI (claude-opus-4-6)
+
+**Phase(s) worked on:**
+- v1.8.0: Windows oh-my-opencode detection and cache fixes
+
+**Concrete changes implemented:**
+1. Fixed oh-my-opencode detection on Windows - added fallback text search using `findstr`
+2. Added post-installation verification for oh-my-opencode to confirm plugin registration
+3. Fixed npm version comparison to use delayed expansion (`!NPM_VERSION!` instead of `%NPM_VERSION%`)
+4. Added npm cache invalidation after package removal to prevent stale "installed" status
+
+**Files/modules/functions touched:**
+- `install_coding_tools.bat`:
+  - Updated version header to v1.8.0
+  - Modified `get_oh_my_opencode_plugin_spec` to add findstr fallback
+  - Modified `install_oh_my_opencode` to add verification after installation
+  - Fixed `ensure_npm_prerequisite` to use delayed expansion for version comparison
+  - Added cache invalidation in npm removal section (`NPM_LIST_JSON_READY=0`)
+- `install_coding_tools.sh`: Version bump to v1.8.0
+- `CHANGELOG.md`: Added v1.8.0 entry
+- `README.md`: Version bump and changelog update
+- `setup.sh`: Version bump to v1.8.0
+- `PROJECT_HANDOFF.md`: Updated current state
+- `PROJECT_LOG.md`: This entry
+
+**Key technical decisions and rationale:**
+- Fallback detection uses `findstr` for simple text search when PowerShell JSON parsing fails
+- Cache invalidation ensures fresh version data after removal operations
+- Delayed expansion fix ensures version variables are evaluated at runtime, not parse time
+
+**Problems encountered and resolutions:**
+- User reported oh-my-opencode showed "Not Installed" after successful installation
+  - Root cause: PowerShell JSON parsing might fail silently
+  - Resolution: Added findstr fallback detection
+- User reported Jules showed "Installed" after removal
+  - Root cause: npm list cache not invalidated after removal
+  - Resolution: Clear cache flags after npm uninstall
+
+**Items completed in this session:**
+- v1.8.0: Windows detection and cache fixes
+
+**Verification performed:**
+- Code review of all changes
+- Version consistency check across all files
+
+---
+
 ## Session 2026-02-14 (Afternoon)
 
 **Coding CLI used:** Claude Code CLI (claude-opus-4-6)

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-02-14
+
+### Fixed
+
+- **Windows oh-my-opencode detection**: Added fallback text search when PowerShell JSON parsing fails
+- **Windows oh-my-opencode verification**: Added post-install verification to confirm plugin registration
+- **Windows npm version comparison**: Fixed delayed expansion in version comparison (was using `%VAR%` instead of `!VAR!`)
+- **Windows npm cache invalidation**: Invalidate npm list cache after package removal to prevent stale "installed" status
+
+---
+
 ## [1.7.21] - 2026-02-14
 
 ### Added
@@ -16,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.7.21] - 2026-02-14
+## [1.7.20] - 2026-02-14
 
 ### Added
 
