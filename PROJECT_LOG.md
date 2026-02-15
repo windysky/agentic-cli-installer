@@ -143,3 +143,67 @@
 - v1.7.17: Playwright MCP global auto-installation
 - v1.7.18: Node.js floor enforcement, removed mistral-vibe
 - v1.7.19: Windows tool index fix with dynamic TOOLS_COUNT
+
+---
+
+## Session 2026-02-15
+
+**Coding CLI used:** Claude Code CLI (glm-4.7)
+
+**Phase(s) worked on:**
+- v1.8.1: jq auto-installation for moai-adk
+- Version consistency verification
+- External GitHub issue creation for moai-adk bugs
+
+**Concrete changes implemented:**
+1. Added `install_jq()` function to check and install jq via conda-forge before moai-adk installation
+2. Added jq auto-installation to both Unix/WSL and Windows installers
+3. Updated setup.bat version from v1.7.6 to v1.8.1 (was missed in previous release)
+4. Created GitHub issue #381 for moai-adk settings.json corruption bug
+5. Created GitHub issue #382 for moai-adk MoAI output style localization bug
+
+**Files/modules/functions touched:**
+- `install_coding_tools.sh`:
+  - Added `install_jq()` function (after `show_gh_auth_reminder()`)
+  - Modified moai-adk installation to call `install_jq` before `install_gh_cli`
+  - Version bump to v1.8.1
+- `install_coding_tools.bat`:
+  - Added `:install_jq` function (after Claude installation section)
+  - Modified `:install_tool_moai` to call `install_jq` before running moai installer
+  - Version bump to v1.8.1
+- `setup.bat`: Version bump from v1.7.6 to v1.8.1
+- `setup.sh`: Version bump to v1.8.1
+- `CHANGELOG.md`: Added v1.8.1 entry
+- `README.md`: Version bump to v1.8.1, added changelog entry
+- `PROJECT_HANDOFF.md`: Updated current state to v1.8.1
+- `PROJECT_LOG.md`: This entry
+
+**Key technical decisions and rationale:**
+- jq is installed via conda-forge to maintain consistency with the project's conda-first approach
+- jq check runs before moai-adk installer to prevent settings.json corruption
+- If conda is unavailable, shows warning but continues (non-blocking)
+- setup.bat version was outdated (v1.7.6) - now synchronized to v1.8.1
+
+**Problems encountered and resolutions:**
+- User reported moai-adk installation corrupts `~/.claude/settings.json` when jq is not installed
+  - Root cause: moai-adk's installer falls back to sed-based JSON editing which corrupts pretty-printed JSON
+  - Resolution: Added jq auto-installation before moai-adk runs
+  - External: Created GitHub issue #381 documenting the upstream bug
+
+**Items completed in this session:**
+- v1.8.1: jq auto-installation for moai-adk
+- GitHub issue #381: moai-adk settings.json corruption bug report
+- GitHub issue #382: moai-adk MoAI output style localization bug report
+- Version consistency fix: setup.bat updated to v1.8.1
+
+**Verification performed:**
+- Code review of install_jq() function in both .sh and .bat
+- grep search for version consistency across all files
+- git commit and push to origin/master (commit: 1bcd512)
+
+**External issues reported:**
+- moai-adk issue #381: https://github.com/modu-ai/moai-adk/issues/381
+- moai-adk issue #382: https://github.com/modu-ai/moai-adk/issues/382
+
+**Deferred items:**
+- uv self-update functionality: Not implemented as no tools in TOOLS array use uv as their package manager
