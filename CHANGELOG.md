@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-02-18
+
+### Fixed
+
+- **oh-my-opencode installed version**: Installed version now reads the resolved version from OpenCode cache (`$XDG_CACHE_HOME/opencode/package.json` or module `package.json`) instead of mirroring npm registry "latest".
+- **Legacy flag support**: `install_coding_tools.sh` accepts `--skip-system-npm` as a deprecated no-op for backward compatibility.
+- **setup.sh safety**:
+  - Avoids prompting when stdin is not a TTY (uses default choice)
+  - Backs up shell config before appending PATH entry
+  - Refuses to overwrite symlinks or non-file targets
+  - WSL Windows-path install failure is non-fatal (Unix install still completes)
+
+---
+
 ## [1.8.1] - 2026-02-15
 
 ### Added

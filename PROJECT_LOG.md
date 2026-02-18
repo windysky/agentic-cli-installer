@@ -207,3 +207,44 @@
 
 **Deferred items:**
 - uv self-update functionality: Not implemented as no tools in TOOLS array use uv as their package manager
+
+---
+
+## Session 2026-02-18
+
+**Coding CLI used:** OpenCode (this session)
+
+**Phase(s) worked on:**
+- Post-release maintenance (v1.9.0)
+
+**Concrete changes implemented:**
+1. Fixed `oh-my-opencode` installed version reporting in `install_coding_tools.sh` to read the resolved version from OpenCode cache instead of mirroring npm registry `latest`.
+2. Restored compatibility for the documented legacy flag `--skip-system-npm` in `install_coding_tools.sh` (deprecated no-op).
+3. Added minimal safety guard rails to `setup.sh` (non-interactive prompt handling, shell config backup, refusal to overwrite symlinks/non-file targets, non-fatal WSL Windows-path install failure).
+4. Version bumped to v1.9.0 across docs and scripts touched.
+
+**Files/modules/functions touched:**
+- `install_coding_tools.sh`:
+  - Added `--skip-system-npm` argument support and a deprecation note
+  - Updated `get_installed_addon_version()` to resolve installed addon version from OpenCode cache (`$XDG_CACHE_HOME/opencode`)
+  - Updated `version_compare()` to handle unknown/non-semver values safely
+  - Added forced reinstall path for oh-my-opencode reinstall flow
+- Version bump to v1.9.0
+- `setup.sh`:
+  - Fixed timestamp validation error path before logger initialization
+  - Non-interactive prompt behavior uses default without blocking
+  - Shell config backup before PATH modification
+  - Refuse overwrite of symlinks/non-file targets
+  - WSL Windows-path install failure becomes non-fatal
+- Version bump to v1.9.0
+- `README.md`: Version bump to v1.9.0 and changelog entry
+- `CHANGELOG.md`: Added v1.9.0 entry
+- `PROJECT_HANDOFF.md`: Updated current state to v1.9.0
+- `PROJECT_LOG.md`: This entry
+
+**Verification performed:**
+- `bash -n` on `install_coding_tools.sh`, `setup.sh`, and `auto_install_coding_tools`
+- `./setup.sh --help` and `./install_coding_tools.sh --help`
+- `./setup.sh --force --configure-path` in a temp HOME (deploy + PATH edit)
+- Simulated `oh-my-opencode` cache state and verified installed version display
+- Verified CRLF line endings for `setup.bat` and `install_coding_tools.bat`

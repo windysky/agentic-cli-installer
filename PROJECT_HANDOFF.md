@@ -5,13 +5,14 @@
 - **Name:** agentic-cli-installer
 - **Purpose:** Interactive installer for AI coding CLI tools (install/update/remove)
 - **Scripts:** `install_coding_tools.sh` (Unix/WSL), `install_coding_tools.bat` (Windows)
-- **Last updated:** 2026-02-15
+- **Last updated:** 2026-02-18
 - **Last coding CLI used:** Claude Code CLI (glm-4.7)
 
 ## 2. Current State
 
 | Component | Status | Notes |
 |-----------|--------|-------|
+| v1.9.0 Release | Completed | oh-my-opencode version reporting fix; setup.sh guard rails; legacy flag compatibility |
 | v1.8.1 Release | Completed | jq auto-installation for moai-adk |
 | v1.8.0 Release | Completed | Windows oh-my-opencode detection and cache fixes |
 | v1.7.21 Release | Completed | GitHub CLI auto-installation for moai-adk |
@@ -23,10 +24,11 @@
 
 ## 3. Execution Plan Status
 
-All planned features for v1.7.x, v1.8.0, and v1.8.1 are complete.
+All planned features for v1.7.x, v1.8.0, and v1.8.1 are complete. v1.9.0 is a post-release maintenance release.
 
 | Version | Status | Date |
 |---------|--------|------|
+| v1.9.0 | Completed | 2026-02-18 |
 | v1.8.1 | Completed | 2026-02-15 |
 | v1.8.0 | Completed | 2026-02-14 |
 | v1.7.21 | Completed | 2026-02-14 |
@@ -36,7 +38,7 @@ All planned features for v1.7.x, v1.8.0, and v1.8.1 are complete.
 
 ## 4. Outstanding Work
 
-No active work items. All requested features have been implemented and pushed to `origin/master`.
+No active work items. All requested features have been implemented.
 
 ## 5. Risks, Open Questions, and Assumptions
 
@@ -44,6 +46,9 @@ No active work items. All requested features have been implemented and pushed to
 |------|--------|-------|
 | Claude installer checksum API | Mitigated | Falls back to hardcoded checksum when API returns 403 |
 | oh-my-opencode upstream bug | Mitigated | Skips install when already registered in opencode.json |
+| oh-my-opencode installed version display | Mitigated | v1.9.0 reads resolved version from OpenCode cache instead of mirroring npm latest |
+| setup.sh non-interactive prompt hang | Resolved | v1.9.0 uses defaults when stdin is not a TTY |
+| setup.sh symlink overwrite risk | Resolved | v1.9.0 refuses to overwrite symlinks/non-file targets |
 | Mixed line endings in .bat | Resolved | Normalized to CRLF in v1.7.20 |
 | Windows oh-my-opencode detection | Resolved | Added fallback text search in v1.8.0 |
 | Windows npm version comparison | Resolved | Fixed delayed expansion in v1.8.0 |
@@ -54,6 +59,11 @@ No active work items. All requested features have been implemented and pushed to
 
 | Feature | Verification | Result | Date |
 |---------|-------------|--------|------|
+| v1.9.0 script syntax | `bash -n` | OK | 2026-02-18 |
+| v1.9.0 help paths | `./setup.sh --help`, `./install_coding_tools.sh --help` | OK | 2026-02-18 |
+| v1.9.0 setup deploy | temp HOME run (`./setup.sh --force --configure-path`) | OK | 2026-02-18 |
+| v1.9.0 oh-my-opencode version display | simulated cache state (`$XDG_CACHE_HOME/opencode/package.json`) | OK | 2026-02-18 |
+| v1.9.0 .bat line endings | `file` | CRLF | 2026-02-18 |
 | v1.8.1 jq auto-installation | Code review | install_jq() function added | 2026-02-15 |
 | v1.8.1 version consistency | grep search | All files updated to v1.8.1 | 2026-02-15 |
 | Windows oh-my-opencode detection | Code review | Fallback findstr added | 2026-02-14 |
@@ -66,7 +76,7 @@ No active work items. All requested features have been implemented and pushed to
 ## 7. Restart Instructions
 
 **Starting Point:**
-- Repository is at v1.8.1, all changes committed and pushed
+- Repository is at v1.9.0 with maintenance improvements
 - No pending work items
 
 **Recommended Next Actions:**
