@@ -17,7 +17,7 @@
 #   --configure-path    Add ~/.local/bin to PATH in shell config
 #   --force             Skip confirmation prompts
 #
-# Version: 1.8.1
+# Version: 1.9.0
 # License: MIT
 
 set -euo pipefail
@@ -36,7 +36,7 @@ BACKUP_DIR="${HOME}/.local/bin.backup"
 # Generate timestamp and validate format (YYYYMMDD_HHMMSS)
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 if [[ ! "$TIMESTAMP" =~ ^[0-9]{8}_[0-9]{6}$ ]]; then
-    error "Failed to generate valid timestamp"
+    echo "[ERROR] Failed to generate valid timestamp" >&2
     exit 1
 fi
 
@@ -107,6 +107,10 @@ confirm() {
         prompt="$prompt [Y/n]: "
     else
         prompt="$prompt [y/N]: "
+    fi
+
+    if [[ ! -t 0 ]]; then
+        [[ "$default" == "y" ]] && return 0 || return 1
     fi
 
     read -rp "$prompt" yn
@@ -268,6 +272,15 @@ install_unix_script() {
         return 1
     fi
 
+    if [[ -L "$target" ]]; then
+        error "Refusing to overwrite symlink target: $target"
+        return 1
+    fi
+    if [[ -e "$target" && ! -f "$target" ]]; then
+        error "Target path exists but is not a file: $target"
+        return 1
+    fi
+
     # Check if target exists
     if [[ -f "$target" ]]; then
         warning "Target file already exists: $target"
@@ -328,6 +341,15 @@ install_windows_script() {
     fi
 
     local target="${target_dir}/$(basename "$source")"
+
+    if [[ -L "$target" ]]; then
+        error "Refusing to overwrite symlink target: $target"
+        return 1
+    fi
+    if [[ -e "$target" && ! -f "$target" ]]; then
+        error "Target path exists but is not a file: $target"
+        return 1
+    fi
 
     # Check if target exists
     if [[ -f "$target" ]]; then
@@ -396,6 +418,12 @@ configure_path() {
     # Add PATH configuration
     info "Adding $TARGET_DIR to PATH in $shell_config"
 
+    if [[ -f "$shell_config" ]]; then
+        if ! backup_file "$shell_config" "$BACKUP_DIR"; then
+            warning "Failed to back up shell config: $shell_config"
+        fi
+    fi
+
     {
         echo ""
         echo "# Added by Agentic CLI Installer ($(date +%Y-%m-%d))"
@@ -444,7 +472,9 @@ handle_wsl() {
 
     # Install Windows script to Windows filesystem
     if [[ -f "$SOURCE_SCRIPT_BAT" ]]; then
-        install_windows_script "$SOURCE_SCRIPT_BAT" "$windows_bin_dir" || return $?
+        if ! install_windows_script "$SOURCE_SCRIPT_BAT" "$windows_bin_dir"; then
+            warning "Windows filesystem install failed (continuing with Unix install only)"
+        fi
     else
         info "Windows batch script not found, skipping: $SOURCE_SCRIPT_BAT"
     fi

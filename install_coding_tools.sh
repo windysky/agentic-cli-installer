@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.8.1
+# Agentic Coders Installer v1.9.0
 # Interactive installer for AI coding CLI tools
 #
 # Version history: v1.7.6 added security improvements, v1.7.12 fixed oh-my-opencode version detection
@@ -14,6 +14,7 @@ set -euo pipefail
 
 # Non-interactive mode flag
 AUTO_YES=false
+SKIP_SYSTEM_NPM=false
 
 # Parse command-line arguments
 while [[ $# -gt 0 ]]; do
@@ -22,10 +23,15 @@ while [[ $# -gt 0 ]]; do
             AUTO_YES=true
             shift
             ;;
+        --skip-system-npm)
+            SKIP_SYSTEM_NPM=true
+            shift
+            ;;
         --help|-h)
-            printf "Usage: %s [--yes|-y] [--help|-h]\n" "$0"
+            printf "Usage: %s [--yes|-y] [--skip-system-npm] [--help|-h]\n" "$0"
             printf "\nOptions:\n"
             printf "  --yes, -y        Non-interactive mode (auto-proceed with defaults)\n"
+            printf "  --skip-system-npm  Legacy no-op (kept for backward compatibility)\n"
             printf "  --help, -h       Show this help message\n"
             exit 0
             ;;
@@ -114,6 +120,12 @@ log_warning() {
 
 log_error() {
     printf "${RED}[ERROR]${NC} %s\n" "$*" >&2
+}
+
+log_legacy_flags_note() {
+    if [[ "$SKIP_SYSTEM_NPM" == true ]]; then
+        log_info "--skip-system-npm is deprecated (no system npm check is performed)."
+    fi
 }
 
 supports_utf8() {
@@ -1027,38 +1039,62 @@ get_installed_native_version() {
 
 get_installed_addon_version() {
     local pkg=$1
-    # For addons like oh-my-opencode, check plugin registration in opencode config
     if [[ "$pkg" == "oh-my-opencode" ]]; then
         local opencode_config="$HOME/.config/opencode/opencode.json"
-        if [[ -f "$opencode_config" ]]; then
-            # Check if "oh-my-opencode" exists in the plugin array
-            # Note: opencode.json uses "plugin" (singular), not "plugins"
-            # Try with jq if available, otherwise fall back to grep
-            local has_plugin="false"
-            if command -v jq >/dev/null 2>&1; then
-                # Check if any plugin entry starts with "oh-my-opencode" (may include @version)
-                has_plugin=$(jq -r '.plugin // [] | any(startswith("oh-my-opencode"))' "$opencode_config" 2>/dev/null || echo "false")
-            else
-                # Fallback: grep for the plugin name in the file
-                # Matches "oh-my-opencode", "oh-my-opencode@latest", etc.
-                if grep -q '"oh-my-opencode' "$opencode_config" 2>/dev/null; then
-                    has_plugin="true"
-                fi
-            fi
+        local cache_root="${XDG_CACHE_HOME:-$HOME/.cache}/opencode"
+        local cache_pkg_json="${cache_root}/package.json"
+        local cache_module_pkg_json="${cache_root}/node_modules/${pkg}/package.json"
 
-            if [[ "$has_plugin" == "true" ]]; then
-                # Plugin is registered - get version from npm registry
-                # Addons use npm registry for version info
-                local version
-                version=$(get_latest_npm_version "$pkg")
-                if [[ -n "$version" ]]; then
-                    echo "$version"
-                    return 0
-                fi
+        if [[ ! -f "$opencode_config" ]]; then
+            return 1
+        fi
+
+        local plugin_spec=""
+        if command -v python3 >/dev/null 2>&1; then
+            plugin_spec=$(python3 -c 'import json,sys; p=sys.argv[1]; pkg=sys.argv[2]; obj=json.load(open(p,"r",encoding="utf-8")); arr=obj.get("plugin") or []; print(next((s for s in arr if isinstance(s,str) and s.startswith(pkg)), ""), end="")' "$opencode_config" "$pkg" 2>/dev/null || true)
+        elif command -v jq >/dev/null 2>&1; then
+            plugin_spec=$(jq -r --arg pkg "$pkg" '.plugin // [] | map(select(startswith($pkg))) | .[0] // empty' "$opencode_config" 2>/dev/null || true)
+        else
+            if grep -q '"oh-my-opencode' "$opencode_config" 2>/dev/null; then
+                plugin_spec="${pkg}"
             fi
         fi
+
+        if [[ -z "$plugin_spec" ]]; then
+            return 1
+        fi
+
+        local resolved=""
+        if [[ -f "$cache_pkg_json" ]] && command -v python3 >/dev/null 2>&1; then
+            resolved=$(python3 -c 'import json,sys; p=sys.argv[1]; pkg=sys.argv[2]; obj=json.load(open(p,"r",encoding="utf-8")); dep=(obj.get("dependencies") or {}).get(pkg) or ""; print(dep.strip() if isinstance(dep,str) else "", end="")' "$cache_pkg_json" "$pkg" 2>/dev/null || true)
+        elif [[ -f "$cache_pkg_json" ]] && command -v jq >/dev/null 2>&1; then
+            resolved=$(jq -r --arg pkg "$pkg" '.dependencies[$pkg] // empty' "$cache_pkg_json" 2>/dev/null || true)
+        fi
+
+        if [[ -z "$resolved" ]] && [[ -f "$cache_module_pkg_json" ]] && command -v python3 >/dev/null 2>&1; then
+            resolved=$(python3 -c 'import json,sys; p=sys.argv[1]; obj=json.load(open(p,"r",encoding="utf-8")); v=obj.get("version") or ""; print(v.strip() if isinstance(v,str) else "", end="")' "$cache_module_pkg_json" 2>/dev/null || true)
+        elif [[ -z "$resolved" ]] && [[ -f "$cache_module_pkg_json" ]] && command -v jq >/dev/null 2>&1; then
+            resolved=$(jq -r '.version // empty' "$cache_module_pkg_json" 2>/dev/null || true)
+        fi
+
+        if [[ -n "$resolved" ]]; then
+            echo "$resolved"
+            return 0
+        fi
+
+        local pinned=""
+        if [[ "$plugin_spec" == "${pkg}@"* ]]; then
+            pinned="${plugin_spec#${pkg}@}"
+            if [[ -n "$pinned" && "$pinned" != "latest" ]]; then
+                echo "$pinned"
+                return 0
+            fi
+        fi
+
+        echo "Unknown"
+        return 0
     fi
-    # Not installed
+
     return 1
 }
 
@@ -1179,8 +1215,21 @@ version_compare() {
         return
     fi
 
+    if [[ -z "$installed" ]] || [[ "$installed" == "Unknown" ]]; then
+        echo "unknown"
+        return
+    fi
+    if ! echo "$installed" | grep -qE '[0-9]+\.[0-9]+\.[0-9]+'; then
+        echo "unknown"
+        return
+    fi
+
     # Handle empty latest version
-    if [[ -z "$latest" ]]; then
+    if [[ -z "$latest" ]] || [[ "$latest" == "Unknown" ]]; then
+        echo "unknown"
+        return
+    fi
+    if ! echo "$latest" | grep -qE '[0-9]+\.[0-9]+\.[0-9]+'; then
         echo "unknown"
         return
     fi
@@ -1376,7 +1425,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.8.1" \
+        "Agentic Coders CLI Installer v1.9.0" \
         "Toggle: skip->install->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"
@@ -1723,6 +1772,7 @@ get_user_selection() {
 oh_my_opencode_flags="--no-tui --claude=no --openai=no --gemini=no --copilot=no --opencode-zen=no --zai-coding-plan=no"
 
 install_oh_my_opencode() {
+    local force_reinstall="${1:-false}"
     # First check if plugin is already registered in opencode.json
     local opencode_config="$HOME/.config/opencode/opencode.json"
     if [[ -f "$opencode_config" ]]; then
@@ -1735,7 +1785,7 @@ install_oh_my_opencode() {
             fi
         fi
 
-        if [[ "$has_plugin" == "true" ]]; then
+        if [[ "$has_plugin" == "true" && "$force_reinstall" != "true" ]]; then
             printf "  oh-my-opencode already registered in opencode.json, skipping install.\n"
             log_success "oh-my-opencode is already installed"
             return 0
@@ -1875,7 +1925,7 @@ install_tool() {
                 if [[ "$pkg" == "oh-my-opencode" ]]; then
                     # Remove first, then install
                     remove_oh_my_opencode
-                    install_oh_my_opencode
+                    install_oh_my_opencode "true"
                     return $?
                 fi
                 log_error "Unknown addon: $pkg"
@@ -2496,9 +2546,10 @@ ensure_uv_prerequisite() {
 
 check_conda_environment() {
     # Check if conda is active
-    if [[ -n "$CONDA_DEFAULT_ENV" ]]; then
+    local conda_env="${CONDA_DEFAULT_ENV:-}"
+    if [[ -n "$conda_env" ]]; then
         # Conda environment is active
-        if [[ "$CONDA_DEFAULT_ENV" == "base" ]]; then
+        if [[ "$conda_env" == "base" ]]; then
             log_error "Cannot install tools in the base conda environment."
             printf "\n${YELLOW}For safety and to avoid conflicts, please create and use a non-base conda environment.${NC}\n\n"
             printf "To create a new environment:\n"
@@ -2507,7 +2558,7 @@ check_conda_environment() {
             printf "Then run this script again.\n\n"
             return 1
         else
-            printf "${BLUE}[INFO]${NC} Using conda environment: ${CYAN}%s${NC}\n" "$CONDA_DEFAULT_ENV"
+            printf "${BLUE}[INFO]${NC} Using conda environment: ${CYAN}%s${NC}\n" "$conda_env"
         fi
     fi
     return 0
@@ -2530,6 +2581,8 @@ main() {
         printf "              ${CYAN}sudo yum install curl${NC} (RHEL/CentOS)\n"
         exit 1
     fi
+
+    log_legacy_flags_note
 
     # Initialize tool information
     initialize_tools

@@ -1,6 +1,6 @@
-# Agentic CLI Installer v1.8.1
+# Agentic CLI Installer v1.9.0
 
-**Last Modified:** February 15, 2026
+**Last Modified:** February 18, 2026
 
 An interactive installer that manages multiple AI coding CLI tools from one place. It detects installed versions, fetches latest versions, and lets you install, update, or remove tools in a single run.
 
@@ -204,6 +204,12 @@ Backup location: ~/.local/bin.backup
 ```
 
 ## Change Log
+
+### v1.9.0 - February 18, 2026
+
+- **oh-my-opencode version reporting fix**: Installed version now reflects OpenCode's cache state instead of mirroring npm "latest"
+- **Legacy flag compatibility**: `install_coding_tools.sh` accepts `--skip-system-npm` (deprecated no-op)
+- **setup.sh guard rails**: safer non-interactive prompts, shell config backup before PATH edits, and symlink/non-file overwrite protection
 
 ### v1.8.1 - February 15, 2026
 
