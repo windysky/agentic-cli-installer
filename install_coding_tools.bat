@@ -3,11 +3,11 @@ setlocal EnableDelayedExpansion
 set "SCRIPT_DIR=%~dp0"
 
 REM ###############################################
-REM Agentic Coders Installer v1.9.0
+REM Agentic Coders Installer v1.9.1
 REM Interactive installer for AI coding CLI tools
 REM Windows version (run in Anaconda Prompt or CMD)
 REM
-REM Recent improvements (v1.7.13-v1.9.0):
+REM Recent improvements (v1.7.13-v1.9.1):
 REM - v1.8.1: Added jq auto-installation to prevent moai-adk settings.json corruption
 REM - v1.7.20: Normalized line endings to CRLF for consistency
 REM - oh-my-opencode plugin detection fix
@@ -1023,6 +1023,7 @@ set "%outvar%="
 if /I not "%pkg%"=="oh-my-opencode" exit /b 0
 
 set "PLUGIN_SPEC="
+set "PINNED_VER="
 call :get_oh_my_opencode_plugin_spec PLUGIN_SPEC
 if not defined PLUGIN_SPEC exit /b 0
 
@@ -1032,12 +1033,44 @@ for /f "delims=" %%v in ('powershell -NoProfile -ExecutionPolicy Bypass -Command
     if not "%%v"=="" if not defined PLUGIN_VER set "PLUGIN_VER=%%v"
 )
 if defined PLUGIN_VER (
-    set "%outvar%=%PLUGIN_VER%"
-    exit /b 0
+    set "PINNED_VER=%PLUGIN_VER%"
 )
 
-REM No explicit version in config; fall back to latest from npm.
-call :get_latest_npm_version "oh-my-opencode" %outvar%
+REM Prefer actual npm global installed version in active conda env.
+call :get_installed_npm_version "oh-my-opencode" %outvar%
+
+REM Fallback: OpenCode cache state for resolved installed version.
+if not defined %outvar% (
+    set "CACHE_ROOT="
+    if defined XDG_CACHE_HOME if exist "%XDG_CACHE_HOME%\opencode" set "CACHE_ROOT=%XDG_CACHE_HOME%\opencode"
+    if not defined CACHE_ROOT if defined LOCALAPPDATA if exist "%LOCALAPPDATA%\opencode" set "CACHE_ROOT=%LOCALAPPDATA%\opencode"
+    if not defined CACHE_ROOT if exist "%USERPROFILE%\.cache\opencode" set "CACHE_ROOT=%USERPROFILE%\.cache\opencode"
+    if not defined CACHE_ROOT if defined APPDATA if exist "%APPDATA%\opencode" set "CACHE_ROOT=%APPDATA%\opencode"
+
+    if defined CACHE_ROOT (
+        set "CACHE_PKG_JSON=%CACHE_ROOT%\package.json"
+        set "CACHE_MOD_PKG=%CACHE_ROOT%\node_modules\oh-my-opencode\package.json"
+        if exist "!CACHE_PKG_JSON!" (
+            for /f "delims=" %%v in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "param($p,$pkg); $ErrorActionPreference='SilentlyContinue'; if (Test-Path $p) { $j = Get-Content -LiteralPath $p -Raw | ConvertFrom-Json; if ($j -and $j.dependencies) { $dep = $j.dependencies.$pkg; if ($dep) { $dep } } }" -p "!CACHE_PKG_JSON!" -pkg "oh-my-opencode" 2^>nul') do (
+                if not "%%v"=="" if not defined %outvar% set "%outvar%=%%v"
+            )
+        )
+        if not defined %outvar% if exist "!CACHE_MOD_PKG!" (
+            for /f "delims=" %%v in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "param($p); $ErrorActionPreference='SilentlyContinue'; if (Test-Path $p) { $j = Get-Content -LiteralPath $p -Raw | ConvertFrom-Json; if ($j -and $j.version) { $j.version } }" -p "!CACHE_MOD_PKG!" 2^>nul') do (
+                if not "%%v"=="" if not defined %outvar% set "%outvar%=%%v"
+            )
+        )
+    )
+)
+
+REM If config pins a version and we couldn't resolve an installed version, use the pinned value.
+if not defined %outvar% (
+    if defined PINNED_VER (
+        if /I not "!PINNED_VER!"=="latest" set "%outvar%=!PINNED_VER!"
+    )
+)
+
+if not defined %outvar% set "%outvar%=Unknown"
 exit /b 0
 
 :get_latest_pypi_version
