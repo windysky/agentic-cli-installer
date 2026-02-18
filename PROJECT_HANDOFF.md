@@ -12,6 +12,7 @@
 
 | Component | Status | Notes |
 |-----------|--------|-------|
+| v1.9.1 Release | Completed | oh-my-opencode installed-version precedence fix (npm global first) |
 | v1.9.0 Release | Completed | oh-my-opencode version reporting fix; setup.sh guard rails; legacy flag compatibility |
 | v1.8.1 Release | Completed | jq auto-installation for moai-adk |
 | v1.8.0 Release | Completed | Windows oh-my-opencode detection and cache fixes |
@@ -24,10 +25,11 @@
 
 ## 3. Execution Plan Status
 
-All planned features for v1.7.x, v1.8.0, and v1.8.1 are complete. v1.9.0 is a post-release maintenance release.
+All planned features for v1.7.x, v1.8.0, and v1.8.1 are complete. v1.9.1 is a micro follow-up release.
 
 | Version | Status | Date |
 |---------|--------|------|
+| v1.9.1 | Completed | 2026-02-18 |
 | v1.9.0 | Completed | 2026-02-18 |
 | v1.8.1 | Completed | 2026-02-15 |
 | v1.8.0 | Completed | 2026-02-14 |
@@ -44,6 +46,7 @@ No active work items. All requested features have been implemented.
 
 | Item | Status | Notes |
 |------|--------|-------|
+| oh-my-opencode global npm version mismatch | Resolved | v1.9.1 uses npm global installed version first |
 | Claude installer checksum API | Mitigated | Falls back to hardcoded checksum when API returns 403 |
 | oh-my-opencode upstream bug | Mitigated | Skips install when already registered in opencode.json |
 | oh-my-opencode installed version display | Mitigated | v1.9.0 reads resolved version from OpenCode cache instead of mirroring npm latest |
@@ -59,6 +62,7 @@ No active work items. All requested features have been implemented.
 
 | Feature | Verification | Result | Date |
 |---------|-------------|--------|------|
+| v1.9.1 oh-my-opencode installed version | `npm list -g` + menu output | Matches global npm install | 2026-02-18 |
 | v1.9.0 script syntax | `bash -n` | OK | 2026-02-18 |
 | v1.9.0 help paths | `./setup.sh --help`, `./install_coding_tools.sh --help` | OK | 2026-02-18 |
 | v1.9.0 setup deploy | temp HOME run (`./setup.sh --force --configure-path`) | OK | 2026-02-18 |
@@ -76,7 +80,7 @@ No active work items. All requested features have been implemented.
 ## 7. Restart Instructions
 
 **Starting Point:**
-- Repository is at v1.9.0 with maintenance improvements
+- Repository is at v1.9.1 with micro-version follow-up fix
 - No pending work items
 
 **Recommended Next Actions:**

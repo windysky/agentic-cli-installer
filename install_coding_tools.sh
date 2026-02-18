@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.9.0
+# Agentic Coders Installer v1.9.1
 # Interactive installer for AI coding CLI tools
 #
 # Version history: v1.7.6 added security improvements, v1.7.12 fixed oh-my-opencode version detection
@@ -1065,6 +1065,12 @@ get_installed_addon_version() {
         fi
 
         local resolved=""
+        resolved=$(get_installed_npm_version "$pkg" || true)
+        if [[ -n "$resolved" ]]; then
+            echo "$resolved"
+            return 0
+        fi
+
         if [[ -f "$cache_pkg_json" ]] && command -v python3 >/dev/null 2>&1; then
             resolved=$(python3 -c 'import json,sys; p=sys.argv[1]; pkg=sys.argv[2]; obj=json.load(open(p,"r",encoding="utf-8")); dep=(obj.get("dependencies") or {}).get(pkg) or ""; print(dep.strip() if isinstance(dep,str) else "", end="")' "$cache_pkg_json" "$pkg" 2>/dev/null || true)
         elif [[ -f "$cache_pkg_json" ]] && command -v jq >/dev/null 2>&1; then
@@ -1425,7 +1431,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.9.0" \
+        "Agentic Coders CLI Installer v1.9.1" \
         "Toggle: skip->install->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"

@@ -1,4 +1,4 @@
-# Agentic CLI Installer v1.9.0
+# Agentic CLI Installer v1.9.1
 
 **Last Modified:** February 18, 2026
 
@@ -204,6 +204,10 @@ Backup location: ~/.local/bin.backup
 ```
 
 ## Change Log
+
+### v1.9.1 - February 18, 2026
+
+- **oh-my-opencode installed-version accuracy**: Installer now prefers the active conda environment's globally installed `oh-my-opencode` version before cache/plugin-spec fallbacks.
 
 ### v1.9.0 - February 18, 2026
 

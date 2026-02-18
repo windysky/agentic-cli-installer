@@ -248,3 +248,33 @@
 - `./setup.sh --force --configure-path` in a temp HOME (deploy + PATH edit)
 - Simulated `oh-my-opencode` cache state and verified installed version display
 - Verified CRLF line endings for `setup.bat` and `install_coding_tools.bat`
+
+---
+
+## Session 2026-02-18 (Micro Release)
+
+**Coding CLI used:** OpenCode (this session)
+
+**Phase(s) worked on:**
+- v1.9.1 micro version update and release
+
+**Concrete changes implemented:**
+1. Updated version references from v1.9.0 to v1.9.1 across scripts and release documents.
+2. Finalized `oh-my-opencode` installed-version precedence fix in both Unix and Windows installers.
+3. Kept unrelated local files (`.gitignore`, `CLAUDE.md`, `.claude/`, `.moai/`, `.archive/`) out of release scope.
+
+**Files/modules/functions touched:**
+- `install_coding_tools.sh`: version bump; `get_installed_addon_version()` precedence uses npm global first.
+- `install_coding_tools.bat`: version bump; `:get_installed_addon_version` precedence aligned with Unix logic.
+- `setup.sh`: version bump.
+- `setup.bat`: version bump.
+- `README.md`: v1.9.1 section added.
+- `CHANGELOG.md`: v1.9.1 entry added.
+- `PROJECT_HANDOFF.md`: current state and verification updated to v1.9.1.
+- `PROJECT_LOG.md`: this entry.
+
+**Verification performed:**
+- `bash -n install_coding_tools.sh setup.sh auto_install_coding_tools`
+- `./setup.sh --help` and `./install_coding_tools.sh --help`
+- `npm list -g --depth=0 oh-my-opencode` compared against installer menu display logic
+- `file install_coding_tools.bat setup.bat` to confirm CRLF line endings
