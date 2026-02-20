@@ -3,11 +3,11 @@ setlocal EnableDelayedExpansion
 set "SCRIPT_DIR=%~dp0"
 
 REM ###############################################
-REM Agentic Coders Installer v1.9.1
+REM Agentic Coders Installer v1.9.3
 REM Interactive installer for AI coding CLI tools
 REM Windows version (run in Anaconda Prompt or CMD)
 REM
-REM Recent improvements (v1.7.13-v1.9.1):
+REM Recent improvements (v1.7.13-v1.9.3):
 REM - v1.8.1: Added jq auto-installation to prevent moai-adk settings.json corruption
 REM - v1.7.20: Normalized line endings to CRLF for consistency
 REM - oh-my-opencode plugin detection fix
@@ -101,7 +101,7 @@ REM Action states: 0=skip, 1=install, 2=remove
 set ACTION_SKIP=0
 set ACTION_INSTALL=1
 set ACTION_REMOVE=2
-set "OHMY_FLAGS=--no-tui --claude=no --openai=no --gemini=no --copilot=no --opencode-zen=no --zai-coding-plan=no"
+set "OHMY_FLAGS=--no-tui"
 
 REM Initialize tool data arrays
 for /L %%i in (1,1,%TOOLS_COUNT%) do (
@@ -1974,12 +1974,19 @@ set "remove_fail=0"
 	if /I "!inst!"=="Not Installed" (
 		echo   Installing addon...
 		call :install_oh_my_opencode
-		exit /b 0
+		exit /b %errorlevel%
 	)
-	echo   Addon is installed. Reinstalling...
+	echo   Addon is installed. Upgrading...
+	REM First update the npm package to latest version
+	call :resolve_conda_npm
+	if not errorlevel 1 (
+		echo   Updating oh-my-opencode npm package...
+		call "!CONDA_NPM!" install -g oh-my-opencode@latest >nul 2>nul
+	)
+	REM Then reinstall to update plugin registration
 	call :remove_oh_my_opencode
 	call :install_oh_my_opencode
-	exit /b 0
+	exit /b %errorlevel%
 
 :install_tool_native
 	if /I "!pkg!"=="claude-code" goto install_tool_claude
@@ -2158,12 +2165,23 @@ REM Without jq, moai-adk falls back to sed-based JSON editing which corrupts pre
 		exit /b 0
 
 :install_oh_my_opencode
+		REM Check if plugin is already registered
 		set "PLUGIN_SPEC="
 		call :get_oh_my_opencode_plugin_spec PLUGIN_SPEC
 		if defined PLUGIN_SPEC (
+			REM Preserve config on update - skip if config exists
+			if exist "%USERPROFILE%\.config\opencode\oh-my-opencode.json" (
+				echo   oh-my-opencode already installed with existing configuration.
+				echo   %GREEN%[SUCCESS]%NC% oh-my-opencode is already installed ^(config preserved^)
+				exit /b 0
+			)
 			echo   oh-my-opencode already registered in opencode.json, skipping install.
 			exit /b 0
 		)
+
+		REM Build flags with auto-detected provider settings
+		call :build_ohmy_flags_auto
+
 		echo   Installing oh-my-opencode plugin...
 		set "OHMY_RUNNER="
 		where bunx >nul 2>nul
@@ -2181,17 +2199,60 @@ REM Without jq, moai-adk falls back to sed-based JSON editing which corrupts pre
 		call %OHMY_RUNNER% 2>nul
 		if errorlevel 1 (
 		    echo   %YELLOW%[WARNING]%NC% oh-my-opencode installer failed ^(command: %OHMY_RUNNER%^)
-		) else (
-		    REM Verify the plugin was registered
-		    set "VERIFY_SPEC="
-		    call :get_oh_my_opencode_plugin_spec VERIFY_SPEC
-		    if defined VERIFY_SPEC (
-		        echo   %GREEN%[SUCCESS]%NC% Installed oh-my-opencode via %OHMY_EXE%
-		    ) else (
-		        echo   %YELLOW%[WARNING]%NC% oh-my-opencode ran but plugin not detected in opencode.json
-		        echo   %YELLOW%[WARNING]%NC% You may need to register it manually
-		    )
+		    exit /b 1
 		)
+		REM Verify the plugin was registered
+		set "VERIFY_SPEC="
+		call :get_oh_my_opencode_plugin_spec VERIFY_SPEC
+		if defined VERIFY_SPEC (
+		    echo   %GREEN%[SUCCESS]%NC% Installed oh-my-opencode via %OHMY_EXE%
+		    exit /b 0
+		) else (
+		    echo   %YELLOW%[WARNING]%NC% oh-my-opencode ran but plugin not detected in opencode.json
+		    echo   %YELLOW%[WARNING]%NC% You may need to register it manually
+		    exit /b 1
+		)
+
+:build_ohmy_flags_auto
+		REM Auto-detect installed tools and build provider flags
+		REM oh-my-opencode v3.7.4+ requires: --claude, --gemini, --copilot
+		set "OHMY_FLAGS=--no-tui"
+
+		REM Claude Code
+		where claude >nul 2>nul
+		if not errorlevel 1 (
+			set "OHMY_FLAGS=!OHMY_FLAGS! --claude=yes"
+		) else (
+			set "OHMY_FLAGS=!OHMY_FLAGS! --claude=no"
+		)
+
+		REM OpenAI Codex
+		where codex >nul 2>nul
+		if not errorlevel 1 (
+			set "OHMY_FLAGS=!OHMY_FLAGS! --openai=yes"
+		) else (
+			set "OHMY_FLAGS=!OHMY_FLAGS! --openai=no"
+		)
+
+		REM Google Gemini
+		where gemini >nul 2>nul
+		if not errorlevel 1 (
+			set "OHMY_FLAGS=!OHMY_FLAGS! --gemini=yes"
+		) else (
+			set "OHMY_FLAGS=!OHMY_FLAGS! --gemini=no"
+		)
+
+		REM GitHub Copilot - default to no
+		set "OHMY_FLAGS=!OHMY_FLAGS! --copilot=no"
+
+		REM OpenCode Zen - default to no
+		set "OHMY_FLAGS=!OHMY_FLAGS! --opencode-zen=no"
+
+		REM ZAI Coding Plan - default to no
+		set "OHMY_FLAGS=!OHMY_FLAGS! --zai-coding-plan=no"
+
+		echo   %BLUE%[INFO]%NC% Provider flags: %OHMY_FLAGS%
+		exit /b 0
 		exit /b 0
 	
 :remove_tool
@@ -2228,7 +2289,7 @@ if /I "!mgr!"=="npm-self" (
 	    echo   Removing addon...
 	    if /I "!pkg!"=="oh-my-opencode" (
 	        call :remove_oh_my_opencode
-	        exit /b 0
+	        exit /b %errorlevel%
 	    )
 	    echo %RED%[ERROR]%NC% Unknown addon: !pkg!
 	    exit /b 1
@@ -2313,10 +2374,11 @@ if /I "!mgr!"=="npm-self" (
     call %OHMY_RUNNER% 2>nul
     if errorlevel 1 (
         echo   %YELLOW%[WARNING]%NC% oh-my-opencode removal failed ^(command: %OHMY_RUNNER%^)
+        exit /b 1
     ) else (
         echo   %GREEN%[SUCCESS]%NC% Removed oh-my-opencode via %OHMY_EXE%
+        exit /b 0
     )
-    exit /b 0
 
 :get_installed_uv_version2
 set "pkg=%~1"
