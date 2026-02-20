@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.3] - 2026-02-19
+
+### Fixed
+
+- **oh-my-opencode npm package update**: Addon upgrade now runs `npm install -g oh-my-opencode@latest` before reinstalling the plugin. Previously, the addon type only ran plugin registration without updating the npm package.
+
+### Changed
+
+- **Required provider flags**: oh-my-opencode v3.7.4+ requires `--claude`, `--gemini`, `--copilot` flags. Auto-detect function now always includes these required flags.
+- **Upgrade flow**: Added explicit upgrade message and npm package update step for oh-my-opencode addon.
+
+---
+
+## [1.9.2] - 2026-02-19
+
+### Fixed
+
+- **oh-my-opencode installation return codes**: `install_oh_my_opencode()` and `remove_oh_my_opencode()` now return 1 on failure instead of silently returning 0 (success).
+- **Windows batch return codes**: `:install_oh_my_opencode` and `:remove_oh_my_opencode` now properly exit with error code on failure.
+
+### Changed
+
+- **oh-my-opencode auto-detect providers**: Removed hardcoded `--XXX=no` flags. oh-my-opencode now auto-detects installed tools (OpenAI, zai-coding-plan, etc.) instead of disabling all optional plugins.
+- **Preserve config on update**: Existing `oh-my-opencode.json` configuration is preserved during reinstall operations.
+- **Interactive provider prompt**: New installations now prompt for provider selection before running the installer.
+
+---
+
 ## [1.9.1] - 2026-02-18
 
 ### Fixed

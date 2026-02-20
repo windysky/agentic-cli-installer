@@ -3,103 +3,71 @@
 ## 1. Project Overview
 
 - **Name:** agentic-cli-installer
-- **Purpose:** Interactive installer for AI coding CLI tools (install/update/remove)
-- **Scripts:** `install_coding_tools.sh` (Unix/WSL), `install_coding_tools.bat` (Windows)
-- **Last updated:** 2026-02-18
-- **Last coding CLI used:** Claude Code CLI (glm-4.7)
+- **Purpose and scope:** Cross-platform interactive installer for AI coding CLIs (install, update, remove) with Unix/WSL support via `install_coding_tools.sh` and Windows support via `install_coding_tools.bat`.
+- **Last updated:** 2026-02-19
+- **Last coding CLI used (informational):** OpenCode
 
 ## 2. Current State
 
-| Component | Status | Notes |
-|-----------|--------|-------|
-| v1.9.1 Release | Completed | oh-my-opencode installed-version precedence fix (npm global first) |
-| v1.9.0 Release | Completed | oh-my-opencode version reporting fix; setup.sh guard rails; legacy flag compatibility |
-| v1.8.1 Release | Completed | jq auto-installation for moai-adk |
-| v1.8.0 Release | Completed | Windows oh-my-opencode detection and cache fixes |
-| v1.7.21 Release | Completed | GitHub CLI auto-installation for moai-adk |
-| v1.7.20 Release | Completed | Line ending normalization |
-| v1.7.19 Release | Completed | Windows tool index fix |
-| v1.7.18 Release | Completed | Node.js floor enforcement |
-| v1.7.17 Release | Completed | Playwright MCP auto-installation |
-| v1.7.13-1.7.16 | Completed | oh-my-opencode fixes, sandbox dependencies |
+| Component | Status | Current truth |
+|---|---|---|
+| v1.9.3 maintenance release | Completed | oh-my-opencode npm package update on upgrade, required provider flags, upstream bug workaround. Completed in Session 2026-02-19. |
+| v1.9.2 maintenance release | Completed | oh-my-opencode installation bug fixes, auto-detect providers, config preservation. Completed in Session 2026-02-19. |
+| v1.9.1 micro release | Completed | oh-my-opencode installed version precedence fixed. Completed in Session 2026-02-18. |
 
 ## 3. Execution Plan Status
 
-All planned features for v1.7.x, v1.8.0, and v1.8.1 are complete. v1.9.1 is a micro follow-up release.
-
-| Version | Status | Date |
-|---------|--------|------|
-| v1.9.1 | Completed | 2026-02-18 |
-| v1.9.0 | Completed | 2026-02-18 |
-| v1.8.1 | Completed | 2026-02-15 |
-| v1.8.0 | Completed | 2026-02-14 |
-| v1.7.21 | Completed | 2026-02-14 |
-| v1.7.20 | Completed | 2026-02-14 |
-| v1.7.19 | Completed | 2026-02-11 |
-| v1.7.18 | Completed | 2026-02-09 |
+| Phase / Milestone | Status | Last updated | Note |
+|---|---|---|---|
+| Phase 1: Fix oh-my-opencode return codes | Completed | 2026-02-19 | Added proper return 1 on failure in both .sh and .bat |
+| Phase 2: Auto-detect providers | Completed | 2026-02-19 | Removed hardcoded --XXX=no flags, oh-my-opencode auto-detects installed tools |
+| Phase 3: Preserve config on update | Completed | 2026-02-19 | Existing oh-my-opencode.json preserved during reinstall |
+| Phase 4: npm package update on upgrade | Completed | 2026-02-19 | Added `npm install -g oh-my-opencode@latest` before plugin reinstall |
+| Phase 5: Release and documentation sync | Completed | 2026-02-19 | v1.9.3 release ready for commit |
 
 ## 4. Outstanding Work
 
-No active work items. All requested features have been implemented.
+- **No active items.**
+  - Status: Completed
+  - Last updated: 2026-02-19
+  - Reference: `PROJECT_LOG.md` Session 2026-02-19
 
 ## 5. Risks, Open Questions, and Assumptions
 
-| Item | Status | Notes |
-|------|--------|-------|
-| oh-my-opencode global npm version mismatch | Resolved | v1.9.1 uses npm global installed version first |
-| Claude installer checksum API | Mitigated | Falls back to hardcoded checksum when API returns 403 |
-| oh-my-opencode upstream bug | Mitigated | Skips install when already registered in opencode.json |
-| oh-my-opencode installed version display | Mitigated | v1.9.0 reads resolved version from OpenCode cache instead of mirroring npm latest |
-| setup.sh non-interactive prompt hang | Resolved | v1.9.0 uses defaults when stdin is not a TTY |
-| setup.sh symlink overwrite risk | Resolved | v1.9.0 refuses to overwrite symlinks/non-file targets |
-| Mixed line endings in .bat | Resolved | Normalized to CRLF in v1.7.20 |
-| Windows oh-my-opencode detection | Resolved | Added fallback text search in v1.8.0 |
-| Windows npm version comparison | Resolved | Fixed delayed expansion in v1.8.0 |
-| Windows npm cache invalidation | Resolved | Clear cache after removal in v1.8.0 |
-| moai-adk settings.json corruption | Mitigated | jq auto-installation added in v1.8.1 |
+| Item | Status | Date opened | Resolution / assumption in effect |
+|---|---|---|---|
+| moai-adk settings.json corruption when jq unavailable (upstream #381) | Mitigated | 2026-02-15 | Installer auto-installs `jq` before moai-adk flow when needed. |
+| moai output-style localization issue (upstream #382) | Open | 2026-02-15 | Upstream issue remains open; installer-side default behavior unchanged. |
+| oh-my-opencode installed-version mismatch in menu | Resolved | 2026-02-18 | v1.9.1 uses npm global installed version first, then cache/spec fallbacks. |
+| oh-my-opencode installation reporting fake success | Resolved | 2026-02-19 | v1.9.2 adds proper return codes on failure. |
+| oh-my-opencode version not updating on upgrade | Resolved | 2026-02-19 | v1.9.3 adds npm package update before plugin reinstall. |
 
 ## 6. Verification Status
 
-| Feature | Verification | Result | Date |
-|---------|-------------|--------|------|
-| v1.9.1 oh-my-opencode installed version | `npm list -g` + menu output | Matches global npm install | 2026-02-18 |
-| v1.9.0 script syntax | `bash -n` | OK | 2026-02-18 |
-| v1.9.0 help paths | `./setup.sh --help`, `./install_coding_tools.sh --help` | OK | 2026-02-18 |
-| v1.9.0 setup deploy | temp HOME run (`./setup.sh --force --configure-path`) | OK | 2026-02-18 |
-| v1.9.0 oh-my-opencode version display | simulated cache state (`$XDG_CACHE_HOME/opencode/package.json`) | OK | 2026-02-18 |
-| v1.9.0 .bat line endings | `file` | CRLF | 2026-02-18 |
-| v1.8.1 jq auto-installation | Code review | install_jq() function added | 2026-02-15 |
-| v1.8.1 version consistency | grep search | All files updated to v1.8.1 | 2026-02-15 |
-| Windows oh-my-opencode detection | Code review | Fallback findstr added | 2026-02-14 |
-| Windows npm comparison | Code review | Delayed expansion fixed | 2026-02-14 |
-| Windows cache invalidation | Code review | Cache cleared after removal | 2026-02-14 |
-| GitHub CLI auto-install | Code review | Implemented correctly | 2026-02-14 |
-| Line ending normalization | `file` command | CRLF only | 2026-02-14 |
-| Git push | `git status` | Synced with origin | 2026-02-15 |
+### Verified
+
+| Item | Verification method | Result | Date/time verified |
+|---|---|---|---|
+| v1.9.3 npm package update | `npm list -g oh-my-opencode` | Pass (3.7.4 installed) | 2026-02-19 |
+| v1.9.3 return codes in .sh | `grep -B2 "return 1" install_coding_tools.sh` | Pass (warnings followed by return 1) | 2026-02-19 |
+| v1.9.3 exit codes in .bat | `grep -B1 "exit /b 1" install_coding_tools.bat` | Pass (warnings followed by exit /b 1) | 2026-02-19 |
+| Script syntax | `bash -n install_coding_tools.sh` | Pass | 2026-02-19 |
+| Batch line endings | `file install_coding_tools.bat` | CRLF confirmed | 2026-02-19 |
+| Version consistency | `grep -rn "v1.9.3"` | Pass (all files updated) | 2026-02-19 |
+
+### Not yet verified
+
+- Windows runtime execution of v1.9.3 installer flow in a live Windows shell.
+  - Why not yet verified: current session executed in Linux/WSL environment.
 
 ## 7. Restart Instructions
 
-**Starting Point:**
-- Repository is at v1.9.1 with micro-version follow-up fix
-- No pending work items
-
-**Recommended Next Actions:**
-1. Test the installer with moai-adk to verify jq is auto-installed when missing
-2. Test on Windows to verify jq installation works via conda-forge
-3. Verify moai-adk installer no longer corrupts settings.json when jq is present
-
-**External Issues Reported:**
-- moai-adk issue #381: settings.json corruption when jq unavailable (upstream bug)
-- moai-adk issue #382: MoAI output style template localization bug (upstream bug)
-
-## How To Deploy Locally
-
-- Unix/WSL: `./setup.sh --force --configure-path`
-- Windows: run `setup.bat` to copy `install_coding_tools.bat` into `%USERPROFILE%\.local\bin\`
-
-## Quick Verification
-
-- From any directory:
-  - `~/.local/bin/auto_install_coding_tools` should find and execute `~/.local/bin/install_coding_tools.sh`
-- On Windows:
-  - `install_coding_tools.bat` menu should include `OpenCode - oh-my-opencode`
+- **Exact starting point:**
+  1. Check uncommitted changes with `git status`.
+  2. Run quick sanity checks: `bash -n install_coding_tools.sh setup.sh auto_install_coding_tools` and `./install_coding_tools.sh --help`.
+  3. Commit v1.9.3 changes when ready.
+- **Recommended next actions:**
+  1. Test oh-my-opencode installation with the new upgrade flow.
+  2. Perform Windows live validation for v1.9.3 installer flow.
+  3. Monitor upstream issues #381 and #382 for closure and remove mitigations only when safe.
+- **Last updated:** 2026-02-19

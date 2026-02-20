@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.9.1
+# Agentic Coders Installer v1.9.3
 # Interactive installer for AI coding CLI tools
 #
 # Version history: v1.7.6 added security improvements, v1.7.12 fixed oh-my-opencode version detection
@@ -1431,7 +1431,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.9.1" \
+        "Agentic Coders CLI Installer v1.9.3" \
         "Toggle: skip->install->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"
@@ -1775,12 +1775,52 @@ get_user_selection() {
 # INSTALLATION FUNCTIONS
 #############################################
 
-oh_my_opencode_flags="--no-tui --claude=no --openai=no --gemini=no --copilot=no --opencode-zen=no --zai-coding-plan=no"
+# Required provider flags for oh-my-opencode (v3.7.4+ requires these)
+OHMY_REQUIRED_FLAGS="--claude=no --gemini=no --copilot=no"
+
+# Build oh-my-opencode flags based on installed tools (auto-detect)
+build_ohmy_flags_from_installed_tools() {
+    local flags="--no-tui"
+
+    # Auto-detect Claude Code
+    if command -v claude >/dev/null 2>&1; then
+        flags="$flags --claude=yes"
+    else
+        flags="$flags --claude=no"
+    fi
+
+    # Auto-detect OpenAI Codex
+    if command -v codex >/dev/null 2>&1; then
+        flags="$flags --openai=yes"
+    else
+        flags="$flags --openai=no"
+    fi
+
+    # Auto-detect Google Gemini
+    if command -v gemini >/dev/null 2>&1; then
+        flags="$flags --gemini=yes"
+    else
+        flags="$flags --gemini=no"
+    fi
+
+    # GitHub Copilot - default to no (requires special setup)
+    flags="$flags --copilot=no"
+
+    # OpenCode Zen - default to no
+    flags="$flags --opencode-zen=no"
+
+    # ZAI Coding Plan - default to no (user can enable manually if needed)
+    flags="$flags --zai-coding-plan=no"
+
+    echo "$flags"
+}
 
 install_oh_my_opencode() {
     local force_reinstall="${1:-false}"
-    # First check if plugin is already registered in opencode.json
     local opencode_config="$HOME/.config/opencode/opencode.json"
+    local ohmy_config="$HOME/.config/opencode/oh-my-opencode.json"
+
+    # Check if plugin is already registered
     if [[ -f "$opencode_config" ]]; then
         local has_plugin="false"
         if command -v jq >/dev/null 2>&1; then
@@ -1791,20 +1831,30 @@ install_oh_my_opencode() {
             fi
         fi
 
-        if [[ "$has_plugin" == "true" && "$force_reinstall" != "true" ]]; then
-            printf "  oh-my-opencode already registered in opencode.json, skipping install.\n"
-            log_success "oh-my-opencode is already installed"
-            return 0
+        if [[ "$has_plugin" == "true" ]]; then
+            # Preserve config on update - skip reinstall if config exists
+            if [[ -f "$ohmy_config" && "$force_reinstall" != "true" ]]; then
+                printf "  oh-my-opencode already installed with existing configuration.\n"
+                log_success "oh-my-opencode is already installed (config preserved)"
+                return 0
+            fi
+            # Force reinstall but preserve config
+            if [[ -f "$ohmy_config" && "$force_reinstall" == "true" ]]; then
+                printf "  Preserving existing configuration during reinstall...\n"
+            fi
         fi
     fi
 
-    # Plugin not registered - try to install (may fail due to upstream bug)
-    # Preferred runners: bunx, then npx
+    # Build flags with auto-detected provider settings
+    OHMY_FLAGS=$(build_ohmy_flags_from_installed_tools)
+    log_info "Using provider flags: $OHMY_FLAGS"
+
+    # Plugin not registered - try to install
     local runner=()
     if command -v bunx >/dev/null 2>&1; then
-        runner=(bunx oh-my-opencode install $oh_my_opencode_flags)
+        runner=(bunx oh-my-opencode install $OHMY_FLAGS)
     elif command -v npx >/dev/null 2>&1; then
-        runner=(npx oh-my-opencode install $oh_my_opencode_flags)
+        runner=(npx oh-my-opencode install $OHMY_FLAGS)
     else
         log_warning "Skipping oh-my-opencode install: neither bunx nor npx is available."
         return 0
@@ -1814,8 +1864,10 @@ install_oh_my_opencode() {
     # Suppress verbose output and minified code dumps - only show errors
     if "${runner[@]}" 2>/dev/null; then
         log_success "Installed oh-my-opencode"
+        return 0
     else
         log_warning "oh-my-opencode installer had issues (command: ${runner[*]}). The plugin may need to be registered manually in ~/.config/opencode/opencode.json."
+        return 1
     fi
 }
 
@@ -1834,8 +1886,10 @@ remove_oh_my_opencode() {
     # Suppress verbose output - only show errors
     if "${runner[@]}" 2>/dev/null; then
         log_success "Removed oh-my-opencode"
+        return 0
     else
         log_warning "oh-my-opencode removal had issues. Manual cleanup may be required."
+        return 1
     fi
 }
 
@@ -1927,9 +1981,20 @@ install_tool() {
                 log_error "Unknown addon: $pkg"
                 return 1
             else
-                printf "Addon is installed. Reinstalling...\n"
+                printf "Addon is installed. Upgrading...\n"
                 if [[ "$pkg" == "oh-my-opencode" ]]; then
-                    # Remove first, then install
+                    # First update the npm package to latest version
+                    local npm_bin
+                    npm_bin=$(get_npm_bin || true)
+                    if [[ -n "$npm_bin" ]]; then
+                        printf "  Updating oh-my-opencode npm package...\n"
+                        if "$npm_bin" install -g oh-my-opencode@latest 2>/dev/null; then
+                            log_success "Updated oh-my-opencode npm package"
+                        else
+                            log_warning "Failed to update npm package"
+                        fi
+                    fi
+                    # Then reinstall to update plugin registration
                     remove_oh_my_opencode
                     install_oh_my_opencode "true"
                     return $?

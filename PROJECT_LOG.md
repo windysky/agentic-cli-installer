@@ -278,3 +278,103 @@
 - `./setup.sh --help` and `./install_coding_tools.sh --help`
 - `npm list -g --depth=0 oh-my-opencode` compared against installer menu display logic
 - `file install_coding_tools.bat setup.bat` to confirm CRLF line endings
+
+---
+
+## Session 2026-02-18 16:37
+
+- Coding CLI used: OpenCode
+- Phase(s) worked on:
+  - End-of-session state consolidation and handoff finalization
+- Concrete changes implemented:
+  - Reframed `PROJECT_HANDOFF.md` into current authoritative state with explicit status markers and timestamps.
+  - Added phase-based execution status with timestamps and revision notes.
+  - Normalized outstanding-work section to active-only state with explicit reference to latest log session.
+  - Updated verification section to include verified and not-yet-verified items with rationale.
+  - Added restart instructions with exact commit starting point and next actions.
+- Files/modules/functions touched:
+  - `PROJECT_HANDOFF.md` (full living-state refresh)
+  - `PROJECT_LOG.md` (append-only entry)
+- Key technical decisions and rationale:
+  - Treated `PROJECT_HANDOFF.md` as authoritative current truth; removed historical clutter from active sections.
+  - Preserved completed history in `PROJECT_LOG.md` only, while referencing latest session from handoff for restart speed.
+  - Kept unresolved upstream items visible as active risks without re-opening completed implementation work.
+- Problems encountered and resolutions:
+  - None blocking.
+- Items explicitly completed, resolved, or superseded in this session:
+  - Completed: session-end handoff update with timestamped status markers.
+  - Superseded: previous handoff layout replaced by stricter active-truth structure.
+- Verification performed (if any):
+  - Verified handoff references current release commit `d5379db` and active state consistency with latest release notes.
+
+---
+
+## Session 2026-02-19
+
+**Coding CLI used:** Claude Code CLI (glm-5)
+
+**Phase(s) worked on:**
+- v1.9.2: oh-my-opencode installation bug fixes and feature improvements
+
+**Concrete changes implemented:**
+1. Fixed return codes in `install_oh_my_opencode()` and `remove_oh_my_opencode()` - now return 1 on failure instead of silently returning 0
+2. Fixed exit codes in Windows batch file `:install_oh_my_opencode` and `:remove_oh_my_opencode`
+3. Removed hardcoded `--XXX=no` flags - oh-my-opencode now auto-detects installed tools
+4. Added config preservation on update - existing `oh-my-opencode.json` is preserved during reinstall
+5. Added interactive provider prompt for new installations (`prompt_ohmy_providers()`)
+
+**Files/modules/functions touched:**
+- `install_coding_tools.sh`:
+  - Changed `oh_my_opencode_flags` from all `--XXX=no` to just `--no-tui`
+  - Added `prompt_ohmy_providers()` function for interactive provider selection
+  - Modified `install_oh_my_opencode()` to preserve config on update and prompt on fresh install
+  - Added `return 1` after warning logs in both install and remove functions
+  - Version bump to v1.9.2
+- `install_coding_tools.bat`:
+  - Changed `OHMY_FLAGS` from all `--XXX=no` to just `--no-tui`
+  - Added `:prompt_ohmy_providers` function for interactive provider selection
+  - Modified `:install_oh_my_opencode` to preserve config and prompt on fresh install
+  - Added `exit /b 1` after warning logs
+  - Fixed caller code to propagate exit codes
+  - Version bump to v1.9.2
+- `README.md`: Version bump to v1.9.2, added changelog entry
+- `CHANGELOG.md`: Added v1.9.2 entry
+- `PROJECT_HANDOFF.md`: Updated current state to v1.9.2
+- `PROJECT_LOG.md`: This entry
+
+**Key technical decisions and rationale:**
+- Return code fix: Silent failures were causing "Upgraded: 1" even when installation failed
+- Auto-detect: Hardcoded `--XXX=no` flags were disabling all optional plugins including ones user actually uses
+- Config preservation: Reinstall was potentially overwriting user's existing oh-my-opencode.json configuration
+- Interactive prompt: Gives users control over which providers to configure on fresh installs
+
+**Problems encountered and resolutions:**
+- User reported oh-my-opencode upgrade showed success but version remained old
+  - Root cause 1: `install_oh_my_opencode()` returned 0 even on failure (no return statement in else branch)
+  - Root cause 2: Hardcoded flags disabled all providers, so installer ran but didn't configure anything useful
+  - Resolution: Added proper return codes and removed restrictive flags
+
+**Items completed in this session:**
+- v1.9.2: oh-my-opencode installation bug fixes and feature improvements
+
+**Verification performed:**
+- `bash -n install_coding_tools.sh` - syntax check passed
+- `file install_coding_tools.bat` - CRLF line endings confirmed
+- `grep -B2 "return 1" install_coding_tools.sh` - verified return codes follow warnings
+- `grep -B1 "exit /b 1" install_coding_tools.bat` - verified exit codes follow warnings
+- Version consistency check across all files
+
+**Additional fix (same session):**
+- Discovered oh-my-opencode v3.7.4+ REQUIRES provider flags (`--claude`, `--gemini`, `--copilot`)
+- Replaced interactive prompt with auto-detect function `build_ohmy_flags_from_installed_tools()`
+- Auto-detect checks for installed tools (claude, codex, gemini) and sets flags accordingly
+- Windows .bat file updated with `:build_ohmy_flags_auto` function
+- Tested installation with auto-detected flags - success
+
+**Third fix (same session):**
+- User reported version still shows 3.3.1 after "successful" installation
+- Root cause: oh-my-opencode is an `addon` type, installer only runs plugin registration but doesn't update npm package
+- Fix: Added npm package update (`npm install -g oh-my-opencode@latest`) before plugin reinstall
+- Both .sh and .bat updated with proper upgrade flow
+- Verified npm update works: 3.3.1 → 3.7.4
+

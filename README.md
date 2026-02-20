@@ -1,6 +1,6 @@
-# Agentic CLI Installer v1.9.1
+# Agentic CLI Installer v1.9.3
 
-**Last Modified:** February 18, 2026
+**Last Modified:** February 19, 2026
 
 An interactive installer that manages multiple AI coding CLI tools from one place. It detects installed versions, fetches latest versions, and lets you install, update, or remove tools in a single run.
 
@@ -204,6 +204,19 @@ Backup location: ~/.local/bin.backup
 ```
 
 ## Change Log
+
+### v1.9.3 - February 19, 2026
+
+- **oh-my-opencode npm package update**: Added `npm install -g oh-my-opencode@latest` before plugin reinstall - addon type now properly updates the npm package
+- **Required provider flags**: oh-my-opencode v3.7.4+ requires `--claude`, `--gemini`, `--copilot` flags - auto-detect now always includes these
+- **Upstream bug workaround**: Handles inconsistent passThroughOptions error in oh-my-opencode v3.7.4
+
+### v1.9.2 - February 19, 2026
+
+- **oh-my-opencode installation bug fix**: Fixed return codes - installer now correctly reports failure when oh-my-opencode installation fails
+- **Auto-detect providers**: Removed hardcoded `--XXX=no` flags - oh-my-opencode now auto-detects installed tools (OpenAI, zai-coding-plan, etc.)
+- **Preserve config on update**: Existing `oh-my-opencode.json` configuration is preserved during reinstall
+- **Interactive provider prompt**: New installations prompt for provider selection (Claude, OpenAI, Gemini, Copilot, OpenCode-Zen, ZAI)
 
 ### v1.9.1 - February 18, 2026
 
