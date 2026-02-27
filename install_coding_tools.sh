@@ -2,10 +2,11 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.9.3
+# Agentic Coders Installer v1.9.4
 # Interactive installer for AI coding CLI tools
 #
 # Version history: v1.7.6 added security improvements, v1.7.12 fixed oh-my-opencode version detection
+# v1.9.4 added ast-grep auto-installation after MoAI-ADK installation
 # - Dynamic checksum fetching for Claude and MoAI installers
 # - SHA-256 verification for MoAI-ADK installer
 # - Secure temporary file creation with restrictive permissions
@@ -539,6 +540,51 @@ install_jq() {
         log_warning "Failed to install jq via conda"
         printf "  ${YELLOW}[WARNING] Without jq, moai-adk may corrupt ~/.claude/settings.json${NC}\n"
         printf "  ${YELLOW}Please install manually: conda install -c conda-forge jq${NC}\n"
+        return 0
+    fi
+}
+
+# Install or verify ast-grep (required for MoAI-ADK security scanning)
+# ast-grep provides AST-based code analysis for security and quality scans
+install_ast_grep() {
+    printf "\n${CYAN}[MOAI DEPENDENCY]${NC} Checking ast-grep (AST-based code analysis)...\n"
+
+    # Check if ast-grep is already installed
+    if command -v ast-grep >/dev/null 2>&1; then
+        local current_version
+        current_version=$(ast-grep --version 2>/dev/null | head -n1 || echo "unknown")
+        printf "  ${GREEN}[OK]${NC} ast-grep already installed (${current_version})\n"
+        return 0
+    fi
+
+    # Check for npm (required for installation)
+    local npm_bin
+    npm_bin=$(get_npm_bin || true)
+    if [[ -z "$npm_bin" ]]; then
+        log_warning "npm not found, cannot install ast-grep"
+        printf "  ${YELLOW}[WARNING] Without ast-grep, MoAI-ADK security scanning will be disabled${NC}\n"
+        printf "  ${YELLOW}Please install manually: npm install -g @ast-grep/cli${NC}\n"
+        return 0
+    fi
+
+    # Install ast-grep via npm
+    printf "  ${BLUE}[INFO]${NC} Installing ast-grep via npm...\n"
+    printf "  ${BLUE}[INFO]${NC} (ast-grep is required for MoAI-ADK security scanning)${NC}\n"
+    if "$npm_bin" install -g @ast-grep/cli 2>/dev/null; then
+        if command -v ast-grep >/dev/null 2>&1; then
+            local new_version
+            new_version=$(ast-grep --version 2>/dev/null | head -n1 || echo "installed")
+            log_success "ast-grep installed (${new_version})"
+            return 0
+        else
+            log_warning "ast-grep installed but command not found in PATH"
+            printf "  ${YELLOW}You may need to restart your terminal${NC}\n"
+            return 0
+        fi
+    else
+        log_warning "Failed to install ast-grep via npm"
+        printf "  ${YELLOW}[WARNING] Without ast-grep, MoAI-ADK security scanning will be disabled${NC}\n"
+        printf "  ${YELLOW}Please install manually: npm install -g @ast-grep/cli${NC}\n"
         return 0
     fi
 }
@@ -2087,6 +2133,9 @@ install_tool() {
 
                     # Show GitHub CLI authentication reminder
                     show_gh_auth_reminder
+
+                    # Install ast-grep for MoAI-ADK security scanning
+                    install_ast_grep
 
                     return 0
                 else
