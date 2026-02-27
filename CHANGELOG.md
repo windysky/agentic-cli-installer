@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.4] - 2026-02-26
+
+### Added
+
+- **ast-grep auto-installation**: After MoAI-ADK installation, the installer now automatically checks for ast-grep and installs it via npm if not present. ast-grep is required for MoAI-ADK security scanning features.
+
+---
+
 ## [1.9.3] - 2026-02-19
 
 ### Fixed
