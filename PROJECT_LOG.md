@@ -1,6 +1,55 @@
 # Project Log
 
-## Session 2026-03-08 11:30 CST
+## Session 2026-03-08 14:00 CDT
+
+**Coding CLI used:** Claude Code CLI (claude-opus-4-6)
+
+**Phase(s) worked on:**
+- v1.9.7: Reorder tools (Claude Code before MoAI-ADK), add MoAI-ADK dependency check
+
+**Concrete changes implemented:**
+1. Swapped tool order so Claude Code CLI is listed before MoAI-ADK in both .sh and .bat installers (Claude Code is a prerequisite for MoAI-ADK)
+2. Added dependency check: MoAI-ADK installation now requires `claude` CLI to be on PATH; shows error and aborts if missing
+
+**Files/modules/functions touched:**
+- `install_coding_tools.sh`:
+  - Swapped first two entries in TOOLS array (claude-code now index 0, moai-adk now index 1)
+  - Added `command -v claude` check in moai-adk installation elif branch
+  - Version bump to v1.9.7
+- `install_coding_tools.bat`:
+  - Swapped TOOL_1/TOOL_2 definitions and all NAME/MGR/PKG/DESC/BIN/VERARG property blocks
+  - Added `where claude >nul 2>nul` check at top of `:install_tool_moai`
+  - Version bump to v1.9.7
+- `setup.sh`: Version bump to v1.9.7
+- `setup.bat`: Version bump to v1.9.7
+- `README.md`: Version bump, added v1.9.7 changelog entry
+- `CHANGELOG.md`: Added v1.9.7 entry
+- `PROJECT_HANDOFF.md`: Full refresh to v1.9.7 state
+- `PROJECT_LOG.md`: This entry
+
+**Key technical decisions and rationale:**
+- Tool reorder ensures Claude Code installs first when user selects both tools (npm prepends as tool #1, so menu order is: npm, claude-code, moai-adk, ...)
+- Dependency check uses `command -v claude` (.sh) and `where claude` (.bat) — lightweight PATH checks without invoking the CLI
+- Check returns error immediately rather than attempting partial install that would fail later
+
+**Problems encountered and resolutions:**
+- `.bat` file double-CR line endings required Python binary-safe scripts for modifications (same pattern as v1.9.6)
+
+**Items explicitly completed, resolved, or superseded in this session:**
+- Completed: Tool reorder in both installers
+- Completed: MoAI-ADK dependency check in both installers
+- Completed: v1.9.7 version bump across all files
+
+**Verification performed:**
+- `bash -n install_coding_tools.sh setup.sh auto_install_coding_tools` — all pass
+- Version consistency across all 6 files — all show v1.9.7
+- CHANGELOG ordering — no duplicates, correct descending order
+- Tool order verified in both .sh and .bat
+- Dependency check code reviewed in both .sh and .bat
+
+---
+
+## Session 2026-03-08 11:49 CDT
 
 **Coding CLI used:** Claude Code CLI (claude-opus-4-6)
 
@@ -38,6 +87,16 @@
 - Resolved: Action summary "2nst" display bug
 - Resolved: curl SSL certificate failure for MoAI-ADK on Windows
 - Resolved: "filename, directory name" error during Claude Code installation on Windows
+
+**Verification performed:**
+- `bash -n install_coding_tools.sh setup.sh auto_install_coding_tools` — all pass
+- `file install_coding_tools.bat setup.bat` — CRLF confirmed
+- `grep` version consistency across all 6 files — all show v1.9.6
+- `grep '^## \[' CHANGELOG.md` — no duplicates, correct descending order
+- Confirmed 0 indented `%%inst%%` lines remain in .bat
+- Confirmed `--ssl-no-revoke` present in both curl commands
+- Confirmed `2>nul` present in check_npm_claude_code
+- Git commit `1566742` pushed to origin/master
 
 ---
 
