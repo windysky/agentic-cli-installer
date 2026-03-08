@@ -3,11 +3,11 @@ setlocal EnableDelayedExpansion
 set "SCRIPT_DIR=%~dp0"
 
 REM ###############################################
-REM Agentic Coders Installer v1.9.6
+REM Agentic Coders Installer v1.9.7
 REM Interactive installer for AI coding CLI tools
 REM Windows version (run in Anaconda Prompt or CMD)
 REM
-REM Recent improvements (v1.7.13-v1.9.6):
+REM Recent improvements (v1.7.13-v1.9.7):
 REM - v1.8.1: Added jq auto-installation to prevent moai-adk settings.json corruption
 REM - v1.7.20: Normalized line endings to CRLF for consistency
 REM - oh-my-opencode plugin detection fix
@@ -89,8 +89,8 @@ set "MOAI_CHECKSUM_URL=https://api.github.com/repos/modu-ai/moai-adk/contents/in
 
 REM Tool list: name|manager|package|description
 set TOOLS_COUNT=7
-set "TOOL_1=moai-adk|native|moai-adk|MoAI Agent Development Kit"
-set "TOOL_2=claude-code|native|claude-code|Claude Code CLI"
+set "TOOL_1=claude-code|native|claude-code|Claude Code CLI"
+set "TOOL_2=moai-adk|native|moai-adk|MoAI Agent Development Kit"
 set "TOOL_3=@openai/codex|npm|@openai/codex|OpenAI Codex CLI"
 set "TOOL_4=@google/gemini-cli|npm|@google/gemini-cli|Google Gemini CLI"
 set "TOOL_5=@google/jules|npm|@google/jules|Google Jules CLI"
@@ -129,19 +129,19 @@ set "GITHUB_RATE_LIMIT_REMAINING=60"
 set "GITHUB_RATE_LIMIT_RESET=0"
 
 REM Load tool definitions
-set "NAME_1=MoAI Agent Development Kit"
+set "NAME_1=Claude Code CLI"
 set "MGR_1=native"
-set "PKG_1=moai-adk"
-set "DESC_1=MoAI Agent Development Kit"
-set "BIN_1=moai"
-set "VERARG_1=version"
+set "PKG_1=claude-code"
+set "DESC_1=Claude Code CLI"
+set "BIN_1=claude"
+set "VERARG_1=--version"
 
-set "NAME_2=Claude Code CLI"
+set "NAME_2=MoAI Agent Development Kit"
 set "MGR_2=native"
-set "PKG_2=claude-code"
-set "DESC_2=Claude Code CLI"
-set "BIN_2=claude"
-set "VERARG_2=--version"
+set "PKG_2=moai-adk"
+set "DESC_2=MoAI Agent Development Kit"
+set "BIN_2=moai"
+set "VERARG_2=version"
 
 set "NAME_3=OpenAI Codex CLI"
 set "MGR_3=npm"
@@ -1461,7 +1461,7 @@ if "%DEBUG%"=="1" (
     cls
 )
 call :print_banner_sep
-echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.9.6%NC%
+echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.9.7%NC%
 echo Toggle: %CYAN%skip%NC% -^> %GREEN%install%NC% -^> %RED%remove%NC%  Input: 1,3,5  Enter/P=proceed  Q=quit
 call :print_banner_sep
 echo.
@@ -2210,6 +2210,13 @@ REM Show GitHub CLI authentication reminder
 	exit /b 0
 
 :install_tool_moai
+	REM MoAI-ADK requires Claude Code CLI
+	where claude >/dev/null 2>nul
+	if errorlevel 1 (
+		echo %RED%[ERROR]%NC% Claude Code CLI is required for MoAI-ADK. Please install Claude Code CLI first.
+		exit /b 1
+	)
+
 	set "BEFORE_MOAI_VERSION="
 	call :get_installed_native_version "moai-adk" BEFORE_MOAI_VERSION
 

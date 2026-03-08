@@ -1,4 +1,4 @@
-# Agentic CLI Installer v1.9.6
+# Agentic CLI Installer v1.9.7
 
 **Last Modified:** March 8, 2026
 
@@ -205,6 +205,11 @@ Backup location: ~/.local/bin.backup
 ```
 
 ## Change Log
+
+### v1.9.7 - March 8, 2026
+
+- **Tool reorder**: Claude Code CLI now listed before MoAI-ADK (Claude Code is a prerequisite)
+- **MoAI-ADK dependency check**: Installation now requires Claude Code CLI to be available; shows error if missing
 
 ### v1.9.6 - March 8, 2026
 

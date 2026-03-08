@@ -2,13 +2,14 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.9.6
+# Agentic Coders Installer v1.9.7
 # Interactive installer for AI coding CLI tools
 #
 # Version history: v1.7.6 added security improvements, v1.7.12 fixed oh-my-opencode version detection
 # v1.9.4 added ast-grep auto-installation after MoAI-ADK installation
 # v1.9.5 version sync, error handling fixes, CHANGELOG cleanup
 # v1.9.6 fix Windows action summary display, curl SSL fallback, npm check error suppression
+# v1.9.7 reorder tools (Claude Code before MoAI-ADK), require Claude Code for MoAI-ADK install
 # - Dynamic checksum fetching for Claude and MoAI installers
 # - SHA-256 verification for MoAI-ADK installer
 # - Secure temporary file creation with restrictive permissions
@@ -70,8 +71,8 @@ readonly MOAI_CHECKSUM_URL="https://api.github.com/repos/modu-ai/moai-adk/conten
 
 # Tool definitions: name, package manager, package name, description
 declare -a TOOLS=(
-    "moai-adk|native|moai-adk|MoAI Agent Development Kit"
     "claude-code|native|claude-code|Claude Code CLI"
+    "moai-adk|native|moai-adk|MoAI Agent Development Kit"
     "@openai/codex|npm|@openai/codex|OpenAI Codex CLI"
     "@google/gemini-cli|npm|@google/gemini-cli|Google Gemini CLI"
     "@google/jules|npm|@google/jules|Google Jules CLI"
@@ -1479,7 +1480,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.9.6" \
+        "Agentic Coders CLI Installer v1.9.7" \
         "Toggle: skip->install->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"
@@ -2104,6 +2105,12 @@ install_tool() {
                     fi
                 fi
             elif [[ "$pkg" == "moai-adk" ]]; then
+                # MoAI-ADK requires Claude Code CLI
+                if ! command -v claude &>/dev/null; then
+                    log_error "Claude Code CLI is required for MoAI-ADK. Please install Claude Code CLI first."
+                    return 1
+                fi
+
                 local before_version after_version
                 before_version=$(get_installed_native_version "$pkg")
 

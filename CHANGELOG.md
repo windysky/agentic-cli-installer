@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.7] - 2026-03-08
+
+### Changed
+
+- **Tool ordering**: Claude Code CLI moved before MoAI Agent Development Kit in the menu since MoAI-ADK requires Claude Code CLI
+- **Installation sequence**: Claude Code CLI is now installed before MoAI-ADK when both are selected
+
+### Added
+
+- **MoAI-ADK dependency check**: Installation of MoAI-ADK now validates that Claude Code CLI (`claude` command) is available on PATH; shows clear error message and fails gracefully if missing
+
+---
+
 ## [1.9.6] - 2026-03-08
 
 ### Fixed
