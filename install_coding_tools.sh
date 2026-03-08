@@ -2,11 +2,13 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.9.4
+# Agentic Coders Installer v1.9.6
 # Interactive installer for AI coding CLI tools
 #
 # Version history: v1.7.6 added security improvements, v1.7.12 fixed oh-my-opencode version detection
 # v1.9.4 added ast-grep auto-installation after MoAI-ADK installation
+# v1.9.5 version sync, error handling fixes, CHANGELOG cleanup
+# v1.9.6 fix Windows action summary display, curl SSL fallback, npm check error suppression
 # - Dynamic checksum fetching for Claude and MoAI installers
 # - SHA-256 verification for MoAI-ADK installer
 # - Secure temporary file creation with restrictive permissions
@@ -1477,7 +1479,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.9.3" \
+        "Agentic Coders CLI Installer v1.9.6" \
         "Toggle: skip->install->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"
@@ -2041,7 +2043,9 @@ install_tool() {
                         fi
                     fi
                     # Then reinstall to update plugin registration
-                    remove_oh_my_opencode
+                    if ! remove_oh_my_opencode; then
+                        log_warning "oh-my-opencode removal had issues during upgrade, continuing with reinstall..."
+                    fi
                     install_oh_my_opencode "true"
                     return $?
                 fi
@@ -2287,7 +2291,9 @@ remove_tool() {
                     rm -f "$HOME/.local/bin/opencode"
                     removed=true
                 fi
-                remove_oh_my_opencode
+                if ! remove_oh_my_opencode; then
+                    log_warning "oh-my-opencode removal had issues during opencode-ai removal"
+                fi
                 if $removed; then
                     log_success "Removed ${name}"
                     return 0

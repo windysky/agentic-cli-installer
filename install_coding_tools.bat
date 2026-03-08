@@ -3,11 +3,11 @@ setlocal EnableDelayedExpansion
 set "SCRIPT_DIR=%~dp0"
 
 REM ###############################################
-REM Agentic Coders Installer v1.9.4
+REM Agentic Coders Installer v1.9.6
 REM Interactive installer for AI coding CLI tools
 REM Windows version (run in Anaconda Prompt or CMD)
 REM
-REM Recent improvements (v1.7.13-v1.9.4):
+REM Recent improvements (v1.7.13-v1.9.6):
 REM - v1.8.1: Added jq auto-installation to prevent moai-adk settings.json corruption
 REM - v1.7.20: Normalized line endings to CRLF for consistency
 REM - oh-my-opencode plugin detection fix
@@ -695,10 +695,13 @@ exit /b 0
 :download_claude_installer
 set "outfile=%~1"
 REM Download Claude Code installer from official Anthropic source over HTTPS
-curl -fsSL "%CLAUDE_INSTALL_URL%" -o "%outfile%"
+curl -fsSL --ssl-no-revoke "%CLAUDE_INSTALL_URL%" -o "%outfile%"
 if errorlevel 1 (
-    echo %RED%[ERROR]%NC% Failed to download Claude Code installer
-    exit /b 1
+    curl -fsSL -k "%CLAUDE_INSTALL_URL%" -o "%outfile%"
+    if errorlevel 1 (
+        echo %RED%[ERROR]%NC% Failed to download Claude Code installer
+        exit /b 1
+    )
 )
 REM Fetch and verify checksum dynamically
 call :fetch_claude_checksum
@@ -759,10 +762,14 @@ exit /b 0
 :run_moai_installer
 REM Download and run MoAI-ADK installer from upstream main branch
 set "moai_tmp=%TEMP%\moai_install_%RANDOM%.ps1"
-curl -fsSL "%MOAI_INSTALL_URL%" -o "%moai_tmp%"
+curl -fsSL --ssl-no-revoke "%MOAI_INSTALL_URL%" -o "%moai_tmp%"
 if errorlevel 1 (
-    echo %RED%[ERROR]%NC% Failed to download MoAI-ADK installer
-    exit /b 1
+    echo %YELLOW%[WARNING]%NC% SSL verification failed, retrying with relaxed certificate check...
+    curl -fsSL -k "%MOAI_INSTALL_URL%" -o "%moai_tmp%"
+    if errorlevel 1 (
+        echo %RED%[ERROR]%NC% Failed to download MoAI-ADK installer
+        exit /b 1
+    )
 )
 REM Secure the temporary file
 attrib +R "%moai_tmp%" >nul 2>nul
@@ -1183,13 +1190,13 @@ REM Check for npm-installed Claude Code (for migration)
 :check_npm_claude_code
 set "outvar=%~1"
 set "%outvar%=0"
-call :resolve_conda_npm
+call :resolve_conda_npm 2>nul
 if errorlevel 1 exit /b 0
 REM Check if @anthropic-ai/claude-code is in npm list
 set "NPM_CLAUDE_CHECK="
-for /f "delims=" %%v in ('"!CONDA_NPM!" list -g @anthropic-ai/claude-code 2^>nul ^| findstr /C:"@anthropic-ai/claude-code"') do (
+(for /f "delims=" %%v in ('"!CONDA_NPM!" list -g @anthropic-ai/claude-code 2^>nul ^| findstr /C:"@anthropic-ai/claude-code"') do (
     set "NPM_CLAUDE_CHECK=%%v"
-)
+) 2>nul
 if defined NPM_CLAUDE_CHECK (
     set "%outvar%=1"
 )
@@ -1454,7 +1461,7 @@ if "%DEBUG%"=="1" (
     cls
 )
 call :print_banner_sep
-echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.8.1%NC%
+echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.9.6%NC%
 echo Toggle: %CYAN%skip%NC% -^> %GREEN%install%NC% -^> %RED%remove%NC%  Input: 1,3,5  Enter/P=proceed  Q=quit
 call :print_banner_sep
 echo.
@@ -1732,7 +1739,6 @@ if !install_count! GTR 0 (
             call set "pkg=%%PKG_%%i%%"
             call set "pkg=%%pkg%%"
             call set "inst=%%INST_%%i%%"
-            call set "inst=%%inst%%"
             call set "lat=%%LAT_%%i%%"
             call set "lat=%%lat%%"
             echo   - !pkg!: !inst! -^> !lat!
@@ -1749,7 +1755,6 @@ if !remove_count! GTR 0 (
             call set "pkg=%%PKG_%%i%%"
             call set "pkg=%%pkg%%"
             call set "inst=%%INST_%%i%%"
-            call set "inst=%%inst%%"
             echo   - !pkg!: !inst!
         )
     )
@@ -2150,6 +2155,60 @@ REM ast-grep provides AST-based code analysis for security and quality scans
 		echo   %YELLOW%You may need to restart your terminal%NC
 	)
 	exit /b 0
+
+REM Install or verify GitHub CLI (required for moai-adk GitHub integration)
+:install_gh_cli
+	echo.
+	echo %CYAN%[MOAI DEPENDENCY]%NC% Checking GitHub CLI...
+
+	REM Check if gh is already installed
+	where gh >nul 2>nul
+	if not errorlevel 1 (
+		for /f "delims=" %%v in ('gh --version 2^>nul') do (
+			echo   %GREEN%[OK]%NC% GitHub CLI already installed ^(%%v^)
+			exit /b 0
+		)
+	)
+
+	REM Check if conda is available
+	where conda >nul 2>nul
+	if errorlevel 1 (
+		echo   %YELLOW%[WARNING]%NC% conda not found, cannot install GitHub CLI
+		echo   %YELLOW%Please install manually: conda install -c conda-forge gh%NC%
+		exit /b 0
+	)
+
+	REM Install gh via conda-forge
+	echo   %BLUE%[INFO]%NC% Installing GitHub CLI via conda-forge...
+	call conda install -y -c conda-forge gh >nul 2>nul
+	if errorlevel 1 (
+		echo   %YELLOW%[WARNING]%NC% Failed to install GitHub CLI via conda
+		echo   %YELLOW%Please install manually: conda install -c conda-forge gh%NC%
+		exit /b 0
+	)
+
+	REM Verify installation
+	where gh >nul 2>nul
+	if not errorlevel 1 (
+		for /f "delims=" %%v in ('gh --version 2^>nul') do (
+			echo   %GREEN%[SUCCESS]%NC% GitHub CLI installed ^(%%v^)
+		)
+	) else (
+		echo   %YELLOW%[WARNING]%NC% GitHub CLI installed but command not found in PATH
+		echo   %YELLOW%You may need to restart your terminal or activate conda environment%NC%
+	)
+	exit /b 0
+
+REM Show GitHub CLI authentication reminder
+:show_gh_auth_reminder
+	echo.
+	echo %CYAN%[IMPORTANT]%NC% GitHub CLI Authentication Required
+	echo   %YELLOW%Before running moai commands, authenticate with GitHub:%NC%
+	echo   %GREEN%gh auth login%NC%
+	echo   This will allow moai-adk to interact with GitHub repositories.
+	echo.
+	exit /b 0
+
 :install_tool_moai
 	set "BEFORE_MOAI_VERSION="
 	call :get_installed_native_version "moai-adk" BEFORE_MOAI_VERSION
@@ -2186,8 +2245,15 @@ REM ast-grep provides AST-based code analysis for security and quality scans
 		echo %YELLOW%[WARNING]%NC% MoAI-ADK installed but ownership marker could not be written.
 	)
 
+	REM Install GitHub CLI dependency for moai-adk
+	call :install_gh_cli
+
 	REM Install ast-grep for MoAI-ADK security scanning
 	call :install_ast_grep
+
+
+	REM Show authentication reminder
+	call :show_gh_auth_reminder
 
 	exit /b 0
 

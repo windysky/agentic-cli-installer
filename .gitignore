@@ -110,31 +110,10 @@ logs/
 *.bak
 *.backup
 
-# Security-related temporary files
-*_checksum_*.tmp
-*_install_*.tmp
-*_version_*.tmp
-agentic_*.tmp
-
-# Patch and session files
-*.patch
-*.session
-
-# Temporary fix scripts (generated during audits)
-apply_*.sh
-fix_*.sh
-
-# Audit and review documentation
-CHANGES_*.md
-FIXES_SUMMARY.md
-PERFORMANCE_FIXES*.md
-SECURITY_AUDIT*.md
-
 # ===========================================
 # Backups
 # ===========================================
 .moai-backups/
-.archive/
 *.backup/
 *-backup/
 *_backup_*/
@@ -184,8 +163,8 @@ secret-*.*
 .claude/.env.local*
 .claude/local/
 .claude/plans/
-.claude/
-.moai/
+.claude/agent-memory/
+.claude/worktrees/
 
 # Skill-specific credentials
 .claude/skills/*/.env*
@@ -193,6 +172,15 @@ secret-*.*
 .claude/skills/*/*/*secret*
 .claude/skills/*/*/*key*
 .claude/skills/*/*/*token*
+# Re-include legitimate skill module files containing "token" in their name
+!.claude/skills/*/modules/*token*.md
+
+# ===========================================
+# Local-Only Files (never sync via git pull)
+# ===========================================
+.moai/status_line.sh
+.moai/memory/
+.moai/worktrees/
 
 # ===========================================
 # Node.js (for docs/Nextra)

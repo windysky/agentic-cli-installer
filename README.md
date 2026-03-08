@@ -1,6 +1,6 @@
-# Agentic CLI Installer v1.9.3
+# Agentic CLI Installer v1.9.6
 
-**Last Modified:** February 19, 2026
+**Last Modified:** March 8, 2026
 
 An interactive installer that manages multiple AI coding CLI tools from one place. It detects installed versions, fetches latest versions, and lets you install, update, or remove tools in a single run.
 
@@ -84,6 +84,7 @@ Note: Run the Windows installer from an Anaconda Prompt with a non-base conda en
 | [Google Gemini CLI](https://github.com/google-gemini/gemini-cli) | `@google/gemini-cli` | npm | `npm install -g @google/gemini-cli` |
 | [Google Jules CLI](https://jules.google) | `@google/jules` | npm | `npm install -g @google/jules` |
 | [OpenCode AI CLI](https://github.com/opencode-ai/opencode) | `opencode-ai` | npm | `npm install -g opencode-ai` |
+| [OpenCode - oh-my-opencode](https://github.com/opencode-ai/oh-my-opencode) | `oh-my-opencode` | addon | `bunx oh-my-opencode install [--flags]` |
 
 Note: npm installs run using the active conda environment's npm/Node (Windows does not use system npm). No uv-managed tools are included.
 
@@ -204,6 +205,24 @@ Backup location: ~/.local/bin.backup
 ```
 
 ## Change Log
+
+### v1.9.6 - March 8, 2026
+
+- **Fix action summary display**: Resolved `%%inst%%` for-variable collision causing "2nst" instead of version strings in Windows action summary
+- **curl SSL fallback**: Added `--ssl-no-revoke` and `-k` fallback for Windows environments with certificate issues
+- **Suppress npm check errors**: Fixed "filename, directory name, or volume label syntax is incorrect" during Claude Code installation
+
+### v1.9.5 - March 8, 2026
+
+- **Version display sync**: Banner versions in `.sh` and `.bat` now correctly show current version
+- **Error handling fixes**: `remove_oh_my_opencode` calls now properly check return codes
+- **Windows GitHub CLI**: Auto-installs `gh` via conda-forge when moai-adk is selected (parity with Unix)
+- **CHANGELOG cleanup**: Merged duplicate entries, fixed version ordering
+- **oh-my-opencode in README**: Added to Supported Tools table
+
+### v1.9.4 - February 26, 2026
+
+- **ast-grep auto-installation**: Automatically installs ast-grep via npm after MoAI-ADK installation for security scanning
 
 ### v1.9.3 - February 19, 2026
 
