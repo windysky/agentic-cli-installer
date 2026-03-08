@@ -1,5 +1,104 @@
 # Project Log
 
+## Session 2026-03-08 11:30 CST
+
+**Coding CLI used:** Claude Code CLI (claude-opus-4-6)
+
+**Phase(s) worked on:**
+- v1.9.6: Fix 3 Windows-specific bugs reported from live testing
+
+**Concrete changes implemented:**
+1. Fixed action summary displaying "2nst", "3nst", "4nst" instead of version strings — root cause: `%%inst%%` double-indirection inside `for /L %%i` loops caused `%%i` in `%%inst%%` to match the for-loop variable, replacing the version with the index + "nst"
+2. Added curl SSL certificate fallback for Windows — first tries `--ssl-no-revoke`, then falls back to `-k` (insecure) with warning. Applied to both MoAI-ADK and Claude Code installer downloads
+3. Added error suppression to `check_npm_claude_code` — wrapped `resolve_conda_npm` call and `for /f` npm check block with `2>nul` to suppress "filename, directory name, or volume label syntax is incorrect" error
+
+**Files/modules/functions touched:**
+- `install_coding_tools.bat`:
+  - Removed 2 broken `call set "inst=%%inst%%"` lines inside action summary `for /L %%i` loops (lines ~1735, ~1752)
+  - Added `--ssl-no-revoke` and `-k` fallback to curl in `:run_moai_installer` and `:download_claude_installer`
+  - Added `2>nul` to `call :resolve_conda_npm` and wrapped `for /f` block in `:check_npm_claude_code`
+  - Version bump to v1.9.6
+- `install_coding_tools.sh`: Version bump to v1.9.6
+- `setup.sh`: Version bump to v1.9.6
+- `setup.bat`: Version bump to v1.9.6
+- `README.md`: Version bump, added v1.9.6 changelog entry
+- `CHANGELOG.md`: Added v1.9.6 entry
+- `PROJECT_HANDOFF.md`: Full refresh to v1.9.6 state
+- `PROJECT_LOG.md`: This entry
+
+**Key technical decisions and rationale:**
+- Removed double-indirection `call set "inst=%%inst%%"` rather than renaming the variable, because the first `call set "inst=%%INST_%%i%%"` already resolves correctly (%%I uppercase doesn't collide with %%i lowercase for-variable)
+- curl SSL: `--ssl-no-revoke` is the standard Windows fix for CRL issues; `-k` is a last-resort fallback with user-visible warning
+- Error suppression: `2>nul` at the right scope captures all stderr leakage from npm.cmd and underlying cmd.exe path resolution
+
+**Problems encountered and resolutions:**
+- `.bat` file has `\r\r\n` (double CR) line endings — Edit tool string matching fails. Used Python binary-safe scripts for all modifications.
+
+**Items explicitly completed, resolved, or superseded in this session:**
+- Resolved: Action summary "2nst" display bug
+- Resolved: curl SSL certificate failure for MoAI-ADK on Windows
+- Resolved: "filename, directory name" error during Claude Code installation on Windows
+
+---
+
+## Session 2026-03-08 00:14 CST
+
+**Coding CLI used:** Claude Code CLI (claude-opus-4-6)
+
+**Phase(s) worked on:**
+- v1.9.5: Comprehensive codebase review, version sync, error handling fixes, Windows parity, documentation cleanup
+
+**Concrete changes implemented:**
+1. Fixed version display: `.sh` banner was showing v1.9.3, `.bat` banner was showing v1.8.1 — both now show v1.9.5
+2. Synced version strings across all 6 files (install_coding_tools.sh, install_coding_tools.bat, setup.sh, setup.bat, README.md, CHANGELOG.md)
+3. Fixed missing error checks on `remove_oh_my_opencode` calls during addon upgrade (line 2045) and opencode-ai removal (line 2293) — now warns on failure instead of silently continuing
+4. Added GitHub CLI auto-installation (`:install_gh_cli`) and auth reminder (`:show_gh_auth_reminder`) to Windows `.bat` installer for moai-adk parity with Unix `.sh`
+5. Cleaned up CHANGELOG.md: merged duplicate v1.7.20 entries (gh CLI was duplicated between v1.7.21 and v1.7.20), merged duplicate v1.7.0 entries, moved v1.7.1 to correct position before v1.7.0
+6. Added oh-my-opencode to README.md Supported Tools table (was missing)
+7. Added v1.9.4 and v1.9.5 changelog entries to README.md (v1.9.4 entry was missing)
+
+**Files/modules/functions touched:**
+- `install_coding_tools.sh`:
+  - Updated version header and banner to v1.9.5
+  - Added error checking for `remove_oh_my_opencode` calls at 2 locations (lines 2045, 2293)
+- `install_coding_tools.bat`:
+  - Updated version header and banner to v1.9.5
+  - Added `:install_gh_cli` function (GitHub CLI auto-install via conda-forge)
+  - Added `:show_gh_auth_reminder` function
+  - Added calls in `:install_tool_moai` section
+- `setup.sh`: Version bump to 1.9.5
+- `setup.bat`: Version bump to 1.9.5
+- `README.md`: Version bump, date update, added oh-my-opencode to tools table, added v1.9.4/v1.9.5 changelog entries
+- `CHANGELOG.md`: Added v1.9.5 entry, merged duplicate v1.7.20 and v1.7.0 entries, fixed v1.7.1 ordering
+- `PROJECT_HANDOFF.md`: Full refresh to v1.9.5 state
+- `PROJECT_LOG.md`: This entry
+
+**Key technical decisions and rationale:**
+- Error handling fix uses warning (not error) when `remove_oh_my_opencode` fails during upgrade, because the subsequent reinstall may still succeed
+- gh CLI install on Windows follows same pattern as Unix: conda-forge, non-blocking on failure
+- CHANGELOG duplicate v1.7.20: Kept the line-ending fix entry (the real v1.7.20), removed the duplicate gh CLI entry (already covered by v1.7.21)
+- CHANGELOG duplicate v1.7.0: Merged into single entry with Added, Changed, Security, and Fixed sections
+
+**Problems encountered and resolutions:**
+- `.bat` file has `\r\r\n` line endings (double CR), which caused Edit tool string matching to fail. Used Python script for binary-safe insertion.
+
+**Items explicitly completed, resolved, or superseded in this session:**
+- Completed: v1.9.5 release — version sync, error handling, Windows parity, documentation cleanup
+- Resolved: Banner version mismatch (.sh v1.9.3, .bat v1.8.1)
+- Resolved: Windows missing gh CLI auto-install for moai-adk
+- Resolved: CHANGELOG duplicate entries (v1.7.20, v1.7.0) and wrong ordering (v1.7.1)
+- Resolved: oh-my-opencode missing from README Supported Tools table
+
+**Verification performed:**
+- `bash -n install_coding_tools.sh setup.sh auto_install_coding_tools` — all pass
+- `file install_coding_tools.bat setup.bat` — CRLF confirmed
+- `grep` version consistency across all files — all show v1.9.5
+- `grep '^## \[' CHANGELOG.md` — no duplicates, correct descending order
+- `./install_coding_tools.sh --help` and `./setup.sh --help` — output correct
+- Code review of error handling fixes and gh CLI function insertion
+
+---
+
 ## Session 2026-02-14 (Evening)
 
 **Coding CLI used:** Claude Code CLI (claude-opus-4-6)

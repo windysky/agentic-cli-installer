@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.6] - 2026-03-08
+
+### Fixed
+
+- **Action summary display (Windows)**: Removed broken `%%inst%%` double-indirection inside `for /L %%i` loops that caused `%%i` for-variable collision, showing "2nst" instead of version strings like "2.6.12"
+- **curl SSL certificate error (Windows)**: Added `--ssl-no-revoke` flag and `-k` insecure fallback for environments where curl cannot verify GitHub SSL certificates
+- **"Filename, directory name" error (Windows)**: Added stderr suppression to `check_npm_claude_code` and `resolve_conda_npm` to prevent cosmetic error messages during Claude Code installation
+
+### Changed
+
+- **Version sync**: All scripts and documentation updated to v1.9.6
+
+---
+
+## [1.9.5] - 2026-03-08
+
+### Fixed
+
+- **Version display sync**: Banner version in `.sh` (was v1.9.3) and `.bat` (was v1.8.1) now correctly show current version
+- **Error handling**: `remove_oh_my_opencode` calls during addon upgrade and opencode-ai removal now check return codes and warn on failure instead of failing silently
+- **CHANGELOG cleanup**: Merged duplicate v1.7.20 and v1.7.0 entries; fixed v1.7.1 ordering
+
+### Added
+
+- **Windows GitHub CLI auto-installation**: `install_coding_tools.bat` now auto-installs `gh` via conda-forge when moai-adk is selected (parity with `.sh`)
+- **Windows GitHub auth reminder**: Shows `gh auth login` reminder after moai-adk installation on Windows
+- **oh-my-opencode in README**: Added to Supported Tools table
+
+### Changed
+
+- **Version sync**: All scripts and documentation updated to v1.9.5 (setup.sh, setup.bat were at 1.9.1; README was at v1.9.3)
+
+---
+
 ## [1.9.4] - 2026-02-26
 
 ### Added
@@ -95,17 +129,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Checks if `gh` is already installed before attempting installation
   - Installs via `conda install -c conda-forge gh` if missing
 - Post-installation reminder to authenticate with `gh auth login` before using moai commands
-
----
-
-## [1.7.20] - 2026-02-14
-
-### Added
-
-- GitHub CLI (`gh`) auto-installation when moai-adk is selected
-  - Installs via `conda install -c conda-forge gh` if not already installed
-  - Shows authentication reminder after moai-adk installation: `gh auth login`
-  - Required for moai-adk to interact with GitHub repositories
 
 ---
 
@@ -327,7 +350,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.7.1] - 2026-02-05
+
+### Changed
+
+- System npm check is now non-fatal: if installation/update is declined or fails, the installer warns and continues (Claude MCP features may not work until system npm is installed).
+- Added `--skip-system-npm` flag for automation scenarios (e.g., `auto_install_coding_tools`) to bypass the system npm check explicitly.
+
+---
+
 ## [1.7.0] - 2026-02-05
+
+### Added
+
+- npm (Node Package Manager) restored to the interactive menu as an update-only tool for visibility and manual updates.
+
+### Changed
+
+- System-level npm check remains mandatory for Claude MCP servers, but npm is also ensured inside the active conda environment when npm-managed tools are selected.
 
 ### Security
 
@@ -353,27 +393,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **SETUP-001**: Added timestamp format validation to ensure proper backup filename generation
 - **AUTO-001**: Fixed environment filtering to use exact match for "base" environment (avoids excluding environments like "database" or "my-base-env")
 - **FIX-001**: Added JSON file size validation (max 10MB) to prevent memory exhaustion
-
----
-
-## [1.7.0] - 2026-02-05
-
-### Added
-
-- npm (Node Package Manager) restored to the interactive menu as an update-only tool for visibility and manual updates.
-
-### Changed
-
-- System-level npm check remains mandatory for Claude MCP servers, but npm is also ensured inside the active conda environment when npm-managed tools are selected.
-
----
-
-## [1.7.1] - 2026-02-05
-
-### Changed
-
-- System npm check is now non-fatal: if installation/update is declined or fails, the installer warns and continues (Claude MCP features may not work until system npm is installed).
-- Added `--skip-system-npm` flag for automation scenarios (e.g., `auto_install_coding_tools`) to bypass the system npm check explicitly.
 
 ---
 
