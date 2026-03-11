@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.9] - 2026-03-11
+
+### Fixed
+
+- **Conda command detection**: On fresh installs (e.g., Ubuntu 24.04), `conda` is set up as a shell function via `conda init` in `.bashrc`. When the installer runs as a child process (`./install_coding_tools.sh`), shell functions are NOT inherited even though `CONDA_PREFIX` and `CONDA_EXE` env vars are. This caused "conda not found" errors despite an active conda environment. Added `resolve_conda_cmd()` that tries: `command -v conda` → `$CONDA_EXE` → `$CONDA_PREFIX` parent paths → common fallback paths (`~/miniconda3`, `~/anaconda3`, `~/miniforge3`, etc.)
+
+### Changed
+
+- All bare `conda` invocations now use the resolved `$CONDA_CMD` path variable
+- Added `miniforge3` to conda fallback detection paths
+
+---
+
 ## [1.9.7] - 2026-03-08
 
 ### Changed
