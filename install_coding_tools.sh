@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.9.7
+# Agentic Coders Installer v1.9.9
 # Interactive installer for AI coding CLI tools
 #
 # Version history: v1.7.6 added security improvements, v1.7.12 fixed oh-my-opencode version detection
@@ -10,6 +10,7 @@ set -euo pipefail
 # v1.9.5 version sync, error handling fixes, CHANGELOG cleanup
 # v1.9.6 fix Windows action summary display, curl SSL fallback, npm check error suppression
 # v1.9.7 reorder tools (Claude Code before MoAI-ADK), require Claude Code for MoAI-ADK install
+# v1.9.9 fix conda detection in non-interactive script context (shell function vs binary)
 # - Dynamic checksum fetching for Claude and MoAI installers
 # - SHA-256 verification for MoAI-ADK installer
 # - Secure temporary file creation with restrictive permissions
@@ -96,6 +97,7 @@ UV_TOOL_LIST_CACHE=""
 UV_TOOL_LIST_READY=0
 NPM_LIST_JSON_CACHE=""
 NPM_LIST_JSON_READY=0
+CONDA_CMD=""  # Resolved conda command path (set by resolve_conda_cmd)
 
 # PERF-003: Cache subprocess paths for npm/conda detection
 _CACHED_NPM_BIN=""
@@ -221,13 +223,16 @@ require_cmd() {
 }
 
 get_conda_root() {
-    if command -v conda >/dev/null 2>&1; then
-        conda info --base 2>/dev/null || true
+    if [[ -n "${CONDA_CMD:-}" ]]; then
+        "$CONDA_CMD" info --base 2>/dev/null && return 0
+    elif command -v conda >/dev/null 2>&1; then
+        conda info --base 2>/dev/null && return 0
     fi
     # Fallback: Try to detect from common paths if conda command fails
     local conda_fallbacks=(
         "$HOME/miniconda3"
         "$HOME/anaconda3"
+        "$HOME/miniforge3"
         "/opt/miniconda3"
         "/opt/anaconda3"
         "/usr/local/miniconda3"
@@ -238,6 +243,53 @@ get_conda_root() {
             printf "%s" "$path"
             return 0
         fi
+    done
+    return 1
+}
+
+# Resolve conda command path - handles shell function vs binary detection.
+# When a script runs as a child process (./script.sh or bash script.sh),
+# conda shell functions from .bashrc are NOT inherited even though
+# CONDA_PREFIX and CONDA_EXE env vars are. This function finds the actual
+# conda binary so the installer can invoke conda commands reliably.
+resolve_conda_cmd() {
+    # 1. Shell function or PATH binary
+    if command -v conda >/dev/null 2>&1; then
+        printf "conda"
+        return 0
+    fi
+    # 2. CONDA_EXE is set by conda activation
+    if [[ -n "${CONDA_EXE:-}" && -x "$CONDA_EXE" ]]; then
+        printf "%s" "$CONDA_EXE"
+        return 0
+    fi
+    # 3. Derive from CONDA_PREFIX (works for both base and named envs)
+    if [[ -n "${CONDA_PREFIX:-}" ]]; then
+        local conda_base="$CONDA_PREFIX"
+        # Named env path: .../miniconda3/envs/myenv -> .../miniconda3
+        if [[ "$conda_base" == */envs/* ]]; then
+            conda_base="${conda_base%/envs/*}"
+        fi
+        for subpath in condabin/conda bin/conda; do
+            if [[ -x "$conda_base/$subpath" ]]; then
+                printf "%s" "$conda_base/$subpath"
+                return 0
+            fi
+        done
+    fi
+    # 4. Common installation paths
+    local fallbacks=(
+        "$HOME/miniconda3" "$HOME/anaconda3" "$HOME/miniforge3"
+        "/opt/miniconda3" "/opt/anaconda3"
+        "/usr/local/miniconda3" "/usr/local/anaconda3"
+    )
+    for base in "${fallbacks[@]}"; do
+        for subpath in condabin/conda bin/conda; do
+            if [[ -x "$base/$subpath" ]]; then
+                printf "%s" "$base/$subpath"
+                return 0
+            fi
+        done
     done
     return 1
 }
@@ -470,7 +522,7 @@ install_gh_cli() {
     fi
 
     # Check if conda is available
-    if ! command -v conda >/dev/null 2>&1; then
+    if [[ -z "${CONDA_CMD:-}" ]]; then
         log_warning "conda not found, cannot install GitHub CLI"
         printf "  ${YELLOW}Please install manually: conda install -c conda-forge gh${NC}\n"
         return 0
@@ -478,7 +530,7 @@ install_gh_cli() {
 
     # Install gh via conda-forge
     printf "  ${BLUE}[INFO]${NC} Installing GitHub CLI via conda-forge...\n"
-    if conda install -y -c conda-forge gh 2>/dev/null; then
+    if "$CONDA_CMD" install -y -c conda-forge gh 2>/dev/null; then
         if command -v gh >/dev/null 2>&1; then
             local new_version
             new_version=$(gh --version 2>/dev/null | head -n1 | awk '{print $3}' || echo "installed")
@@ -518,7 +570,7 @@ install_jq() {
     fi
 
     # Check if conda is available
-    if ! command -v conda >/dev/null 2>&1; then
+    if [[ -z "${CONDA_CMD:-}" ]]; then
         log_warning "conda not found, cannot install jq"
         printf "  ${YELLOW}[WARNING] Without jq, moai-adk may corrupt ~/.claude/settings.json${NC}\n"
         printf "  ${YELLOW}Please install manually: conda install -c conda-forge jq${NC}\n"
@@ -528,7 +580,7 @@ install_jq() {
     # Install jq via conda-forge
     printf "  ${BLUE}[INFO]${NC} Installing jq via conda-forge...\n"
     printf "  ${BLUE}[INFO]${NC} (jq is required to safely edit Claude Code settings.json)${NC}\n"
-    if conda install -y -c conda-forge jq 2>/dev/null; then
+    if "$CONDA_CMD" install -y -c conda-forge jq 2>/dev/null; then
         if command -v jq >/dev/null 2>&1; then
             local new_version
             new_version=$(jq --version 2>/dev/null | head -n1 || echo "installed")
@@ -1480,7 +1532,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.9.7" \
+        "Agentic Coders CLI Installer v1.9.9" \
         "Toggle: skip->install->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"
@@ -2509,8 +2561,9 @@ ensure_npm_prerequisite() {
         return 1
     fi
 
-    if ! command -v conda >/dev/null 2>&1; then
-        log_error "conda not found. npm tools require conda-provided Node.js/npm."
+    if [[ -z "${CONDA_CMD:-}" ]]; then
+        log_error "conda command not found. npm tools require conda-provided Node.js/npm."
+        printf "Ensure conda is installed and accessible (check CONDA_EXE or PATH).\n"
         return 1
     fi
 
@@ -2520,7 +2573,7 @@ ensure_npm_prerequisite() {
     if [[ -z "$conda_npm" || ! -x "$conda_npm" ]]; then
         log_warning "npm is not installed in the active conda environment but is required for npm-managed tools."
         printf "Installing Node.js + npm via conda...\n"
-        if ! conda install -y -c conda-forge "nodejs>=${MIN_NODEJS_VERSION}"; then
+        if ! "$CONDA_CMD" install -y -c conda-forge "nodejs>=${MIN_NODEJS_VERSION}"; then
             log_error "Failed to install Node.js/npm via conda."
             return 1
         fi
@@ -2537,7 +2590,7 @@ ensure_npm_prerequisite() {
     node_version=$(node --version 2>/dev/null | sed 's/^v//' | head -n1 || true)
     if [[ -z "$node_version" ]]; then
         log_warning "Node.js not found in the active conda environment. Installing nodejs>=${MIN_NODEJS_VERSION}..."
-        if ! conda install -y -c conda-forge "nodejs>=${MIN_NODEJS_VERSION}"; then
+        if ! "$CONDA_CMD" install -y -c conda-forge "nodejs>=${MIN_NODEJS_VERSION}"; then
             log_error "Failed to install Node.js via conda."
             return 1
         fi
@@ -2546,7 +2599,7 @@ ensure_npm_prerequisite() {
         node_version=$(node --version 2>/dev/null | sed 's/^v//' | head -n1 || true)
     elif ! version_ge "$node_version" "$MIN_NODEJS_VERSION"; then
         log_warning "Node.js version ${node_version:-unknown} is below required ${MIN_NODEJS_VERSION}. Updating via conda..."
-        if ! conda install -y -c conda-forge "nodejs>=${MIN_NODEJS_VERSION}"; then
+        if ! "$CONDA_CMD" install -y -c conda-forge "nodejs>=${MIN_NODEJS_VERSION}"; then
             log_error "Failed to install/update Node.js via conda."
             return 1
         fi
@@ -2705,6 +2758,12 @@ main() {
     # Check conda environment
     if ! check_conda_environment; then
         exit 1
+    fi
+
+    # Resolve conda command (shell function may not be available in script context)
+    CONDA_CMD=$(resolve_conda_cmd 2>/dev/null || true)
+    if [[ -n "$CONDA_CMD" ]]; then
+        printf "${BLUE}[INFO]${NC} Conda command resolved: ${CYAN}%s${NC}\n" "$CONDA_CMD"
     fi
 
     # Check for curl

@@ -1,5 +1,64 @@
 # Project Log
 
+## Session 2026-03-11
+
+**Coding CLI used:** Claude Code CLI (claude-opus-4-6)
+
+**Phase(s) worked on:**
+- v1.9.9: Fix conda command detection in non-interactive script context
+
+**Concrete changes implemented:**
+1. Added `resolve_conda_cmd()` function that finds conda binary via 4-tier fallback: `command -v conda` → `$CONDA_EXE` → `$CONDA_PREFIX` parent paths → common installation paths (`~/miniconda3`, `~/anaconda3`, `~/miniforge3`, etc.)
+2. Added `CONDA_CMD` global variable, initialized in `main()` after `check_conda_environment`
+3. Replaced all bare `conda` command invocations with `"$CONDA_CMD"` (6 call sites)
+4. Replaced all `command -v conda` checks with `[[ -z "${CONDA_CMD:-}" ]]` (3 check sites)
+5. Updated `get_conda_root()` to use `$CONDA_CMD` with fallback to bare `conda` for early calls
+6. Added `miniforge3` to fallback detection paths
+
+**Files/modules/functions touched:**
+- `install_coding_tools.sh`:
+  - Added `resolve_conda_cmd()` function (after `get_conda_root()`)
+  - Added `CONDA_CMD=""` global declaration (line 100)
+  - Updated `get_conda_root()` to use `$CONDA_CMD`
+  - Updated `install_gh_cli()` to use `$CONDA_CMD`
+  - Updated `install_jq()` to use `$CONDA_CMD`
+  - Updated `ensure_npm_prerequisite()` to use `$CONDA_CMD` (4 conda calls)
+  - Updated `main()` to initialize `CONDA_CMD` after conda environment check
+  - Version bump to v1.9.9
+- `install_coding_tools.bat`: Version bump to v1.9.9 (3 locations, binary-safe Python edit)
+- `setup.sh`: Version bump to v1.9.9
+- `setup.bat`: Version bump to v1.9.9
+- `README.md`: Version bump, date update, added v1.9.9 changelog entry
+- `CHANGELOG.md`: Added v1.9.9 entry
+- `PROJECT_HANDOFF.md`: Full refresh to v1.9.9 state
+- `PROJECT_LOG.md`: This entry
+
+**Key technical decisions and rationale:**
+- Root cause: `conda init bash` sets up conda as a shell function in `.bashrc`. When running `./install_coding_tools.sh` as a child process, `.bashrc` is not sourced (non-interactive bash), so the shell function is unavailable. However, `CONDA_PREFIX`, `CONDA_DEFAULT_ENV`, and `CONDA_EXE` are exported env vars that survive to child processes.
+- `CONDA_EXE` is the most reliable fallback (set by conda activation to the actual binary path)
+- `$CONDA_PREFIX` parent path derivation handles both base and named envs (strips `/envs/name` suffix)
+- Common paths include `miniforge3` which was missing from previous fallbacks
+- Global `CONDA_CMD` is initialized once and reused, avoiding repeated resolution
+
+**Problems encountered and resolutions:**
+- User reported "conda not found" on fresh Ubuntu 24.04 despite active conda env `(openai)`
+  - Root cause: conda shell function not inherited by script subprocess
+  - Resolution: `resolve_conda_cmd()` with multi-tier fallback
+
+**Items explicitly completed, resolved, or superseded in this session:**
+- Completed: v1.9.9 conda detection fix
+- Resolved: "conda not found" error on fresh installs with active conda environment
+
+**Verification performed:**
+- `bash -n install_coding_tools.sh setup.sh auto_install_coding_tools` — all pass
+- `file install_coding_tools.bat setup.bat` — CRLF confirmed
+- Version consistency across all 6 files — all show v1.9.9
+- `grep '^## \[' CHANGELOG.md` — no duplicates, correct descending order
+- No bare `conda install/info/create` calls remain outside `resolve_conda_cmd` and `get_conda_root` fallback
+- All `$CONDA_CMD` usage sites verified
+
+---
+
 ## Session 2026-03-08 14:00 CDT
 
 **Coding CLI used:** Claude Code CLI (claude-opus-4-6)
