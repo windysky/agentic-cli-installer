@@ -17,7 +17,7 @@
 #   --configure-path    Add ~/.local/bin to PATH in shell config
 #   --force             Skip confirmation prompts
 #
-# Version: 1.9.9
+# Version: 1.9.10
 # License: MIT
 
 set -euo pipefail
@@ -43,7 +43,7 @@ fi
 FORCE="false"
 
 # Colors for output
-if [[ -t 1 ]] && command -v tput >/dev/null 2>&1; then
+if [[ -t 1 ]] && command -v tput >/dev/null 2>&1 && tput colors >/dev/null 2>&1; then
     RED=$(tput setaf 1)
     GREEN=$(tput setaf 2)
     YELLOW=$(tput setaf 3)

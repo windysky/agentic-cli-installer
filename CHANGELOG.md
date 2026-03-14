@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.10] - 2026-03-14
+
+### Fixed
+
+- **setup.sh tput crash**: `tput setaf` fails with "unknown terminal" on systems where the terminfo database lacks the current `$TERM` entry (e.g., fresh Ubuntu 24.04 with `TERM=xterm` but no `ncurses-term` package). Since `setup.sh` uses `set -euo pipefail`, this aborted the entire script. Added `tput colors >/dev/null 2>&1` probe to the color initialization guard so it falls through to empty (no-color) strings when tput can't query the terminal.
+
+---
+
 ## [1.9.9] - 2026-03-11
 
 ### Fixed
