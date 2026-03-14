@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.9.12
+# Agentic Coders Installer v1.9.13
 # Interactive installer for AI coding CLI tools
 #
 # Version history: v1.7.6 added security improvements, v1.7.12 fixed oh-my-opencode version detection
@@ -14,7 +14,8 @@ set -euo pipefail
 # v1.9.10 fix tput failure on terminals with missing terminfo entries
 # v1.9.11 setup.sh auto-configures PATH and CLI aliases
 # v1.9.12 fix clear command failure when terminfo database is inaccessible
-# - Dynamic checksum fetching for Claude and MoAI installers
+# v1.9.13 remove spurious Claude checksum warnings (Anthropic doesn't publish checksums)
+# - SHA-256 verification for MoAI-ADK installer (GitHub-hosted checksum)
 # - SHA-256 verification for MoAI-ADK installer
 # - Secure temporary file creation with restrictive permissions
 # - Enhanced verification with fallback mechanisms
@@ -67,8 +68,6 @@ readonly MIN_NPM_VERSION="10.0.0"
 readonly STATE_DIR="$HOME/.local/share/agentic-cli-installer"
 readonly MOAI_STATE_FILE="$STATE_DIR/moai-adk.path"
 readonly CLAUDE_INSTALL_URL="https://claude.ai/install.sh"
-# SHA-256 checksum will be fetched dynamically from the official API
-readonly CLAUDE_CHECKSUM_URL="https://claude.ai/checksums/install.sh.sha256"
 readonly MOAI_INSTALL_URL="https://raw.githubusercontent.com/modu-ai/moai-adk/main/install.sh"
 # SHA-256 checksum will be fetched dynamically from the GitHub API
 readonly MOAI_CHECKSUM_URL="https://api.github.com/repos/modu-ai/moai-adk/contents/install.sh.sha256?ref=main"
@@ -798,17 +797,6 @@ version_ge() {
     fi
 }
 
-fetch_claude_checksum() {
-    local checksum
-    if ! checksum=$(make_http_request "$CLAUDE_CHECKSUM_URL" 10 1 0); then
-        log_warning "Failed to fetch Claude installer checksum from official API; proceeding without installer verification"
-        echo ""
-        return 0
-    fi
-    # Extract just the hash (first 64 characters)
-    echo "$checksum" | grep -oE '^[a-f0-9]{64}' | head -n1
-}
-
 run_claude_installer() {
     local tmp
     if ! tmp=$(mktemp); then
@@ -820,22 +808,11 @@ run_claude_installer() {
     chmod 600 "$tmp" 2>/dev/null || true
 
     # Download Claude Code installer from immutable trusted URL
+    # Note: Anthropic does not publish checksums for install.sh; HTTPS/TLS 1.2 provides transport integrity
     if ! curl -fsSL --proto '=https' --tlsv1.2 "$CLAUDE_INSTALL_URL" -o "$tmp"; then
         log_error "Failed to download Claude Code installer."
         rm -f "$tmp"
         return 1
-    fi
-
-    # Fetch and verify checksum dynamically
-    local expected_checksum
-    expected_checksum=$(fetch_claude_checksum)
-    if [[ -n "$expected_checksum" ]]; then
-        if ! verify_file_sha256 "$tmp" "$expected_checksum"; then
-            rm -f "$tmp"
-            return 1
-        fi
-    else
-        log_warning "Skipping Claude installer checksum verification (checksum unavailable)"
     fi
 
     if bash "$tmp"; then
@@ -1535,7 +1512,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.9.12" \
+        "Agentic Coders CLI Installer v1.9.13" \
         "Toggle: skip->install->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"

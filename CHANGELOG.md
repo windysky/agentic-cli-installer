@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.13] - 2026-03-14
+
+### Removed
+
+- **Claude installer checksum verification**: Removed `fetch_claude_checksum()` and associated `CLAUDE_CHECKSUM_URL` / `FALLBACK_CLAUDE_SHA256` from both `.sh` and `.bat`. Anthropic does not publish checksums for `install.sh` or `install.cmd`, so the fetch always failed and produced two WARNING lines every time Claude Code was installed. HTTPS with TLS 1.2 still provides transport integrity. MoAI-ADK checksum verification is unaffected (GitHub-hosted).
+
+---
+
 ## [1.9.12] - 2026-03-14
 
 ### Fixed
