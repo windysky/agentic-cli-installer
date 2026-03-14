@@ -5,6 +5,7 @@
 **Coding CLI used:** Claude Code CLI (claude-opus-4-6)
 
 **Phase(s) worked on:**
+- v1.9.11: Auto PATH configuration and CLI convenience aliases in setup.sh
 - v1.9.10: Fix tput crash on terminals with missing terminfo entries
 
 **Concrete changes implemented:**
@@ -28,12 +29,23 @@
 **Problems encountered and resolutions:**
 - User reported "tput: unknown terminal xterm" on fresh Ubuntu 24.04. Likely missing `ncurses-term` package (provides extended terminfo entries). Fix makes the script resilient regardless.
 
+**v1.9.11 changes (same session):**
+1. `setup.sh` now always runs `configure_path` (previously required `--configure-path` flag) — adds `~/.local/bin` to PATH in shell config if not already present
+2. Added `configure_aliases()` function that idempotently adds three CLI aliases to shell config:
+   - `ccdd` -> `claude --dangerously-skip-permissions`
+   - `claudeD` -> `claude --dangerously-skip-permissions`
+   - `codexD` -> `codex --dangerously-bypass-approvals-and-sandbox`
+3. Both PATH and alias configuration are non-fatal (`|| warning`) to avoid aborting the install
+4. Updated help text to document the new automatic behavior
+5. `--configure-path` retained as legacy no-op
+
 **Items explicitly completed, resolved, or superseded in this session:**
 - Completed: v1.9.10 tput crash fix in setup.sh
+- Completed: v1.9.11 auto PATH + CLI aliases in setup.sh
 
 **Verification performed:**
 - `bash -n install_coding_tools.sh setup.sh auto_install_coding_tools` — all pass
-- Version consistency across all 6 files — all show v1.9.10
+- Version consistency across all 6 files — all show v1.9.11
 - CHANGELOG ordering — no duplicates, correct descending order
 
 ---

@@ -1,4 +1,4 @@
-# Agentic CLI Installer v1.9.10
+# Agentic CLI Installer v1.9.11
 
 **Last Modified:** March 14, 2026
 
@@ -205,6 +205,10 @@ Backup location: ~/.local/bin.backup
 ```
 
 ## Change Log
+
+### v1.9.11 - March 14, 2026
+
+- **Auto PATH + aliases**: `setup.sh` now automatically adds `~/.local/bin` to PATH and configures CLI convenience aliases (`ccdd`, `claudeD`, `codexD`) in the shell config
 
 ### v1.9.10 - March 14, 2026
 

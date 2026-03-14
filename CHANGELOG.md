@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.11] - 2026-03-14
+
+### Added
+
+- **Auto PATH configuration**: `setup.sh` now always adds `~/.local/bin` to PATH in the user's shell config (previously required `--configure-path` flag)
+- **CLI convenience aliases**: `setup.sh` automatically adds the following aliases to the shell config:
+  - `ccdd` -> `claude --dangerously-skip-permissions`
+  - `claudeD` -> `claude --dangerously-skip-permissions`
+  - `codexD` -> `codex --dangerously-bypass-approvals-and-sandbox`
+- All shell config modifications are idempotent (skip if already present)
+
+### Changed
+
+- `--configure-path` flag is now legacy (PATH is always configured automatically)
+
+---
+
 ## [1.9.10] - 2026-03-14
 
 ### Fixed

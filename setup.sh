@@ -17,7 +17,7 @@
 #   --configure-path    Add ~/.local/bin to PATH in shell config
 #   --force             Skip confirmation prompts
 #
-# Version: 1.9.10
+# Version: 1.9.11
 # License: MIT
 
 set -euo pipefail
@@ -435,6 +435,63 @@ configure_path() {
 }
 
 #######################################
+# Alias Configuration
+#######################################
+
+# Aliases to add to shell config
+ALIASES=(
+    "alias ccdd='claude --dangerously-skip-permissions'"
+    "alias claudeD='claude --dangerously-skip-permissions'"
+    "alias codexD='codex --dangerously-bypass-approvals-and-sandbox'"
+)
+
+configure_aliases() {
+    local shell_config
+    shell_config=$(detect_shell_config)
+
+    if [[ -z "$shell_config" ]]; then
+        warning "Could not detect shell configuration file"
+        info "Manually add the following aliases to your shell profile:"
+        for a in "${ALIASES[@]}"; do
+            echo "  $a"
+        done
+        return 1
+    fi
+
+    local added=0
+
+    for a in "${ALIASES[@]}"; do
+        # Extract alias name (e.g., "ccdd" from "alias ccdd='...'")
+        local alias_name
+        alias_name=$(echo "$a" | sed "s/alias \([^=]*\)=.*/\1/")
+
+        # Check if this alias is already defined
+        if grep -q "alias ${alias_name}=" "$shell_config" 2>/dev/null; then
+            info "Alias '${alias_name}' already configured in $shell_config"
+            continue
+        fi
+
+        # Add header comment before first alias
+        if [[ $added -eq 0 ]]; then
+            if ! grep -qF "# Agentic CLI aliases" "$shell_config" 2>/dev/null; then
+                echo "" >> "$shell_config"
+                echo "# Agentic CLI aliases (added by setup.sh on $(date +%Y-%m-%d))" >> "$shell_config"
+            fi
+        fi
+
+        echo "$a" >> "$shell_config"
+        success "Added alias: ${alias_name}"
+        added=$((added + 1))
+    done
+
+    if [[ $added -eq 0 ]]; then
+        info "All aliases already configured"
+    else
+        info "Added $added alias(es) to $shell_config"
+    fi
+}
+
+#######################################
 # WSL-Specific Handling
 #######################################
 
@@ -508,19 +565,23 @@ main() {
                 shift
                 ;;
             -h|--help)
-                echo "Usage: $0 [--configure-path] [--force]"
+                echo "Usage: $0 [--force]"
                 echo ""
                 echo "Cross-platform installation script for Agentic CLI Installer"
                 echo ""
+                echo "Automatically configures:"
+                echo "  - Copies scripts to ~/.local/bin/"
+                echo "  - Adds ~/.local/bin to PATH in shell config (if not present)"
+                echo "  - Adds CLI convenience aliases (ccdd, claudeD, codexD)"
+                echo ""
                 echo "Options:"
-                echo "  --configure-path    Add ~/.local/bin to PATH in shell config"
+                echo "  --configure-path    (Legacy, now runs automatically)"
                 echo "  --force             Skip confirmation prompts"
                 echo "  -h, --help          Show this help message"
                 echo ""
                 echo "Examples:"
-                echo "  $0                              # Interactive installation"
-                echo "  $0 --configure-path             # Install and configure PATH"
-                echo "  $0 --force --configure-path     # Non-interactive with PATH config"
+                echo "  $0                  # Interactive installation"
+                echo "  $0 --force          # Non-interactive installation"
                 exit 0
                 ;;
             *)
@@ -572,11 +633,13 @@ main() {
             ;;
     esac
 
-    # Configure PATH if requested
-    if [[ "$configure_path" == "true" ]]; then
-        echo ""
-        configure_path
-    fi
+    # Configure PATH (always runs, idempotent; non-fatal)
+    echo ""
+    configure_path || warning "PATH configuration skipped (see above)"
+
+    # Configure aliases (always runs, idempotent; non-fatal)
+    echo ""
+    configure_aliases || warning "Alias configuration skipped (see above)"
 
     # Final summary
     echo ""
@@ -597,20 +660,6 @@ main() {
     echo ""
     echo "Backup location: $BACKUP_DIR"
     echo ""
-
-    # PATH configuration reminder
-    if [[ "$configure_path" == "false" ]]; then
-        if [[ ":$PATH:" != *":$TARGET_DIR:"* ]]; then
-            warning "$TARGET_DIR is not in your PATH"
-            echo ""
-            echo "To add it to your PATH, run:"
-            echo "  $0 --configure-path"
-            echo ""
-            echo "Or manually add to your shell profile:"
-            echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
-            echo ""
-        fi
-    fi
 
     echo "Run the installer with:"
     if [[ "$platform" == "wsl" ]]; then
