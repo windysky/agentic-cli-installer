@@ -1,5 +1,43 @@
 # Project Log
 
+## Session 2026-03-14
+
+**Coding CLI used:** Claude Code CLI (claude-opus-4-6)
+
+**Phase(s) worked on:**
+- v1.9.10: Fix tput crash on terminals with missing terminfo entries
+
+**Concrete changes implemented:**
+1. Added `tput colors >/dev/null 2>&1` probe to the color initialization guard in `setup.sh` so that when `tput` cannot query the terminal (missing terminfo), the script falls through to empty (no-color) strings instead of aborting
+
+**Files/modules/functions touched:**
+- `setup.sh`: Added `tput colors` probe to line 46 guard, version bump to v1.9.10
+- `install_coding_tools.sh`: Version bump to v1.9.10 (header, version history comment, banner)
+- `install_coding_tools.bat`: Version bump to v1.9.10 (3 locations, binary-safe Python edit)
+- `setup.bat`: Version bump to v1.9.10
+- `README.md`: Version bump, date update, added v1.9.10 changelog entry
+- `CHANGELOG.md`: Added v1.9.10 entry
+- `PROJECT_HANDOFF.md`: Full refresh to v1.9.10 state
+- `PROJECT_LOG.md`: This entry
+
+**Key technical decisions and rationale:**
+- Root cause: `setup.sh` uses `set -euo pipefail`. When `tput setaf 1` fails (unknown terminal type), the entire script aborts. The existing guard checked `-t 1` (stdout is a terminal) and `command -v tput` (tput exists), but not whether tput can actually query the current terminal.
+- Fix: `tput colors` is the lightest tput query that exercises the terminfo lookup. If it fails, terminal info is unavailable and all tput calls would fail, so we skip to empty strings.
+- `install_coding_tools.sh` is unaffected because it uses raw ANSI escape codes, not `tput`.
+
+**Problems encountered and resolutions:**
+- User reported "tput: unknown terminal xterm" on fresh Ubuntu 24.04. Likely missing `ncurses-term` package (provides extended terminfo entries). Fix makes the script resilient regardless.
+
+**Items explicitly completed, resolved, or superseded in this session:**
+- Completed: v1.9.10 tput crash fix in setup.sh
+
+**Verification performed:**
+- `bash -n install_coding_tools.sh setup.sh auto_install_coding_tools` — all pass
+- Version consistency across all 6 files — all show v1.9.10
+- CHANGELOG ordering — no duplicates, correct descending order
+
+---
+
 ## Session 2026-03-11
 
 **Coding CLI used:** Claude Code CLI (claude-opus-4-6)

@@ -1,6 +1,6 @@
-# Agentic CLI Installer v1.9.9
+# Agentic CLI Installer v1.9.10
 
-**Last Modified:** March 11, 2026
+**Last Modified:** March 14, 2026
 
 An interactive installer that manages multiple AI coding CLI tools from one place. It detects installed versions, fetches latest versions, and lets you install, update, or remove tools in a single run.
 
@@ -205,6 +205,10 @@ Backup location: ~/.local/bin.backup
 ```
 
 ## Change Log
+
+### v1.9.10 - March 14, 2026
+
+- **Fix tput crash**: Guard `tput` color initialization with `tput colors` probe so `setup.sh` doesn't abort on terminals with missing terminfo entries (e.g., fresh Ubuntu 24.04 with `TERM=xterm`)
 
 ### v1.9.9 - March 11, 2026
 
