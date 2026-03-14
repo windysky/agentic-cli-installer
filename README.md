@@ -1,4 +1,4 @@
-# Agentic CLI Installer v1.9.12
+# Agentic CLI Installer v1.9.13
 
 **Last Modified:** March 14, 2026
 
@@ -205,6 +205,10 @@ Backup location: ~/.local/bin.backup
 ```
 
 ## Change Log
+
+### v1.9.13 - March 14, 2026
+
+- **Remove Claude checksum warnings**: Anthropic does not publish checksums for their installer; removed speculative fetch that always failed and produced two WARNING lines
 
 ### v1.9.12 - March 14, 2026
 

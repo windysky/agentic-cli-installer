@@ -3,11 +3,11 @@ setlocal EnableDelayedExpansion
 set "SCRIPT_DIR=%~dp0"
 
 REM ###############################################
-REM Agentic Coders Installer v1.9.12
+REM Agentic Coders Installer v1.9.13
 REM Interactive installer for AI coding CLI tools
 REM Windows version (run in Anaconda Prompt or CMD)
 REM
-REM Recent improvements (v1.7.13-v1.9.12):
+REM Recent improvements (v1.7.13-v1.9.13):
 REM - v1.8.1: Added jq auto-installation to prevent moai-adk settings.json corruption
 REM - v1.7.20: Normalized line endings to CRLF for consistency
 REM - oh-my-opencode plugin detection fix
@@ -82,8 +82,6 @@ set "MIN_NPM_VERSION=10.0.0"
 set "STATE_DIR=%USERPROFILE%\.local\share\agentic-cli-installer"
 set "MOAI_STATE_FILE=%STATE_DIR%\moai-adk.path"
 set "CLAUDE_INSTALL_URL=https://claude.ai/install.cmd"
-set "CLAUDE_CHECKSUM_URL=https://claude.ai/checksums/install.cmd.sha256"
-set "FALLBACK_CLAUDE_SHA256=f94ac8a946d6faf987e867788d69a974bdb4792e89620a6de721d24ea1b76466"
 set "MOAI_INSTALL_URL=https://raw.githubusercontent.com/modu-ai/moai-adk/main/install.ps1"
 set "MOAI_CHECKSUM_URL=https://api.github.com/repos/modu-ai/moai-adk/contents/install.ps1.sha256?ref=main"
 
@@ -673,25 +671,6 @@ if not exist "%STATE_DIR%" exit /b 1
 if errorlevel 1 exit /b 1
 exit /b 0
 
-:fetch_claude_checksum
-set "tmpfile=%TEMP%\claude_checksum_%RANDOM%.tmp"
-curl -fsSL "%CLAUDE_CHECKSUM_URL%" -o "%tmpfile%" 2>nul
-if errorlevel 1 (
-    echo %YELLOW%[WARNING]%NC% Failed to fetch Claude installer checksum; proceeding without installer verification
-    set "CLAUDE_SHA256="
-    del "%tmpfile%" >nul 2>nul
-    exit /b 0
-)
-REM Extract checksum (first 64 hex characters)
-REM Use PowerShell params instead of embedding paths (handles parentheses and special chars in %TEMP%).
-for /f "delims=" %%c in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "param($p); try { $content = Get-Content -LiteralPath $p -Raw; if ($content -match '^[a-f0-9]{64}') { $Matches[0] } } catch { }" -p "%tmpfile%" 2^>nul') do set "CLAUDE_SHA256=%%c"
-del "%tmpfile%" >nul 2>nul
-if not defined CLAUDE_SHA256 (
-    set "CLAUDE_SHA256="
-    echo %YELLOW%[WARNING]%NC% Failed to parse Claude installer checksum; proceeding without installer verification
-)
-exit /b 0
-
 :download_claude_installer
 set "outfile=%~1"
 REM Download Claude Code installer from official Anthropic source over HTTPS
@@ -703,14 +682,7 @@ if errorlevel 1 (
         exit /b 1
     )
 )
-REM Fetch and verify checksum dynamically
-call :fetch_claude_checksum
-if defined CLAUDE_SHA256 (
-    call :verify_file_sha256 "%outfile%" "%CLAUDE_SHA256%"
-    if errorlevel 1 exit /b 1
-) else (
-    echo %YELLOW%[WARNING]%NC% Skipping Claude installer checksum verification ^(checksum unavailable^)
-)
+REM Note: Anthropic does not publish checksums for install.cmd; HTTPS provides transport integrity
 exit /b 0
 
 :best_effort_verify_claude_signature
@@ -1461,7 +1433,7 @@ if "%DEBUG%"=="1" (
     cls
 )
 call :print_banner_sep
-echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.9.12%NC%
+echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.9.13%NC%
 echo Toggle: %CYAN%skip%NC% -^> %GREEN%install%NC% -^> %RED%remove%NC%  Input: 1,3,5  Enter/P=proceed  Q=quit
 call :print_banner_sep
 echo.
