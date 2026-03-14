@@ -17,7 +17,7 @@
 #   --configure-path    Add ~/.local/bin to PATH in shell config
 #   --force             Skip confirmation prompts
 #
-# Version: 1.9.12
+# Version: 1.9.13
 # License: MIT
 
 set -euo pipefail
@@ -377,11 +377,31 @@ install_windows_script() {
 #######################################
 
 detect_shell_config() {
-    # Detect shell configuration file
-    if [[ -n "${ZSH_VERSION:-}" ]] || [[ -f "$HOME/.zshrc" ]]; then
+    # Detect shell configuration file based on the user's login shell first,
+    # then fall back to the current shell version variables and file existence.
+    local login_shell
+    login_shell=$(basename "${SHELL:-}")
+
+    case "$login_shell" in
+        zsh)
+            echo "$HOME/.zshrc"
+            return
+            ;;
+        bash)
+            echo "$HOME/.bashrc"
+            return
+            ;;
+    esac
+
+    # Fallback: check shell version variables, then file existence
+    if [[ -n "${ZSH_VERSION:-}" ]]; then
         echo "$HOME/.zshrc"
-    elif [[ -n "${BASH_VERSION:-}" ]] || [[ -f "$HOME/.bashrc" ]]; then
+    elif [[ -n "${BASH_VERSION:-}" ]]; then
         echo "$HOME/.bashrc"
+    elif [[ -f "$HOME/.bashrc" ]]; then
+        echo "$HOME/.bashrc"
+    elif [[ -f "$HOME/.zshrc" ]]; then
+        echo "$HOME/.zshrc"
     elif [[ -f "$HOME/.profile" ]]; then
         echo "$HOME/.profile"
     else
