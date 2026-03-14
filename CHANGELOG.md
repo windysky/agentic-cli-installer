@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.12] - 2026-03-14
+
+### Fixed
+
+- **clear screen crash**: The `clear` command in `install_coding_tools.sh` outputs "terminals database is inaccessible" on systems where the terminfo database is missing or the `$TERM` entry is absent (e.g., fresh Ubuntu 24.04). Added `2>/dev/null` with ANSI escape sequence fallback (`\033[2J\033[H`) so the screen clears regardless.
+
+---
+
 ## [1.9.11] - 2026-03-14
 
 ### Added

@@ -1,4 +1,4 @@
-# Agentic CLI Installer v1.9.11
+# Agentic CLI Installer v1.9.12
 
 **Last Modified:** March 14, 2026
 
@@ -205,6 +205,10 @@ Backup location: ~/.local/bin.backup
 ```
 
 ## Change Log
+
+### v1.9.12 - March 14, 2026
+
+- **Fix clear screen crash**: `clear` command fails with "terminals database is inaccessible" on systems missing terminfo; falls back to ANSI escape sequence
 
 ### v1.9.11 - March 14, 2026
 
