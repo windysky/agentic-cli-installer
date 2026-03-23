@@ -1,6 +1,6 @@
-# Agentic CLI Installer v1.9.13
+# Agentic CLI Installer v1.10.0
 
-**Last Modified:** March 14, 2026
+**Last Modified:** March 22, 2026
 
 An interactive installer that manages multiple AI coding CLI tools from one place. It detects installed versions, fetches latest versions, and lets you install, update, or remove tools in a single run.
 
@@ -205,6 +205,10 @@ Backup location: ~/.local/bin.backup
 ```
 
 ## Change Log
+
+### v1.10.0 - March 22, 2026
+
+- **Fix Claude Code CLI installation failure on Windows**: Run third-party batch installers (`install.cmd`) in an isolated child `cmd.exe` process to prevent them from terminating the parent installer session; fix npm global list check syntax
 
 ### v1.9.13 - March 14, 2026
 

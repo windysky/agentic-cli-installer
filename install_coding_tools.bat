@@ -3,11 +3,11 @@ setlocal EnableDelayedExpansion
 set "SCRIPT_DIR=%~dp0"
 
 REM ###############################################
-REM Agentic Coders Installer v1.9.13
+REM Agentic Coders Installer v1.10.0
 REM Interactive installer for AI coding CLI tools
 REM Windows version (run in Anaconda Prompt or CMD)
 REM
-REM Recent improvements (v1.7.13-v1.9.13):
+REM Recent improvements (v1.7.13-v1.10.0):
 REM - v1.8.1: Added jq auto-installation to prevent moai-adk settings.json corruption
 REM - v1.7.20: Normalized line endings to CRLF for consistency
 REM - oh-my-opencode plugin detection fix
@@ -1166,9 +1166,9 @@ call :resolve_conda_npm 2>nul
 if errorlevel 1 exit /b 0
 REM Check if @anthropic-ai/claude-code is in npm list
 set "NPM_CLAUDE_CHECK="
-(for /f "delims=" %%v in ('"!CONDA_NPM!" list -g @anthropic-ai/claude-code 2^>nul ^| findstr /C:"@anthropic-ai/claude-code"') do (
+for /f "delims=" %%v in ('"!CONDA_NPM!" list -g @anthropic-ai/claude-code 2^>nul ^| findstr /C:"@anthropic-ai/claude-code"') do (
     set "NPM_CLAUDE_CHECK=%%v"
-) 2>nul
+)
 if defined NPM_CLAUDE_CHECK (
     set "%outvar%=1"
 )
@@ -1433,7 +1433,7 @@ if "%DEBUG%"=="1" (
     cls
 )
 call :print_banner_sep
-echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.9.13%NC%
+echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.10.0%NC%
 echo Toggle: %CYAN%skip%NC% -^> %GREEN%install%NC% -^> %RED%remove%NC%  Input: 1,3,5  Enter/P=proceed  Q=quit
 call :print_banner_sep
 echo.
@@ -2004,7 +2004,7 @@ set "remove_fail=0"
 	if exist "%TEMP%\install.cmd" del "%TEMP%\install.cmd" >nul 2>nul
 	call :download_claude_installer "%TEMP%\install.cmd"
 	if errorlevel 1 exit /b 1
-	call "%TEMP%\install.cmd"
+	call :run_cmd_script_isolated "%TEMP%\install.cmd"
 	set "RC=%errorlevel%"
 	del "%TEMP%\install.cmd" >nul 2>nul
 	if %RC% NEQ 0 exit /b %RC%
@@ -2023,14 +2023,23 @@ set "remove_fail=0"
 	if exist "%TEMP%\install.cmd" del "%TEMP%\install.cmd" >nul 2>nul
 	call :download_claude_installer "%TEMP%\install.cmd"
 	if errorlevel 1 exit /b 1
-	call "%TEMP%\install.cmd"
+	call :run_cmd_script_isolated "%TEMP%\install.cmd"
 	set "RC=%errorlevel%"
 	del "%TEMP%\install.cmd" >nul 2>nul
 	if %RC% NEQ 0 exit /b %RC%
 	call :best_effort_verify_claude_signature "%USERPROFILE%\.local\bin\claude.exe"
 	exit /b 0
 
-REM Install or verify jq (required for moai-adk to safely edit settings.json)
+REM Run third-party batch installers in a child cmd.exe so they cannot
+REM terminate or corrupt the parent installer session.
+:run_cmd_script_isolated
+if not defined ComSpec set "ComSpec=%SystemRoot%\System32\cmd.exe"
+"%ComSpec%" /d /c call "%~1"
+exit /b %errorlevel%
+
+
+
+REM Install or verify jq (required for moai-adk to safely edit settings.json)
 REM Without jq, moai-adk falls back to sed-based JSON editing which corrupts pretty-printed JSON
 :install_jq
 	echo.

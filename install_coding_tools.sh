@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.9.13
+# Agentic Coders Installer v1.10.0
 # Interactive installer for AI coding CLI tools
 #
 # Version history: v1.7.6 added security improvements, v1.7.12 fixed oh-my-opencode version detection
@@ -15,6 +15,7 @@ set -euo pipefail
 # v1.9.11 setup.sh auto-configures PATH and CLI aliases
 # v1.9.12 fix clear command failure when terminfo database is inaccessible
 # v1.9.13 remove spurious Claude checksum warnings (Anthropic doesn't publish checksums)
+# v1.10.0 fix Claude Code CLI installation failure on Windows (isolated child cmd.exe)
 # - SHA-256 verification for MoAI-ADK installer (GitHub-hosted checksum)
 # - SHA-256 verification for MoAI-ADK installer
 # - Secure temporary file creation with restrictive permissions
@@ -1512,7 +1513,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.9.13" \
+        "Agentic Coders CLI Installer v1.10.0" \
         "Toggle: skip->install->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"
