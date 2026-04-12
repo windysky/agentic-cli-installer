@@ -204,3 +204,8 @@ dist-ssr/
 .vercel/
 .netlify/
 .firebase/
+
+# MoAI local config directories
+.moai/
+.claude/
+.agency/
