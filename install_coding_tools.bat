@@ -3,22 +3,24 @@ setlocal EnableDelayedExpansion
 set "SCRIPT_DIR=%~dp0"
 
 REM ###############################################
-REM Agentic Coders Installer v1.10.0
+REM Agentic Coders Installer v1.11.0
 REM Interactive installer for AI coding CLI tools
 REM Windows version (run in Anaconda Prompt or CMD)
 REM
-REM Recent improvements (v1.7.13-v1.10.0):
+REM Recent improvements (v1.7.13-v1.11.0):
+REM - v1.11.0: Remove MoAI-ADK bootstrapper same-origin checksum (MoAI-ADK's own
+REM            downstream binary verification is preserved)
+REM - v1.10.0: Fix Claude Code CLI installation failure on Windows
 REM - v1.8.1: Added jq auto-installation to prevent moai-adk settings.json corruption
 REM - v1.7.20: Normalized line endings to CRLF for consistency
 REM - oh-my-opencode plugin detection fix
 REM - log_warning outputs to stderr
 REM - Seccomp filter, Playwright CLI, and Playwright MCP auto-installation
 REM
-REM Security improvements (v1.7.12):
-REM - Dynamic checksum fetching for Claude and MoAI installers
-REM - SHA-256 verification for MoAI-ADK installer
+REM Security notes:
 REM - Sanitized PowerShell file paths
 REM - Secure temporary file creation with restrictive permissions
+REM - TLS-pinned downloads for bootstrapper
 REM ###############################################
 
 REM Runtime flags (also configurable via env vars):
@@ -83,7 +85,9 @@ set "STATE_DIR=%USERPROFILE%\.local\share\agentic-cli-installer"
 set "MOAI_STATE_FILE=%STATE_DIR%\moai-adk.path"
 set "CLAUDE_INSTALL_URL=https://claude.ai/install.cmd"
 set "MOAI_INSTALL_URL=https://raw.githubusercontent.com/modu-ai/moai-adk/main/install.ps1"
-set "MOAI_CHECKSUM_URL=https://api.github.com/repos/modu-ai/moai-adk/contents/install.ps1.sha256?ref=main"
+REM MoAI-ADK bootstrapper is fetched over TLS from GitHub; the MoAI-ADK installer
+REM itself verifies the SHA-256 of the downloaded binary tarball against a hash in
+REM its release metadata, so the bootstrapper same-origin hash check was removed in v1.11.0.
 
 REM Tool list: name|manager|package|description
 set TOOLS_COUNT=7
@@ -711,26 +715,6 @@ if /I "%SIG_STATUS%"=="Valid" (
 )
 exit /b 0
 
-:fetch_moai_checksum
-set "tmpfile=%TEMP%\moai_checksum_%RANDOM%.tmp"
-curl -fsSL "%MOAI_CHECKSUM_URL%" -o "%tmpfile%" 2>nul
-if errorlevel 1 (
-    echo %YELLOW%[WARNING]%NC% Failed to fetch MoAI checksum from GitHub API
-    set "MOAI_SHA256="
-    del "%tmpfile%" >nul 2>nul
-    exit /b 0
-)
-REM Parse GitHub API response and extract the first 64-hex SHA directly.
-REM Avoid embedding decoded text in cmd command-lines because special chars can break parser.
-set "MOAI_SHA256="
-for /f "delims=" %%h in ('powershell -NoProfile -ExecutionPolicy Bypass -Command "param($p); $ErrorActionPreference='SilentlyContinue'; try { $json = Get-Content -LiteralPath $p -Raw | ConvertFrom-Json; if ($json -and $json.content) { $decoded = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($json.content)); if ($decoded -match '^[a-f0-9]{64}') { $Matches[0] } } } catch { }" -p "%tmpfile%" 2^>nul') do set "MOAI_SHA256=%%h"
-del "%tmpfile%" >nul 2>nul
-if not defined MOAI_SHA256 (
-    echo %YELLOW%[WARNING]%NC% Failed to parse MoAI checksum
-    set "MOAI_SHA256="
-)
-exit /b 0
-
 :run_moai_installer
 REM Download and run MoAI-ADK installer from upstream main branch
 set "moai_tmp=%TEMP%\moai_install_%RANDOM%.ps1"
@@ -745,19 +729,8 @@ if errorlevel 1 (
 )
 REM Secure the temporary file
 attrib +R "%moai_tmp%" >nul 2>nul
-REM Fetch and verify checksum if available
-call :fetch_moai_checksum
-if defined MOAI_SHA256 (
-    call :verify_file_sha256 "%moai_tmp%" "%MOAI_SHA256%"
-    if errorlevel 1 (
-        echo %RED%[ERROR]%NC% MoAI-ADK installer checksum verification failed
-        del "%moai_tmp%" >nul 2>nul
-        exit /b 1
-    )
-    echo %GREEN%[SUCCESS]%NC% MoAI-ADK installer checksum verified
-) else (
-    echo %YELLOW%[WARNING]%NC% MoAI-ADK installer checksum not available, proceeding without verification
-)
+REM Integrity comes from TLS to GitHub; the MoAI-ADK installer verifies its own
+REM binary tarball against a hash committed to its release metadata.
 set "AGENTIC_MOAI_INSTALLER=%moai_tmp%"
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference = 'Stop'; & $env:AGENTIC_MOAI_INSTALLER"
 set "AGENTIC_MOAI_INSTALLER="
@@ -1433,7 +1406,7 @@ if "%DEBUG%"=="1" (
     cls
 )
 call :print_banner_sep
-echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.10.0%NC%
+echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.11.0%NC%
 echo Toggle: %CYAN%skip%NC% -^> %GREEN%install%NC% -^> %RED%remove%NC%  Input: 1,3,5  Enter/P=proceed  Q=quit
 call :print_banner_sep
 echo.

@@ -1,6 +1,6 @@
-# Agentic CLI Installer v1.10.0
+# Agentic CLI Installer v1.11.0
 
-**Last Modified:** March 22, 2026
+**Last Modified:** April 23, 2026
 
 An interactive installer that manages multiple AI coding CLI tools from one place. It detects installed versions, fetches latest versions, and lets you install, update, or remove tools in a single run.
 
@@ -205,6 +205,10 @@ Backup location: ~/.local/bin.backup
 ```
 
 ## Change Log
+
+### v1.11.0 - April 23, 2026
+
+- **Remove MoAI-ADK bootstrapper same-origin checksum warnings**: The `install.sh.sha256` / `install.ps1.sha256` files never existed in the upstream `modu-ai/moai-adk` repo, so the fetch always returned HTTP 404 and produced two spurious `[WARNING]` lines on every install. Even if the hash existed, fetching it from the same trust root as the payload added no security. Meaningful SHA-256 verification still happens downstream: the MoAI-ADK installer verifies the binary tarball against a hash committed to its release metadata. Bootstrapper integrity is enforced via TLS (`curl --proto '=https' --tlsv1.2`).
 
 ### v1.10.0 - March 22, 2026
 

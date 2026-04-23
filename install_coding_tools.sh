@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.10.0
+# Agentic Coders Installer v1.11.0
 # Interactive installer for AI coding CLI tools
 #
 # Version history: v1.7.6 added security improvements, v1.7.12 fixed oh-my-opencode version detection
@@ -16,10 +16,10 @@ set -euo pipefail
 # v1.9.12 fix clear command failure when terminfo database is inaccessible
 # v1.9.13 remove spurious Claude checksum warnings (Anthropic doesn't publish checksums)
 # v1.10.0 fix Claude Code CLI installation failure on Windows (isolated child cmd.exe)
-# - SHA-256 verification for MoAI-ADK installer (GitHub-hosted checksum)
-# - SHA-256 verification for MoAI-ADK installer
+# v1.11.0 remove MoAI-ADK bootstrapper same-origin checksum (upstream doesn't publish .sha256;
+#         check was security theater. MoAI-ADK's own downstream binary verification is preserved)
 # - Secure temporary file creation with restrictive permissions
-# - Enhanced verification with fallback mechanisms
+# - TLS-pinned downloads via curl --proto '=https' --tlsv1.2
 #############################################
 
 # Non-interactive mode flag
@@ -70,8 +70,10 @@ readonly STATE_DIR="$HOME/.local/share/agentic-cli-installer"
 readonly MOAI_STATE_FILE="$STATE_DIR/moai-adk.path"
 readonly CLAUDE_INSTALL_URL="https://claude.ai/install.sh"
 readonly MOAI_INSTALL_URL="https://raw.githubusercontent.com/modu-ai/moai-adk/main/install.sh"
-# SHA-256 checksum will be fetched dynamically from the GitHub API
-readonly MOAI_CHECKSUM_URL="https://api.github.com/repos/modu-ai/moai-adk/contents/install.sh.sha256?ref=main"
+# Note: the MoAI-ADK bootstrapper is fetched over TLS from GitHub. The MoAI-ADK
+# installer itself verifies the SHA-256 of the downloaded binary tarball against
+# a hash committed to its release metadata, so redundant same-origin checksum
+# verification of the bootstrapper was removed in v1.11.0.
 
 # Tool definitions: name, package manager, package name, description
 declare -a TOOLS=(
@@ -828,26 +830,6 @@ run_claude_installer() {
     return "$rc"
 }
 
-fetch_moai_checksum() {
-    local checksum
-    if ! checksum=$(curl -fsSL --proto '=https' --tlsv1.2 --max-time 10 "$MOAI_CHECKSUM_URL" 2>/dev/null); then
-        log_warning "Failed to fetch MoAI checksum from GitHub API, skipping verification"
-        echo ""
-        return 0
-    fi
-
-    # Parse GitHub API response to extract checksum from content field
-    if command -v python3 >/dev/null 2>&1; then
-        checksum=$(echo "$checksum" | python3 -c "import sys, json, base64; data = json.load(sys.stdin); print(base64.b64decode(data.get('content', '')).decode('utf-8').strip())" 2>/dev/null || echo "")
-    elif command -v node >/dev/null 2>&1; then
-        checksum=$(echo "$checksum" | node -e "const data = require('fs').readFileSync(0, 'utf8'); const json = JSON.parse(data); console.log(Buffer.from(json.content || '', 'base64').toString('utf8').trim());" 2>/dev/null || echo "")
-    else
-        checksum=$(echo "$checksum" | grep -oP '(?<=\"content\":\")[^\"]*' | base64 -d 2>/dev/null | grep -oE '^[a-f0-9]{64}' | head -n1 || echo "")
-    fi
-
-    echo "$checksum" | grep -oE '^[a-f0-9]{64}' | head -n1
-}
-
 run_moai_installer() {
     local tmp
     if ! tmp=$(mktemp); then
@@ -858,25 +840,15 @@ run_moai_installer() {
     # Secure temporary file with restrictive permissions
     chmod 600 "$tmp" 2>/dev/null || true
 
-    # Download MoAI-ADK installer from upstream main branch
+    # Download MoAI-ADK installer from upstream main branch.
+    # Integrity is provided by TLS to GitHub. The MoAI-ADK installer itself
+    # verifies the SHA-256 of the downloaded binary tarball against a hash
+    # committed to its release metadata, which is the check that actually
+    # protects the installed artifact.
     if ! curl -fsSL --proto '=https' --tlsv1.2 "$MOAI_INSTALL_URL" -o "$tmp"; then
         log_error "Failed to download MoAI-ADK installer."
         rm -f "$tmp"
         return 1
-    fi
-
-    # Verify SHA-256 checksum if available
-    local expected_checksum
-    expected_checksum=$(fetch_moai_checksum)
-    if [[ -n "$expected_checksum" ]]; then
-        if ! verify_file_sha256 "$tmp" "$expected_checksum"; then
-            log_error "MoAI-ADK installer checksum verification failed"
-            rm -f "$tmp"
-            return 1
-        fi
-        log_success "MoAI-ADK installer checksum verified"
-    else
-        log_warning "MoAI-ADK installer checksum not available, proceeding without verification"
     fi
 
     if bash "$tmp"; then
@@ -1513,7 +1485,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.10.0" \
+        "Agentic Coders CLI Installer v1.11.0" \
         "Toggle: skip->install->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"
