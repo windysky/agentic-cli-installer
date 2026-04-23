@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0] - 2026-04-23
+
+### Removed
+
+- **MoAI-ADK bootstrapper same-origin checksum verification**: Removed `fetch_moai_checksum()` / `MOAI_CHECKSUM_URL` from `install_coding_tools.sh` and the parallel `:fetch_moai_checksum` label + `MOAI_CHECKSUM_URL` from `install_coding_tools.bat`. The check had three defects:
+  1. **Always failed.** The upstream moai-adk repo never published `install.sh.sha256` / `install.ps1.sha256`, so the fetch returned HTTP 404 on every install and printed two spurious `[WARNING]` lines.
+  2. **Security theater even if the file existed.** Both the bootstrapper and the hash would come from the same trust root (`github.com/modu-ai/moai-adk@main`). Same-origin checksums provide no additional integrity guarantee — an attacker who can tamper with the payload can tamper with the hash.
+  3. **Redundant.** The MoAI-ADK installer itself verifies the SHA-256 of the downloaded binary tarball against a hash committed to its release metadata, which is the check that actually protects the installed artifact. That verification is unchanged and continues to run (`[INFO] Verifying checksum... [SUCCESS] Checksum verified`).
+
+  Integrity of the bootstrapper download remains enforced via `curl --proto '=https' --tlsv1.2` (TLS to GitHub). Net effect: cleaner install output, no loss of security.
+
+---
+
 ## [1.10.0] - 2026-03-22
 
 ### Fixed

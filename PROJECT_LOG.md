@@ -1,5 +1,59 @@
 # Project Log
 
+## Session 2026-04-23
+
+**Coding CLI used:** Claude Code CLI (claude-opus-4-7)
+
+**Phase(s) worked on:**
+- v1.11.0: Remove MoAI-ADK bootstrapper same-origin checksum verification
+
+**Concrete changes implemented:**
+1. `install_coding_tools.sh`:
+   - Removed `MOAI_CHECKSUM_URL` constant (previously at line 74).
+   - Removed `fetch_moai_checksum()` function (GitHub API base64-decode logic).
+   - Simplified `run_moai_installer()` to drop the fetch/verify block; inline comment explains that TLS to GitHub + MoAI-ADK's own downstream binary-tarball SHA-256 verification cover the real integrity concern.
+   - Header comment block updated (removed "SHA-256 verification for MoAI-ADK installer" bullets).
+2. `install_coding_tools.bat` (byte-safe Python patch to preserve `\r\r\n` line endings):
+   - Removed `MOAI_CHECKSUM_URL` variable (previously at line 86).
+   - Removed entire `:fetch_moai_checksum` label (~19 lines, including the PowerShell base64 + regex parser).
+   - Removed the `call :fetch_moai_checksum` + `if defined MOAI_SHA256 ... verify_file_sha256 ... ) else ( ... proceeding without verification )` block from `:run_moai_installer`.
+   - Updated REM header block: replaced "Security improvements (v1.7.12)" bullets that advertised "Dynamic checksum fetching for Claude and MoAI installers" and "SHA-256 verification for MoAI-ADK installer".
+3. Version bump v1.10.0 -> v1.11.0:
+   - `install_coding_tools.sh` header (line 5), version-history comment (line 18 adds v1.11.0 entry), banner `Agentic Coders CLI Installer v1.11.0`.
+   - `install_coding_tools.bat` header (line 6), version-history REM block, banner at `%BOLD%v1.11.0%NC%`.
+   - `setup.sh` and `setup.bat` version comment lines.
+4. `CHANGELOG.md`: Added `## [1.11.0] - 2026-04-23` entry under "Removed" explaining the three defects (always-404, same-origin theater, redundant-with-downstream).
+5. `README.md`: Updated header version to v1.11.0, `Last Modified` to April 23, 2026, prepended v1.11.0 changelog entry.
+6. `PROJECT_HANDOFF.md`: Full refresh — was stale at v1.9.11 state (2026-03-14). Now reflects v1.9.12 / v1.9.13 ×2 / v1.10.0 / v1.11.0 truth, verification status, and records the reconciliation deficit note about missing intermediate log sessions.
+
+**Files/modules/functions touched:**
+- `install_coding_tools.sh`: header, `MOAI_CHECKSUM_URL`, `fetch_moai_checksum`, `run_moai_installer`, banner string
+- `install_coding_tools.bat`: header, `MOAI_CHECKSUM_URL`, `:fetch_moai_checksum`, `:run_moai_installer`, banner string
+- `setup.sh`, `setup.bat`: version comment
+- `README.md`, `CHANGELOG.md`: documentation
+- `PROJECT_HANDOFF.md`, `PROJECT_LOG.md`: state tracking
+
+**Key technical decisions and rationale:**
+- The upstream `modu-ai/moai-adk` repo does NOT publish `install.sh.sha256` or `install.ps1.sha256` (verified via `curl` returning HTTP 404 on both the `raw.githubusercontent.com/.../main/install.sh.sha256` path and the `api.github.com/repos/.../contents/install.sh.sha256` API endpoint). The feature was broken on every invocation since it was introduced.
+- Even if the hash file existed, both bootstrapper and hash would live at the same trust root. Same-origin checksum verification adds no meaningful integrity guarantee (an attacker with write access to the repo could trivially tamper with both). Meaningful hash-based integrity requires an independent trust anchor (separate signing server, pinned hash, GPG-signed tag, etc.) — we chose not to implement Option B (pinned commit SHA) at this time.
+- MoAI-ADK's own installer continues to verify the downloaded binary tarball (`moai-adk_<ver>_<platform>.tar.gz`) against a SHA-256 committed to its release metadata, visible in the run output as `[INFO] Verifying checksum... [SUCCESS] Checksum verified`. That verification, not the bootstrapper hash, is what actually protects the installed artifact.
+- Net UX improvement: two spurious `[WARNING]` lines per install are removed; no loss of security.
+
+**Problems encountered and resolutions:**
+- `install_coding_tools.bat` uses `\r\r\n` (double-CR + LF) line endings. Used a byte-safe Python script inside the project directory to perform the surgical replacements while preserving the existing line-ending convention.
+
+**Items explicitly completed, resolved, or superseded in this session:**
+- Completed: v1.11.0 removal of MoAI-ADK bootstrapper same-origin checksum verification
+- Resolved: "Failed to fetch MoAI checksum from GitHub API, skipping verification" / "MoAI-ADK installer checksum not available, proceeding without verification" spurious warnings on every install
+
+**Verification performed:**
+- `grep -rn 'MOAI_CHECKSUM_URL\|fetch_moai_checksum\|MOAI_SHA256'` across `install_coding_tools.{sh,bat}` — zero matches.
+- `file install_coding_tools.bat setup.bat` — confirmed CRLF / CR line terminators preserved after byte-safe edit.
+- Version string grep across all 4 script files — all show v1.11.0 in banners and headers.
+- `CHANGELOG.md` descending-order + no-duplicate sanity check.
+
+---
+
 ## Session 2026-03-14
 
 **Coding CLI used:** Claude Code CLI (claude-opus-4-6)
