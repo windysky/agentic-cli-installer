@@ -108,6 +108,7 @@ REM Action states: 0=skip, 1=install, 2=remove
 set ACTION_SKIP=0
 set ACTION_INSTALL=1
 set ACTION_REMOVE=2
+set ACTION_UPGRADE=3
 set "OHMY_FLAGS=--no-tui"
 
 REM Initialize tool data arrays
@@ -1424,7 +1425,7 @@ if "!INST!"=="Not Installed" (
     REM Use semantic version comparison
     call :version_compare_semver "!INST!" "!LATEST!" VERSION_STATUS
     if "!VERSION_STATUS!"=="update" (
-        set "ACT_%idx%=1"
+        set "ACT_%idx%=3"
         set "SEL_%idx%=1"
     ) else (
         set "ACT_%idx%=0"
@@ -1489,6 +1490,11 @@ if "!act!"=="0" (
     set "actcol=%GREEN%"
     set "chk=[X]"
     set "chkcol=%GREEN%"
+) else if "!act!"=="3" (
+    set "actname=upgrade"
+    set "actcol=%CYAN%"
+    set "chk=[U]"
+    set "chkcol=%CYAN%"
 ) else (
     set "actname=remove"
     set "actcol=%RED%"
@@ -1499,6 +1505,7 @@ if "!act!"=="0" (
 REM Force ASCII markers to avoid mojibake in different consoles/code pages.
 set "chk=[ ]"
 if "!act!"=="1" set "chk=[X]"
+if "!act!"=="3" set "chk=[U]"
 if "!act!"=="2" set "chk=[R]"
 
 REM Determine installed color
@@ -1628,8 +1635,8 @@ if "!update_only!"=="1" (
         REM Currently skip
         if "!not_installed!"=="0" (
             if "!up_to_date!"=="0" (
-                REM Outdated: skip -> install (update)
-                set "ACT_%idx%=1"
+                REM Outdated: skip -> upgrade (update)
+                set "ACT_%idx%=3"
                 set "SEL_%idx%=1"
                 echo %BLUE%[INFO]%NC% Selected for update: !name!
             ) else (
@@ -1662,8 +1669,8 @@ if "!cur!"=="0" (
         set "SEL_%idx%=1"
         echo %BLUE%[INFO]%NC% Selected for removal: !name!
     ) else (
-        REM Outdated: skip -> install
-        set "ACT_%idx%=1"
+        REM Outdated: skip -> upgrade
+        set "ACT_%idx%=3"
         set "SEL_%idx%=1"
         echo %BLUE%[INFO]%NC% Selected for update: !name!
     )
@@ -1680,6 +1687,11 @@ if "!cur!"=="0" (
         set "SEL_%idx%=1"
         echo %BLUE%[INFO]%NC% Selected for removal: !name!
     )
+) else if "!cur!"=="3" (
+    REM Currently upgrade -> remove
+    set "ACT_%idx%=2"
+    set "SEL_%idx%=1"
+    echo %BLUE%[INFO]%NC% Selected for removal: !name!
 ) else (
     REM Currently remove - always goes to skip
     set "ACT_%idx%=0"
@@ -1698,6 +1710,7 @@ REM ###############################################
 
 :display_action_summary
 set "install_count=0"
+set "upgrade_count=0"
 set "remove_count=0"
 
 for /L %%i in (1,1,%TOOLS_COUNT%) do (
@@ -1705,6 +1718,8 @@ for /L %%i in (1,1,%TOOLS_COUNT%) do (
     call set "act=%%act%%"
     if "!act!"=="1" (
         set /a install_count+=1
+    ) else if "!act!"=="3" (
+        set /a upgrade_count+=1
     ) else if "!act!"=="2" (
         set /a remove_count+=1
     )
@@ -1720,6 +1735,22 @@ if !install_count! GTR 0 (
         call set "act=%%ACT_%%i%%"
         call set "act=%%act%%"
         if "!act!"=="1" (
+            call set "pkg=%%PKG_%%i%%"
+            call set "pkg=%%pkg%%"
+            call set "inst=%%INST_%%i%%"
+            call set "lat=%%LAT_%%i%%"
+            call set "lat=%%lat%%"
+            echo   - !pkg!: !inst! -^> !lat!
+        )
+    )
+)
+
+if !upgrade_count! GTR 0 (
+    echo - Upgrade: !upgrade_count!
+    for /L %%i in (1,1,%TOOLS_COUNT%) do (
+        call set "act=%%ACT_%%i%%"
+        call set "act=%%act%%"
+        if "!act!"=="3" (
             call set "pkg=%%PKG_%%i%%"
             call set "pkg=%%pkg%%"
             call set "inst=%%INST_%%i%%"
@@ -1756,6 +1787,8 @@ for /L %%i in (1,1,%TOOLS_COUNT%) do (
         call set "name=%%name%%"
         if "!act!"=="1" (
             echo   %GREEN%[INSTALL]%NC% !name!
+        ) else if "!act!"=="3" (
+            echo   %CYAN%[UPGRADE]%NC% !name!
         ) else if "!act!"=="2" (
             echo   %RED%[REMOVE]%NC% !name!
         )
@@ -1859,6 +1892,8 @@ REM ###############################################
 :run_installation_steps
 set "install_success=0"
 set "install_fail=0"
+set "upgrade_success=0"
+set "upgrade_fail=0"
 set "remove_success=0"
 set "remove_fail=0"
 	
@@ -1876,6 +1911,13 @@ set "remove_fail=0"
         ) else (
             set /a install_success+=1
         )
+    ) else if "!act!"=="3" (
+        call :install_tool %%i
+        if errorlevel 1 (
+            set /a upgrade_fail+=1
+        ) else (
+            set /a upgrade_success+=1
+        )
     ) else if "!act!"=="2" (
         call :remove_tool %%i
         if errorlevel 1 (
@@ -1889,12 +1931,14 @@ set "remove_fail=0"
 	echo.
 	echo %BOLD%[RESULT]%NC%
 	call :print_sep
-	set /a "fail_total=install_fail+remove_fail"
+	set /a "fail_total=install_fail+upgrade_fail+remove_fail"
 	echo - Installed: !install_success!
+	echo - Upgraded:  !upgrade_success!
 	echo - Removed:   !remove_success!
 	echo - Failed:    !fail_total!
 	call :print_sep
 	if !install_fail! GTR 0 exit /b 1
+	if !upgrade_fail! GTR 0 exit /b 1
 	if !remove_fail! GTR 0 exit /b 1
 	exit /b 0
 
