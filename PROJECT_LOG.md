@@ -1,4 +1,116 @@
-# Project Log
+# PROJECT_LOG.md (active) — agentic-cli-installer
+Append-only history. Active file holds the most recent sessions; older ones live in logs/. Newest first.
+
+## Archives
+- logs/PROJECT_LOG_2026-H1.md — 9 sessions (2026-02 … 2026-02)
+
+## Session Index (active, newest first)
+- 2026-06-27 21:06 CDT — v1.12.0: Antigravity CLI replaces retired Gemini CLI; --gemini=no purge; multi-expert review + fixes; .bat runtime smoke test
+- 2026-04-23 — v1.11.0: Remove MoAI-ADK bootstrapper same-origin checksum verification
+- 2026-03-14 — v1.9.11: Auto PATH configuration and CLI convenience aliases in setup.sh
+- 2026-03-11 — v1.9.9: Fix conda command detection in non-interactive script context
+- 2026-03-08 14:00 CDT — v1.9.7: Reorder tools (Claude Code before MoAI-ADK), add MoAI-ADK dependency check
+- 2026-03-08 11:49 CDT — v1.9.6: Fix 3 Windows-specific bugs reported from live testing
+- 2026-03-08 00:14 CST — v1.9.5: Comprehensive codebase review, version sync, error handling fixes, Windows parity
+- 2026-02-19 — v1.9.2: oh-my-opencode installation bug fixes and feature improvements
+
+---
+
+## Session 2026-06-27 21:06 CDT
+
+**Coding CLI used:** Claude Code CLI (claude-opus-4-7)
+
+**Phase(s) worked on:**
+- v1.12.0: Replace retired Google Gemini CLI with Antigravity CLI
+
+**Concrete changes implemented:**
+1. `install_coding_tools.sh`:
+   - Added `readonly ANTIGRAVITY_INSTALL_URL="https://antigravity.google/cli/install.sh"` next to the Claude/MoAI install URLs.
+   - Replaced TOOLS entry index 4 (`@google/gemini-cli|npm|...`) in-place with `antigravity|native|antigravity|Antigravity CLI`.
+   - Added `run_antigravity_installer()` (mirrors `run_claude_installer`: curl to temp, `bash` it; notes Antigravity's own SHA-512 manifest verification).
+   - Added `antigravity` branch in `get_installed_native_version()` (`agy --version`).
+   - Added `antigravity` branch in `install_tool()` native case (install/update via `run_antigravity_installer` + `~/.local/bin` PATH note).
+   - Added `antigravity` branch in `remove_tool()` native case (`rm -f ~/.local/bin/agy`).
+   - Purged oh-my-opencode gemini auto-detect: removed dead `OHMY_REQUIRED_FLAGS` constant and the `command -v gemini` block; replaced with static `flags="$flags --gemini=no"` (oh-my-opencode v3.7.4+ requires the flag).
+   - Header + version-history comment bumped to v1.12.0.
+2. `install_coding_tools.bat` (byte-safe Python patch preserving `\r\r\n`; 16 asserted-unique replacements):
+   - Added `set "ANTIGRAVITY_INSTALL_URL=https://antigravity.google/cli/install.cmd"`.
+   - Replaced TOOL_4 + NAME_4/MGR_4(native)/PKG_4(antigravity)/DESC_4/BIN_4(agy); VERARG_4 already `--version`.
+   - Added antigravity branch in `:get_installed_native_version` (`where agy` → `:get_semver_from_command "agy" "--version"`).
+   - Wired `:install_tool_native` dispatch: `if /I "!pkg!"=="antigravity" goto install_tool_antigravity`.
+   - Added `:install_tool_antigravity` (install/update; downloads `aginstall.cmd` and runs via `:run_cmd_script_isolated`) and `:download_antigravity_installer` (curl `--ssl-no-revoke` then `-k` fallback, mirroring `:download_claude_installer`).
+   - Added antigravity branch in `:remove_tool` native case (delete `%USERPROFILE%\.local\bin\agy.exe` and `…\agy`).
+   - Purged `:build_ohmy_flags_auto` gemini auto-detect; static `--gemini=no` retained.
+   - Header REM block + banner bumped to v1.12.0.
+3. `setup.sh` / `setup.bat`: version comment 1.11.0 → 1.12.0.
+4. `README.md`: header v1.12.0, Last Modified June 27 2026, Supported Tools table Gemini row → Antigravity row, prepended v1.12.0 changelog entry.
+5. `CHANGELOG.md`: added `## [1.12.0] - 2026-06-27` (Added: Antigravity CLI native installer; Removed: Gemini CLI).
+6. `PROJECT_HANDOFF.md`: full refresh to v1.12.0 current truth.
+
+**Files/modules/functions touched:**
+- `install_coding_tools.sh`: `ANTIGRAVITY_INSTALL_URL`, TOOLS array, `run_antigravity_installer`, `get_installed_native_version`, `install_tool`, `remove_tool`, `build_ohmy_flags_from_installed_tools`, header/banner
+- `install_coding_tools.bat`: `ANTIGRAVITY_INSTALL_URL`, TOOL_4 block, `:get_installed_native_version`, `:install_tool_native`, `:install_tool_antigravity`, `:download_antigravity_installer`, `:remove_tool`, `:build_ohmy_flags_auto`, header/banner
+- `setup.sh`, `setup.bat`, `README.md`, `CHANGELOG.md`, `PROJECT_HANDOFF.md`, `PROJECT_LOG.md`
+
+**Key technical decisions and rationale:**
+- Antigravity CLI is a native curl-bootstrapper tool (binary `agy` → `~/.local/bin`), NOT npm. So it follows the Claude Code / MoAI-ADK native-installer pattern, not the Gemini npm-array pattern. Verified from the official `google-antigravity/antigravity-cli` repo and the live `https://antigravity.google/cli/install.sh` (which itself does SHA-512 manifest verification — so no bootstrapper checksum, consistent with v1.11.0's same-origin-checksum removal philosophy).
+- Chose to replace Gemini in-place at tool index 4 (rather than regroup natives) to minimize churn in the fragile `\r\r\n` `.bat`.
+- oh-my-opencode purge: the v1.9.2 session log records that oh-my-opencode v3.7.4+ *requires* the `--gemini` argument. Removing it outright would break oh-my-opencode installation, so the dynamic `command -v gemini`/`where gemini` detection was purged but `--gemini=no` is emitted statically. Flagged as a partial-purge caveat.
+- `.bat` edit done via latin-1 round-trip Python patcher (`/tmp` write blocked by sandbox → wrote scratch `_bat_patch_v1120.py` in-repo, deleted after). Each of 16 replacements asserted to match exactly once; the script aborted without writing on the first attempt because the `:run_cmd_script_isolated` region (added v1.10.0) uses single `\r\n`, not `\r\r\n` — corrected the anchor and re-ran successfully.
+- Version: v1.12.0 (minor bump; removing a menu tool is breaking, but project convention uses minor bumps for tool-list changes).
+
+**Problems encountered and resolutions:**
+- `install_coding_tools.bat` uses `\r\r\n` (double-CR+LF) line endings; the Edit tool cannot match it. Solved with a byte-safe Python patcher (latin-1 decode → exact substring replace → latin-1 encode).
+- Initial patcher run failed R12: the `REM Run third-party batch installers … so they cannot` line is `\r\n`-terminated (that whole `:run_cmd_script_isolated` block from v1.10.0 is single-CRLF, unlike the surrounding `\r\r\n`). Fixed the anchor terminator and re-ran; file on disk was never partially written (patcher writes only after all asserts pass).
+
+**Items explicitly completed, resolved, or superseded in this session:**
+- Completed: v1.12.0 — Antigravity CLI added, Gemini CLI removed, oh-my-opencode gemini auto-detect purged, version bump + docs.
+- Resolved: Gemini CLI retired; installer now offers its Antigravity CLI replacement.
+
+**Verification performed:**
+- `bash -n install_coding_tools.sh setup.sh auto_install_coding_tools` — all pass.
+- `file install_coding_tools.bat setup.bat` — CRLF/CR line endings preserved.
+- `grep -rn 'gemini-cli\|@google/gemini' install_coding_tools.{sh,bat}` — zero matches.
+- `grep antigravity/agy/ANTIGRAVITY_INSTALL_URL` — present at all expected sites in both installers.
+- TOOLS_COUNT=7 (.bat) and 7-entry TOOLS array (.sh) confirmed.
+- Version v1.12.0 consistent across all files; CHANGELOG descending with no duplicates.
+- `./install_coding_tools.sh --help` exits 0.
+
+**Not yet verified (deferred to user):** live `agy` install on Linux/WSL + Windows; `agy --version` actual output.
+
+**Follow-up (same session, later turn) — `--gemini=no` full purge:**
+- User asked to double-check oh-my-opencode's latest version re: the retired Gemini CLI. npm-registry audit (`https://registry.npmjs.org/oh-my-opencode`) confirmed: latest `4.13.0` (published 2026-06-22); CLI binary (`bin/oh-my-opencode.js`) first added in `v2.5.0` (2025-12-23); product rebranded to `oh-my-openagent` at `v4.0.0` (2026-05-07); install model is interactive or `--platform=opencode|codex|both`. **No `--gemini` install flag exists in any published version.** The v1.9.2 session log's "oh-my-opencode v3.7.4+ requires `--claude`/`--gemini`/`--copilot` flags" claim was incorrect.
+- Conclusion: the static `--gemini=no` retained earlier this session is vestigial and actively harmful — passing an unknown flag to oh-my-opencode v4.x's commander-based CLI risks erroring out and breaking the install.
+- User chose "Purge `--gemini=no` only" (targeted fix; sibling `--claude`/`--openai`/`--copilot` provider flags left for a separate follow-up).
+- Changes: removed the static `--gemini=no` line + its rationale comment from `install_coding_tools.sh` (`build_ohmy_flags_from_installed_tools`) and `install_coding_tools.bat` (`:build_ohmy_flags_auto`, via byte-safe Python patcher for the `\r\r\n` endings); updated the v1.12.0 changelog comments in both script headers; rewrote the `:build_ohmy_flags_auto` header REM to drop the false "v3.7.4+ requires" claim; updated README v1.12.0 "Gemini CLI removed" bullet and CHANGELOG `[1.12.0]` Removed entry; flipped the PROJECT_HANDOFF risk row from Mitigated→Resolved and added a follow-up Outstanding item about the broader provider-flag staleness.
+- Verified: `bash -n install_coding_tools.sh` PASS; `.bat` line endings preserved (`file` still CRLF/CR); zero functional `--gemini=no` flag code remains (grep hits are all in changelog comments describing the purge).
+- Open follow-up (superseded by the multi-expert review below): the remaining `--claude`/`--openai`/`--copilot`/`--opencode-zen`/`--zai-coding-plan` flags in `build_ohmy_flags_*` — the review confirmed these ARE documented and valid, NOT vestigial.
+
+**Follow-up (same session) — multi-expert review + high-confidence fixes:**
+- User requested a team review of the whole project (logic vs. official docs, Antigravity correctness, prerequisites, with emphasis on Windows `.bat` ↔ Linux `.sh` parity). Spawned 4 parallel read-only agents: official-docs verifier (general-purpose + web), installer-logic/parity reviewer (expert-devops), security reviewer (expert-security), independent synthesis (evaluator-active).
+- **Key conflict resolved:** the docs-verifier fetched the official oh-my-openagent install guide and found `--gemini=yes|no` (and the sibling provider flags) ARE documented — disproving the earlier "never existed" rationale (which was based on an npm-only audit; `package.json` doesn't list CLI flags). Corrected the rationale across CHANGELOG, README, PROJECT_HANDOFF, PROJECT_LOG, and both script headers. The `--gemini=no` removal itself stands (it's the redundant default; Gemini CLI retired).
+- **Applied high-confidence fixes (all verified against code first):**
+  - **P0** `.bat` MoAI-ADK Claude prereq: `where claude >/dev/null 2>nul` → `>nul 2>nul`. The Unix `/dev/null` on Windows silently defeated the prerequisite check (empirically confirmed). (logic-reviewer F1)
+  - **P1** `.sh` menu banner `v1.11.0` → `v1.12.0` (parity regression missed by the v1.12.0 bump). (logic-reviewer F2, evaluator #3)
+  - **P1** `.bat` removed duplicate `exit /b 0` at end of `:build_ohmy_flags_auto`. (logic-reviewer F7)
+  - **P1** `.bat` removed `npm install -g oh-my-opencode@latest` upgrade step — official docs prohibit global install; `.sh` doesn't do it. (docs-verifier F3)
+  - **P1** `.bat` Antigravity remove: added post-`del` existence checks (was unconditionally `exit /b 0`). (logic-reviewer F5, evaluator #4)
+  - **P1** `.sh` Antigravity install: added `get_installed_native_version` post-install verify mirroring MoAI's `after_version` pattern. (evaluator #4)
+  - **P2** `.bat` deleted dead `:get_installed_uv_version2` + `:get_installed_npm_version2` (zero callers; anchor-slice patcher). (logic-reviewer F6)
+  - **P2** `.sh` deleted dead `validate_removal()` (zero callers). (logic-reviewer F18)
+- **Verification:** `bash -n` PASS; `.bat` endings preserved (CRLF/CR); all 14 grep/structure checks pass; temp patchers deleted.
+- **Deferred to report (lower confidence or policy/product decisions):** Windows `curl -k` + `--ssl-no-revoke` insecure fallback (security S1/S2 — real MITM risk, but removing may break corporate-proxy users; needs a product call); Authenticode check runs after execution and doesn't block (S3); dangerous aliases `ccdd`/`codexD` (S8 — deliberate feature); `.sh`↔`.bat` state-machine divergence 4-vs-3 actions (logic F3 — UX); Claude Code sandbox/Playwright setup missing on Windows (logic F4 — large feature gap); `agy --version` flag unverified (logic F9 — needs the live binary); setup.bat parity gap (logic F13); `\r\r\n` whole-file normalization (logic F15/sec S10 — dedicated commit); Codex/OpenCode use npm fallback rather than primary bootstrapper (docs F1/F2 — works, just not "recommended").
+
+**Follow-up (same session) — `.bat` runtime smoke test (cmd.exe via WSL interop):**
+- User asked whether the `.bat` is "completely functional" / thoroughly tested. Answer: **no** — but obtained new runtime evidence.
+- Ran `cmd.exe /c install_coding_tools.bat` (stdin closed, timeout). **First run was invalid**: cmd.exe rejected the WSL UNC cwd, defaulted to `C:\Windows`, and executed a **stale PATH-deployed v1.11.0 copy** (banner showed v1.11.0, slot 4 "Google Gemini CLI"). Side finding: a stale v1.11.0 `install_coding_tools.bat` is deployed on the Windows PATH; the next `setup.bat` run refreshes it.
+- Re-ran against the **actual working-tree file** (copied to `%TEMP%`, invoked by absolute Windows path): cmd.exe **parsed all 2500 lines and ran startup → prefetch → menu render** with no syntax error; banner read **v1.12.0**, slot 4 read **"Antigravity CLI"**; exited cleanly on closed stdin. Confirms the file is syntactically valid and the byte-safe review patches didn't corrupt parseability.
+- **Still NOT exercised:** install/update/remove execution flows for any tool; the specific fixes in their trigger paths (MoAI prereq fires only on MoAI install; Antigravity verify only on Antigravity install/remove; oh-my-opencode npm-removal only on upgrade); `agy --version` correctness (Antigravity not installed here → showed "Unknown").
+- User declined a live Antigravity install test (mutates Windows env); stopped here. All findings recorded in PROJECT_HANDOFF §6.
+
+---
+
+---
 
 ## Session 2026-04-23
 
@@ -54,6 +166,8 @@
 
 ---
 
+---
+
 ## Session 2026-03-14
 
 **Coding CLI used:** Claude Code CLI (claude-opus-4-6)
@@ -101,6 +215,8 @@
 - `bash -n install_coding_tools.sh setup.sh auto_install_coding_tools` — all pass
 - Version consistency across all 6 files — all show v1.9.11
 - CHANGELOG ordering — no duplicates, correct descending order
+
+---
 
 ---
 
@@ -163,6 +279,8 @@
 
 ---
 
+---
+
 ## Session 2026-03-08 14:00 CDT
 
 **Coding CLI used:** Claude Code CLI (claude-opus-4-6)
@@ -209,6 +327,8 @@
 - CHANGELOG ordering — no duplicates, correct descending order
 - Tool order verified in both .sh and .bat
 - Dependency check code reviewed in both .sh and .bat
+
+---
 
 ---
 
@@ -260,6 +380,8 @@
 - Confirmed `--ssl-no-revoke` present in both curl commands
 - Confirmed `2>nul` present in check_npm_claude_code
 - Git commit `1566742` pushed to origin/master
+
+---
 
 ---
 
@@ -320,313 +442,6 @@
 - Code review of error handling fixes and gh CLI function insertion
 
 ---
-
-## Session 2026-02-14 (Evening)
-
-**Coding CLI used:** Claude Code CLI (claude-opus-4-6)
-
-**Phase(s) worked on:**
-- v1.8.0: Windows oh-my-opencode detection and cache fixes
-
-**Concrete changes implemented:**
-1. Fixed oh-my-opencode detection on Windows - added fallback text search using `findstr`
-2. Added post-installation verification for oh-my-opencode to confirm plugin registration
-3. Fixed npm version comparison to use delayed expansion (`!NPM_VERSION!` instead of `%NPM_VERSION%`)
-4. Added npm cache invalidation after package removal to prevent stale "installed" status
-
-**Files/modules/functions touched:**
-- `install_coding_tools.bat`:
-  - Updated version header to v1.8.0
-  - Modified `get_oh_my_opencode_plugin_spec` to add findstr fallback
-  - Modified `install_oh_my_opencode` to add verification after installation
-  - Fixed `ensure_npm_prerequisite` to use delayed expansion for version comparison
-  - Added cache invalidation in npm removal section (`NPM_LIST_JSON_READY=0`)
-- `install_coding_tools.sh`: Version bump to v1.8.0
-- `CHANGELOG.md`: Added v1.8.0 entry
-- `README.md`: Version bump and changelog update
-- `setup.sh`: Version bump to v1.8.0
-- `PROJECT_HANDOFF.md`: Updated current state
-- `PROJECT_LOG.md`: This entry
-
-**Key technical decisions and rationale:**
-- Fallback detection uses `findstr` for simple text search when PowerShell JSON parsing fails
-- Cache invalidation ensures fresh version data after removal operations
-- Delayed expansion fix ensures version variables are evaluated at runtime, not parse time
-
-**Problems encountered and resolutions:**
-- User reported oh-my-opencode showed "Not Installed" after successful installation
-  - Root cause: PowerShell JSON parsing might fail silently
-  - Resolution: Added findstr fallback detection
-- User reported Jules showed "Installed" after removal
-  - Root cause: npm list cache not invalidated after removal
-  - Resolution: Clear cache flags after npm uninstall
-
-**Items completed in this session:**
-- v1.8.0: Windows detection and cache fixes
-
-**Verification performed:**
-- Code review of all changes
-- Version consistency check across all files
-
----
-
-## Session 2026-02-14 (Afternoon)
-
-**Coding CLI used:** Claude Code CLI (claude-opus-4-6)
-
-**Phase(s) worked on:**
-- v1.7.20: Line ending normalization and version sync
-- v1.7.21: GitHub CLI auto-installation for moai-adk
-
-**Concrete changes implemented:**
-1. Normalized `install_coding_tools.bat` line endings from mixed CRLF/LF to consistent CRLF
-2. Added `install_gh_cli()` function to check and install GitHub CLI via conda-forge
-3. Added `show_gh_auth_reminder()` function to display authentication instructions
-4. Integrated gh CLI installation into moai-adk installation flow
-
-**Files/modules/functions touched:**
-- `install_coding_tools.sh`:
-  - Added `install_gh_cli()` function (lines 444-483)
-  - Added `show_gh_auth_reminder()` function (lines 485-491)
-  - Modified moai-adk installation section to call gh CLI functions
-- `install_coding_tools.bat`: Normalized line endings to CRLF
-- `CHANGELOG.md`: Added v1.7.20 and v1.7.21 entries
-- `README.md`: Updated version and changelog
-- `setup.sh`: Version bump to v1.7.21
-
-**Key technical decisions and rationale:**
-- GitHub CLI is installed via conda-forge to maintain consistency with the project's conda-first approach
-- gh CLI check runs before moai installer to ensure dependency is available
-- Authentication reminder shown after successful installation as a non-blocking message
-
-**Problems encountered and resolutions:**
-- Mixed line endings in .bat file caused git diff to show 512 insertions/deletions
-- Resolved by normalizing to CRLF using dos2unix/unix2dos
-
-**Items completed in this session:**
-- v1.7.20: Line ending normalization
-- v1.7.21: GitHub CLI auto-installation for moai-adk
-
-**Verification performed:**
-- `file install_coding_tools.bat` confirmed CRLF-only line endings
-- `git status` confirmed sync with origin/master
-- Code review of new functions
-
----
-
-## Session 2026-02-14 (Morning)
-
-**Coding CLI used:** Claude Code CLI
-
-**Phase(s) worked on:**
-- Documentation review and version synchronization after external changes
-
-**Concrete changes implemented:**
-1. Reviewed changes made to `install_coding_tools.bat` by another agent
-2. Identified v1.7.18-1.7.19 changes: Node.js floor enforcement, tool list updates, moai installer improvements
-3. Updated all project files to consistent v1.7.20 version
-
-**Files touched:**
-- `README.md`: Version and changelog updates
-- `CHANGELOG.md`: Version entries
-- `setup.sh`: Version bump
-- `install_coding_tools.bat`: Version bump
-
----
-
-## Session 2026-02-12
-
-**Coding CLI used:** Claude Code CLI
-
-**Phase(s) worked on:**
-- Windows installer alignment with Unix features
-- oh-my-opencode as first-class menu item
-
-**Concrete changes implemented:**
-1. Fixed `auto_install_coding_tools` script location resolution
-2. Added `oh-my-opencode` as standalone menu item in Windows batch file
-3. Improved addon installation skip logic when already registered
-
----
-
-## Session 2026-02-07 to 2026-02-09
-
-**Coding CLI used:** Claude Code CLI
-
-**Phase(s) worked on:**
-- v1.7.13-1.7.19: Multiple bug fixes and feature additions
-
-**Key changes:**
-- v1.7.13: oh-my-opencode plugin detection fix (.plugin singular)
-- v1.7.14: log_warning() stderr output fix
-- v1.7.15: Seccomp filter auto-installation
-- v1.7.16: Playwright CLI auto-installation
-- v1.7.17: Playwright MCP global auto-installation
-- v1.7.18: Node.js floor enforcement, removed mistral-vibe
-- v1.7.19: Windows tool index fix with dynamic TOOLS_COUNT
-
----
-
-## Session 2026-02-15
-
-**Coding CLI used:** Claude Code CLI (glm-4.7)
-
-**Phase(s) worked on:**
-- v1.8.1: jq auto-installation for moai-adk
-- Version consistency verification
-- External GitHub issue creation for moai-adk bugs
-
-**Concrete changes implemented:**
-1. Added `install_jq()` function to check and install jq via conda-forge before moai-adk installation
-2. Added jq auto-installation to both Unix/WSL and Windows installers
-3. Updated setup.bat version from v1.7.6 to v1.8.1 (was missed in previous release)
-4. Created GitHub issue #381 for moai-adk settings.json corruption bug
-5. Created GitHub issue #382 for moai-adk MoAI output style localization bug
-
-**Files/modules/functions touched:**
-- `install_coding_tools.sh`:
-  - Added `install_jq()` function (after `show_gh_auth_reminder()`)
-  - Modified moai-adk installation to call `install_jq` before `install_gh_cli`
-  - Version bump to v1.8.1
-- `install_coding_tools.bat`:
-  - Added `:install_jq` function (after Claude installation section)
-  - Modified `:install_tool_moai` to call `install_jq` before running moai installer
-  - Version bump to v1.8.1
-- `setup.bat`: Version bump from v1.7.6 to v1.8.1
-- `setup.sh`: Version bump to v1.8.1
-- `CHANGELOG.md`: Added v1.8.1 entry
-- `README.md`: Version bump to v1.8.1, added changelog entry
-- `PROJECT_HANDOFF.md`: Updated current state to v1.8.1
-- `PROJECT_LOG.md`: This entry
-
-**Key technical decisions and rationale:**
-- jq is installed via conda-forge to maintain consistency with the project's conda-first approach
-- jq check runs before moai-adk installer to prevent settings.json corruption
-- If conda is unavailable, shows warning but continues (non-blocking)
-- setup.bat version was outdated (v1.7.6) - now synchronized to v1.8.1
-
-**Problems encountered and resolutions:**
-- User reported moai-adk installation corrupts `~/.claude/settings.json` when jq is not installed
-  - Root cause: moai-adk's installer falls back to sed-based JSON editing which corrupts pretty-printed JSON
-  - Resolution: Added jq auto-installation before moai-adk runs
-  - External: Created GitHub issue #381 documenting the upstream bug
-
-**Items completed in this session:**
-- v1.8.1: jq auto-installation for moai-adk
-- GitHub issue #381: moai-adk settings.json corruption bug report
-- GitHub issue #382: moai-adk MoAI output style localization bug report
-- Version consistency fix: setup.bat updated to v1.8.1
-
-**Verification performed:**
-- Code review of install_jq() function in both .sh and .bat
-- grep search for version consistency across all files
-- git commit and push to origin/master (commit: 1bcd512)
-
-**External issues reported:**
-- moai-adk issue #381: https://github.com/modu-ai/moai-adk/issues/381
-- moai-adk issue #382: https://github.com/modu-ai/moai-adk/issues/382
-
-**Deferred items:**
-- uv self-update functionality: Not implemented as no tools in TOOLS array use uv as their package manager
-
----
-
-## Session 2026-02-18
-
-**Coding CLI used:** OpenCode (this session)
-
-**Phase(s) worked on:**
-- Post-release maintenance (v1.9.0)
-
-**Concrete changes implemented:**
-1. Fixed `oh-my-opencode` installed version reporting in `install_coding_tools.sh` to read the resolved version from OpenCode cache instead of mirroring npm registry `latest`.
-2. Restored compatibility for the documented legacy flag `--skip-system-npm` in `install_coding_tools.sh` (deprecated no-op).
-3. Added minimal safety guard rails to `setup.sh` (non-interactive prompt handling, shell config backup, refusal to overwrite symlinks/non-file targets, non-fatal WSL Windows-path install failure).
-4. Version bumped to v1.9.0 across docs and scripts touched.
-
-**Files/modules/functions touched:**
-- `install_coding_tools.sh`:
-  - Added `--skip-system-npm` argument support and a deprecation note
-  - Updated `get_installed_addon_version()` to resolve installed addon version from OpenCode cache (`$XDG_CACHE_HOME/opencode`)
-  - Updated `version_compare()` to handle unknown/non-semver values safely
-  - Added forced reinstall path for oh-my-opencode reinstall flow
-- Version bump to v1.9.0
-- `setup.sh`:
-  - Fixed timestamp validation error path before logger initialization
-  - Non-interactive prompt behavior uses default without blocking
-  - Shell config backup before PATH modification
-  - Refuse overwrite of symlinks/non-file targets
-  - WSL Windows-path install failure becomes non-fatal
-- Version bump to v1.9.0
-- `README.md`: Version bump to v1.9.0 and changelog entry
-- `CHANGELOG.md`: Added v1.9.0 entry
-- `PROJECT_HANDOFF.md`: Updated current state to v1.9.0
-- `PROJECT_LOG.md`: This entry
-
-**Verification performed:**
-- `bash -n` on `install_coding_tools.sh`, `setup.sh`, and `auto_install_coding_tools`
-- `./setup.sh --help` and `./install_coding_tools.sh --help`
-- `./setup.sh --force --configure-path` in a temp HOME (deploy + PATH edit)
-- Simulated `oh-my-opencode` cache state and verified installed version display
-- Verified CRLF line endings for `setup.bat` and `install_coding_tools.bat`
-
----
-
-## Session 2026-02-18 (Micro Release)
-
-**Coding CLI used:** OpenCode (this session)
-
-**Phase(s) worked on:**
-- v1.9.1 micro version update and release
-
-**Concrete changes implemented:**
-1. Updated version references from v1.9.0 to v1.9.1 across scripts and release documents.
-2. Finalized `oh-my-opencode` installed-version precedence fix in both Unix and Windows installers.
-3. Kept unrelated local files (`.gitignore`, `CLAUDE.md`, `.claude/`, `.moai/`, `.archive/`) out of release scope.
-
-**Files/modules/functions touched:**
-- `install_coding_tools.sh`: version bump; `get_installed_addon_version()` precedence uses npm global first.
-- `install_coding_tools.bat`: version bump; `:get_installed_addon_version` precedence aligned with Unix logic.
-- `setup.sh`: version bump.
-- `setup.bat`: version bump.
-- `README.md`: v1.9.1 section added.
-- `CHANGELOG.md`: v1.9.1 entry added.
-- `PROJECT_HANDOFF.md`: current state and verification updated to v1.9.1.
-- `PROJECT_LOG.md`: this entry.
-
-**Verification performed:**
-- `bash -n install_coding_tools.sh setup.sh auto_install_coding_tools`
-- `./setup.sh --help` and `./install_coding_tools.sh --help`
-- `npm list -g --depth=0 oh-my-opencode` compared against installer menu display logic
-- `file install_coding_tools.bat setup.bat` to confirm CRLF line endings
-
----
-
-## Session 2026-02-18 16:37
-
-- Coding CLI used: OpenCode
-- Phase(s) worked on:
-  - End-of-session state consolidation and handoff finalization
-- Concrete changes implemented:
-  - Reframed `PROJECT_HANDOFF.md` into current authoritative state with explicit status markers and timestamps.
-  - Added phase-based execution status with timestamps and revision notes.
-  - Normalized outstanding-work section to active-only state with explicit reference to latest log session.
-  - Updated verification section to include verified and not-yet-verified items with rationale.
-  - Added restart instructions with exact commit starting point and next actions.
-- Files/modules/functions touched:
-  - `PROJECT_HANDOFF.md` (full living-state refresh)
-  - `PROJECT_LOG.md` (append-only entry)
-- Key technical decisions and rationale:
-  - Treated `PROJECT_HANDOFF.md` as authoritative current truth; removed historical clutter from active sections.
-  - Preserved completed history in `PROJECT_LOG.md` only, while referencing latest session from handoff for restart speed.
-  - Kept unresolved upstream items visible as active risks without re-opening completed implementation work.
-- Problems encountered and resolutions:
-  - None blocking.
-- Items explicitly completed, resolved, or superseded in this session:
-  - Completed: session-end handoff update with timestamped status markers.
-  - Superseded: previous handoff layout replaced by stricter active-truth structure.
-- Verification performed (if any):
-  - Verified handoff references current release commit `d5379db` and active state consistency with latest release notes.
 
 ---
 
@@ -699,3 +514,4 @@
 - Both .sh and .bat updated with proper upgrade flow
 - Verified npm update works: 3.3.1 → 3.7.4
 
+---

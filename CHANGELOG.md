@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.0] - 2026-06-27
+
+### Added
+
+- **Antigravity CLI** (replaces the retired Gemini CLI): installed as a native binary via Google's official bootstrapper. Unix/WSL curls `https://antigravity.google/cli/install.sh` (`run_antigravity_installer()`); Windows downloads `https://antigravity.google/cli/install.cmd` and runs it through `:install_tool_antigravity` → `:run_cmd_script_isolated`. The bootstrapper writes the `agy` command to `~/.local/bin`, performs its own SHA-512 manifest verification of the downloaded binary, and self-updates in the background. Native version detection uses `agy --version`; removal deletes `~/.local/bin/agy`.
+
+### Removed
+
+- **Gemini CLI** (`@google/gemini-cli`): dropped from both installers (tool index 4 in each) — Google has retired it. Its oh-my-opencode `--gemini` auto-detect (`command -v gemini` / `where gemini`) **and** the static `--gemini=no` flag were both removed. The `--gemini=yes|no` flag IS documented in oh-my-opencode's official install guide (it configures Gemini model integration), but `--gemini=no` is the default — so omitting it is behaviorally safe, and with Gemini CLI retired `=no` is the desired value either way. The flag was removed to reduce noise, not because it was invalid. (An earlier draft of this entry incorrectly claimed the flag never existed; that was wrong — npm `package.json` doesn't list CLI flags, but the install guide does.)
+
+---
+
 ## [1.11.0] - 2026-04-23
 
 ### Removed

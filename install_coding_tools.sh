@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.11.0
+# Agentic Coders Installer v1.12.0
 # Interactive installer for AI coding CLI tools
 #
 # Version history: v1.7.6 added security improvements, v1.7.12 fixed oh-my-opencode version detection
@@ -18,6 +18,11 @@ set -euo pipefail
 # v1.10.0 fix Claude Code CLI installation failure on Windows (isolated child cmd.exe)
 # v1.11.0 remove MoAI-ADK bootstrapper same-origin checksum (upstream doesn't publish .sha256;
 #         check was security theater. MoAI-ADK's own downstream binary verification is preserved)
+# v1.12.0 replace retired Gemini CLI with Antigravity CLI (native `agy` installer);
+#         purge the Gemini CLI entry, its oh-my-opencode auto-detect, AND the static
+#         --gemini=no flag (--gemini=no is the documented default in oh-my-opencode's install
+#         guide, so omitting it is behaviorally safe; Gemini CLI is retired). Earlier
+#         "v3.7.4+ requires --gemini" and "the flag never existed" notes were both inaccurate.
 # - Secure temporary file creation with restrictive permissions
 # - TLS-pinned downloads via curl --proto '=https' --tlsv1.2
 #############################################
@@ -70,6 +75,7 @@ readonly STATE_DIR="$HOME/.local/share/agentic-cli-installer"
 readonly MOAI_STATE_FILE="$STATE_DIR/moai-adk.path"
 readonly CLAUDE_INSTALL_URL="https://claude.ai/install.sh"
 readonly MOAI_INSTALL_URL="https://raw.githubusercontent.com/modu-ai/moai-adk/main/install.sh"
+readonly ANTIGRAVITY_INSTALL_URL="https://antigravity.google/cli/install.sh"
 # Note: the MoAI-ADK bootstrapper is fetched over TLS from GitHub. The MoAI-ADK
 # installer itself verifies the SHA-256 of the downloaded binary tarball against
 # a hash committed to its release metadata, so redundant same-origin checksum
@@ -80,7 +86,7 @@ declare -a TOOLS=(
     "claude-code|native|claude-code|Claude Code CLI"
     "moai-adk|native|moai-adk|MoAI Agent Development Kit"
     "@openai/codex|npm|@openai/codex|OpenAI Codex CLI"
-    "@google/gemini-cli|npm|@google/gemini-cli|Google Gemini CLI"
+    "antigravity|native|antigravity|Antigravity CLI"
     "@google/jules|npm|@google/jules|Google Jules CLI"
     "opencode-ai|npm|opencode-ai|OpenCode AI CLI"
     "oh-my-opencode|addon|oh-my-opencode|OpenCode - oh-my-opencode"
@@ -861,6 +867,35 @@ run_moai_installer() {
     return "$rc"
 }
 
+run_antigravity_installer() {
+    local tmp
+    if ! tmp=$(mktemp); then
+        log_error "Failed to create temporary file for installer."
+        return 1
+    fi
+
+    chmod 600 "$tmp" 2>/dev/null || true
+
+    # Download the Antigravity CLI installer from the official Google URL.
+    # Integrity is provided by TLS plus the Antigravity installer's own
+    # SHA-512 manifest verification of the downloaded native binary
+    # (it writes the `agy` binary to ~/.local/bin and self-updates in the background).
+    if ! curl -fsSL --proto '=https' --tlsv1.2 "$ANTIGRAVITY_INSTALL_URL" -o "$tmp"; then
+        log_error "Failed to download Antigravity CLI installer."
+        rm -f "$tmp"
+        return 1
+    fi
+
+    if bash "$tmp"; then
+        rm -f "$tmp"
+        return 0
+    fi
+
+    local rc=$?
+    rm -f "$tmp"
+    return "$rc"
+}
+
 #############################################
 # VERSION QUERY FUNCTIONS
 #############################################
@@ -1087,6 +1122,11 @@ get_installed_native_version() {
             if [[ -n "$moai_out" ]]; then
                 echo "$moai_out" | sed -E 's/.*([0-9]+\.[0-9]+\.[0-9]+).*/\1/' || true
             fi
+        fi
+    elif [[ "$pkg" == "antigravity" ]]; then
+        # Antigravity CLI installs the `agy` binary to ~/.local/bin
+        if command -v agy >/dev/null 2>&1; then
+            agy --version 2>/dev/null | head -n1 | sed -E 's/.*([0-9]+\.[0-9]+\.[0-9]+).*/\1/' || true
         fi
     fi
 }
@@ -1485,7 +1525,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.11.0" \
+        "Agentic Coders CLI Installer v1.12.0" \
         "Toggle: skip->install->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"
@@ -1829,9 +1869,6 @@ get_user_selection() {
 # INSTALLATION FUNCTIONS
 #############################################
 
-# Required provider flags for oh-my-opencode (v3.7.4+ requires these)
-OHMY_REQUIRED_FLAGS="--claude=no --gemini=no --copilot=no"
-
 # Build oh-my-opencode flags based on installed tools (auto-detect)
 build_ohmy_flags_from_installed_tools() {
     local flags="--no-tui"
@@ -1848,13 +1885,6 @@ build_ohmy_flags_from_installed_tools() {
         flags="$flags --openai=yes"
     else
         flags="$flags --openai=no"
-    fi
-
-    # Auto-detect Google Gemini
-    if command -v gemini >/dev/null 2>&1; then
-        flags="$flags --gemini=yes"
-    else
-        flags="$flags --gemini=no"
     fi
 
     # GitHub Copilot - default to no (requires special setup)
@@ -2158,6 +2188,29 @@ install_tool() {
                     log_error "Failed to install/update ${name}"
                     return 1
                 fi
+            elif [[ "$pkg" == "antigravity" ]]; then
+                # Antigravity CLI: native installer -> ~/.local/bin/agy (self-updates in background)
+                if [[ "$installed_version" == "Not Installed" ]]; then
+                    printf "Installing via native installer...\n"
+                else
+                    printf "Updating via native installer...\n"
+                fi
+                if run_antigravity_installer; then
+                    local agy_version
+                    agy_version=$(get_installed_native_version "$pkg")
+                    if [[ -z "$agy_version" ]]; then
+                        log_error "Antigravity CLI installer completed but agy command is not available."
+                        return 1
+                    fi
+                    if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+                        printf "  ${YELLOW}Note: $HOME/.local/bin should be in your PATH${NC}\n"
+                    fi
+                    log_success "Installed/updated ${name} (${agy_version})"
+                    return 0
+                else
+                    log_error "Failed to install/update ${name}"
+                    return 1
+                fi
             fi
             ;;
         npm-self)
@@ -2313,6 +2366,21 @@ remove_tool() {
                     log_error "Failed to remove ${name}"
                     return 1
                 fi
+            elif [[ "$pkg" == "antigravity" ]]; then
+                # Antigravity CLI: remove the agy binary (installer writes to ~/.local/bin/agy)
+                printf "Uninstalling (native)...\n"
+                local removed=false
+                if [[ -f "$HOME/.local/bin/agy" ]]; then
+                    rm -f "$HOME/.local/bin/agy"
+                    removed=true
+                fi
+                if $removed; then
+                    log_success "Removed ${name}"
+                    return 0
+                else
+                    log_error "Failed to remove ${name}"
+                    return 1
+                fi
             fi
             ;;
         npm-self)
@@ -2321,18 +2389,6 @@ remove_tool() {
             return 1
             ;;
     esac
-}
-
-validate_removal() {
-    local name=$1
-    local installed_version=$2
-
-    if [[ "$installed_version" == "Not Installed" ]]; then
-        log_error "Cannot remove ${name}: Not installed"
-        return 1
-    fi
-
-    return 0
 }
 
 display_action_summary() {

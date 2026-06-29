@@ -3,11 +3,15 @@ setlocal EnableDelayedExpansion
 set "SCRIPT_DIR=%~dp0"
 
 REM ###############################################
-REM Agentic Coders Installer v1.11.0
+REM Agentic Coders Installer v1.12.0
 REM Interactive installer for AI coding CLI tools
 REM Windows version (run in Anaconda Prompt or CMD)
 REM
-REM Recent improvements (v1.7.13-v1.11.0):
+REM Recent improvements (v1.7.13-v1.12.0):
+REM - v1.12.0: Replace retired Gemini CLI with Antigravity CLI (native agy installer);
+REM            purge Gemini CLI entry + oh-my-opencode --gemini auto-detect + static --gemini=no
+REM            (--gemini=no is the documented default; omitting it is safe and Gemini CLI is retired.
+REM             Earlier 'never had a --gemini flag' rationale was incorrect - the flag IS documented.)
 REM - v1.11.0: Remove MoAI-ADK bootstrapper same-origin checksum (MoAI-ADK's own
 REM            downstream binary verification is preserved)
 REM - v1.10.0: Fix Claude Code CLI installation failure on Windows
@@ -85,6 +89,7 @@ set "STATE_DIR=%USERPROFILE%\.local\share\agentic-cli-installer"
 set "MOAI_STATE_FILE=%STATE_DIR%\moai-adk.path"
 set "CLAUDE_INSTALL_URL=https://claude.ai/install.cmd"
 set "MOAI_INSTALL_URL=https://raw.githubusercontent.com/modu-ai/moai-adk/main/install.ps1"
+set "ANTIGRAVITY_INSTALL_URL=https://antigravity.google/cli/install.cmd"
 REM MoAI-ADK bootstrapper is fetched over TLS from GitHub; the MoAI-ADK installer
 REM itself verifies the SHA-256 of the downloaded binary tarball against a hash in
 REM its release metadata, so the bootstrapper same-origin hash check was removed in v1.11.0.
@@ -94,7 +99,7 @@ set TOOLS_COUNT=7
 set "TOOL_1=claude-code|native|claude-code|Claude Code CLI"
 set "TOOL_2=moai-adk|native|moai-adk|MoAI Agent Development Kit"
 set "TOOL_3=@openai/codex|npm|@openai/codex|OpenAI Codex CLI"
-set "TOOL_4=@google/gemini-cli|npm|@google/gemini-cli|Google Gemini CLI"
+set "TOOL_4=antigravity|native|antigravity|Antigravity CLI"
 set "TOOL_5=@google/jules|npm|@google/jules|Google Jules CLI"
 set "TOOL_6=opencode-ai|npm|opencode-ai|OpenCode AI CLI"
 set "TOOL_7=oh-my-opencode|addon|oh-my-opencode|OpenCode - oh-my-opencode"
@@ -152,11 +157,11 @@ set "DESC_3=OpenAI Codex CLI"
 set "BIN_3=codex"
 set "VERARG_3=--version"
 
-set "NAME_4=Google Gemini CLI"
-set "MGR_4=npm"
-set "PKG_4=@google/gemini-cli"
-set "DESC_4=Google Gemini CLI"
-set "BIN_4=gemini"
+set "NAME_4=Antigravity CLI"
+set "MGR_4=native"
+set "PKG_4=antigravity"
+set "DESC_4=Antigravity CLI"
+set "BIN_4=agy"
 set "VERARG_4=--version"
 
 set "NAME_5=Google Jules CLI"
@@ -1129,6 +1134,12 @@ if /I "%pkg%"=="moai-adk" (
         if not defined %outvar% call :get_semver_from_command "!MOAI_BIN!" "version" "%outvar%"
     )
 )
+if /I "%pkg%"=="antigravity" (
+    where agy >nul 2>nul
+    if not errorlevel 1 (
+        call :get_semver_from_command "agy" "--version" "%outvar%"
+    )
+)
 exit /b 0
 
 REM Check for npm-installed Claude Code (for migration)
@@ -1406,7 +1417,7 @@ if "%DEBUG%"=="1" (
     cls
 )
 call :print_banner_sep
-echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.11.0%NC%
+echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.12.0%NC%
 echo Toggle: %CYAN%skip%NC% -^> %GREEN%install%NC% -^> %RED%remove%NC%  Input: 1,3,5  Enter/P=proceed  Q=quit
 call :print_banner_sep
 echo.
@@ -1927,13 +1938,7 @@ set "remove_fail=0"
 		exit /b %errorlevel%
 	)
 	echo   Addon is installed. Upgrading...
-	REM First update the npm package to latest version
-	call :resolve_conda_npm
-	if not errorlevel 1 (
-		echo   Updating oh-my-opencode npm package...
-		call "!CONDA_NPM!" install -g oh-my-opencode@latest >nul 2>nul
-	)
-	REM Then reinstall to update plugin registration
+	REM Reinstall via bunx to update to latest version and refresh plugin registration
 	call :remove_oh_my_opencode
 	call :install_oh_my_opencode
 	exit /b %errorlevel%
@@ -1941,6 +1946,7 @@ set "remove_fail=0"
 :install_tool_native
 	if /I "!pkg!"=="claude-code" goto install_tool_claude
 	if /I "!pkg!"=="moai-adk" goto install_tool_moai
+	if /I "!pkg!"=="antigravity" goto install_tool_antigravity
 	exit /b 0
 
 :install_tool_claude
@@ -2002,6 +2008,36 @@ set "remove_fail=0"
 	if %RC% NEQ 0 exit /b %RC%
 	call :best_effort_verify_claude_signature "%USERPROFILE%\.local\bin\claude.exe"
 	exit /b 0
+
+:install_tool_antigravity
+	if /I "!inst!"=="Not Installed" (
+		echo   Installing Antigravity CLI ^(native installer^)...
+	) else (
+		echo   Updating Antigravity CLI ^(native installer^)...
+	)
+	call :dbg   %BLUE%[DEBUG]%NC% run: download_antigravity_installer
+	if exist "%TEMP%\aginstall.cmd" del "%TEMP%\aginstall.cmd" >nul 2>nul
+	call :download_antigravity_installer "%TEMP%\aginstall.cmd"
+	if errorlevel 1 exit /b 1
+	call :run_cmd_script_isolated "%TEMP%\aginstall.cmd"
+	set "RC=%errorlevel%"
+	del "%TEMP%\aginstall.cmd" >nul 2>nul
+	if %RC% NEQ 0 exit /b %RC%
+	exit /b 0
+
+:download_antigravity_installer
+set "outfile=%~1"
+REM Download Antigravity CLI installer from the official Google source over HTTPS.
+REM Integrity: TLS plus the Antigravity installer's own SHA-512 manifest verification.
+curl -fsSL --ssl-no-revoke "%ANTIGRAVITY_INSTALL_URL%" -o "%outfile%"
+if errorlevel 1 (
+    curl -fsSL -k "%ANTIGRAVITY_INSTALL_URL%" -o "%outfile%"
+    if errorlevel 1 (
+        echo %RED%[ERROR]%NC% Failed to download Antigravity CLI installer
+        exit /b 1
+    )
+)
+exit /b 0
 
 REM Run third-party batch installers in a child cmd.exe so they cannot
 REM terminate or corrupt the parent installer session.
@@ -2165,7 +2201,7 @@ REM Show GitHub CLI authentication reminder
 
 :install_tool_moai
 	REM MoAI-ADK requires Claude Code CLI
-	where claude >/dev/null 2>nul
+	where claude >nul 2>nul
 	if errorlevel 1 (
 		echo %RED%[ERROR]%NC% Claude Code CLI is required for MoAI-ADK. Please install Claude Code CLI first.
 		exit /b 1
@@ -2292,8 +2328,7 @@ REM Show GitHub CLI authentication reminder
 		)
 
 :build_ohmy_flags_auto
-		REM Auto-detect installed tools and build provider flags
-		REM oh-my-opencode v3.7.4+ requires: --claude, --gemini, --copilot
+		REM Auto-detect installed tools; build provider flags for oh-my-opencode install
 		set "OHMY_FLAGS=--no-tui"
 
 		REM Claude Code
@@ -2312,14 +2347,6 @@ REM Show GitHub CLI authentication reminder
 			set "OHMY_FLAGS=!OHMY_FLAGS! --openai=no"
 		)
 
-		REM Google Gemini
-		where gemini >nul 2>nul
-		if not errorlevel 1 (
-			set "OHMY_FLAGS=!OHMY_FLAGS! --gemini=yes"
-		) else (
-			set "OHMY_FLAGS=!OHMY_FLAGS! --gemini=no"
-		)
-
 		REM GitHub Copilot - default to no
 		set "OHMY_FLAGS=!OHMY_FLAGS! --copilot=no"
 
@@ -2330,7 +2357,6 @@ REM Show GitHub CLI authentication reminder
 		set "OHMY_FLAGS=!OHMY_FLAGS! --zai-coding-plan=no"
 
 		echo   %BLUE%[INFO]%NC% Provider flags: %OHMY_FLAGS%
-		exit /b 0
 		exit /b 0
 	
 :remove_tool
@@ -2419,6 +2445,19 @@ if /I "!mgr!"=="npm-self" (
             echo %RED%[ERROR]%NC% Managed MoAI-ADK binary was not found at "!MOAI_TARGET!"
             exit /b 1
         )
+    ) else if /I "!pkg!"=="antigravity" (
+        echo   Uninstalling native...
+        call :dbg   %BLUE%[DEBUG]%NC% remove: %USERPROFILE%\.local\bin\agy
+        if exist "%USERPROFILE%\.local\bin\agy.exe" del "%USERPROFILE%\.local\bin\agy.exe" >nul 2>nul
+        if exist "%USERPROFILE%\.local\bin\agy" del "%USERPROFILE%\.local\bin\agy" >nul 2>nul
+        if exist "%USERPROFILE%\.local\bin\agy.exe" (
+            echo %RED%[ERROR]%NC% Failed to remove Antigravity CLI binary (agy.exe)
+            exit /b 1
+        )
+        if exist "%USERPROFILE%\.local\bin\agy" (
+            echo %RED%[ERROR]%NC% Failed to remove Antigravity CLI binary (agy)
+            exit /b 1
+        )
     )
     exit /b 0
 ) else (
@@ -2457,62 +2496,5 @@ if /I "!mgr!"=="npm-self" (
         echo   %GREEN%[SUCCESS]%NC% Removed oh-my-opencode via %OHMY_EXE%
         exit /b 0
     )
-
-:get_installed_uv_version2
-set "pkg=%~1"
-set "outvar=%~2"
-set "%outvar%="
-where uv >nul 2>nul
-if errorlevel 1 exit /b 0
-
-if "%UV_TOOL_LIST_READY%"=="0" (
-    if not defined UV_TOOL_LIST_CACHE set "UV_TOOL_LIST_CACHE=%TEMP%\uv_tool_list_%RANDOM%.tmp"
-    uv tool list >"!UV_TOOL_LIST_CACHE!" 2>nul
-    set "UV_TOOL_LIST_READY=1"
-)
-
-for /f "tokens=*" %%v in ('findstr /R "^%pkg% *" "%UV_TOOL_LIST_CACHE%" 2^>nul') do (
-    for /f "tokens=2" %%a in ("%%v") do set "%outvar%=%%a"
-)
-REM Remove 'v' prefix
-if defined %outvar% (
-    set "val=!%outvar%!"
-    if "!val:~0,1!"=="v" set "%outvar%=!val:~1!"
-)
-exit /b 0
-
-:get_installed_npm_version2
-set "pkg=%~1"
-set "outvar=%~2"
-set "%outvar%="
-call :resolve_conda_npm
-if errorlevel 1 exit /b 0
-
-REM Prefer filesystem-based detection to avoid false positives from a stale npm list.
-if "%NPM_ROOT_READY%"=="0" (
-    for /f "delims=" %%d in ('"!CONDA_NPM!" root -g 2^>nul') do (
-        if not "%%d"=="" set "NPM_ROOT_CACHE=%%d"
-    )
-    set "NPM_ROOT_READY=1"
-)
-if not defined NPM_ROOT_CACHE exit /b 0
-
-set "pkg_dir="
-if "%pkg:~0,1%"=="@" (
-    for /f "tokens=1,2 delims=/" %%s in ("%pkg%") do (
-        set "pkg_dir=!NPM_ROOT_CACHE!\%%s\%%t"
-    )
-) else (
-    set "pkg_dir=!NPM_ROOT_CACHE!\%pkg%"
-)
-
-if not defined pkg_dir exit /b 0
-if not exist "!pkg_dir!\package.json" exit /b 0
-
-set "pkg_json=!pkg_dir!\package.json"
-for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "$p='%pkg_json%'; try { $j = Get-Content -Raw $p | ConvertFrom-Json; if ($j -and $j.version) { $j.version } } catch { }"`) do (
-    if not "%%v"=="" set "%outvar%=%%v"
-)
-exit /b 0
 
 endlocal
