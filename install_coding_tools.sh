@@ -1896,6 +1896,9 @@ build_ohmy_flags_from_installed_tools() {
     # ZAI Coding Plan - default to no (user can enable manually if needed)
     flags="$flags --zai-coding-plan=no"
 
+    # Additional documented providers - default to no (user can enable manually)
+    flags="$flags --opencode-go=no --kimi-for-coding=no --vercel-ai-gateway=no"
+
     echo "$flags"
 }
 

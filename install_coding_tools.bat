@@ -2440,6 +2440,9 @@ REM Show GitHub CLI authentication reminder
 		REM ZAI Coding Plan - default to no
 		set "OHMY_FLAGS=!OHMY_FLAGS! --zai-coding-plan=no"
 
+		REM Additional documented providers - default to no (user can enable manually)
+		set "OHMY_FLAGS=!OHMY_FLAGS! --opencode-go=no --kimi-for-coding=no --vercel-ai-gateway=no"
+
 		echo   %BLUE%[INFO]%NC% Provider flags: %OHMY_FLAGS%
 		exit /b 0
 	
