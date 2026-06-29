@@ -680,11 +680,28 @@ if not exist "%STATE_DIR%" exit /b 1
 if errorlevel 1 exit /b 1
 exit /b 0
 
+:confirm_insecure_download
+REM %~1 = human-readable tool name. Returns 0 if the user consents to an
+REM insecure (curl -k, certificate verification DISABLED) retry, else 1.
+REM Default is N, so a closed/redirected stdin aborts (fails safe).
+echo.
+echo   %YELLOW%[WARNING]%NC% Secure download of %~1 failed ^(certificate/revocation check^).
+echo   %YELLOW%[WARNING]%NC% Retrying with certificate verification DISABLED ^(curl -k^) would
+echo   %YELLOW%[WARNING]%NC% expose this download to man-in-the-middle tampering.
+set "INSECURE_OK=N"
+set /p "INSECURE_OK=  Proceed with INSECURE download anyway? [y/N]: "
+if /I "!INSECURE_OK!"=="y" exit /b 0
+if /I "!INSECURE_OK!"=="yes" exit /b 0
+echo   %RED%[ERROR]%NC% Insecure download declined; aborting for safety.
+exit /b 1
+
 :download_claude_installer
 set "outfile=%~1"
 REM Download Claude Code installer from official Anthropic source over HTTPS
 curl -fsSL --ssl-no-revoke "%CLAUDE_INSTALL_URL%" -o "%outfile%"
 if errorlevel 1 (
+    call :confirm_insecure_download "Claude Code installer"
+    if errorlevel 1 exit /b 1
     curl -fsSL -k "%CLAUDE_INSTALL_URL%" -o "%outfile%"
     if errorlevel 1 (
         echo %RED%[ERROR]%NC% Failed to download Claude Code installer
@@ -725,7 +742,8 @@ REM Download and run MoAI-ADK installer from upstream main branch
 set "moai_tmp=%TEMP%\moai_install_%RANDOM%.ps1"
 curl -fsSL --ssl-no-revoke "%MOAI_INSTALL_URL%" -o "%moai_tmp%"
 if errorlevel 1 (
-    echo %YELLOW%[WARNING]%NC% SSL verification failed, retrying with relaxed certificate check...
+    call :confirm_insecure_download "MoAI-ADK installer"
+    if errorlevel 1 exit /b 1
     curl -fsSL -k "%MOAI_INSTALL_URL%" -o "%moai_tmp%"
     if errorlevel 1 (
         echo %RED%[ERROR]%NC% Failed to download MoAI-ADK installer
@@ -2031,6 +2049,8 @@ REM Download Antigravity CLI installer from the official Google source over HTTP
 REM Integrity: TLS plus the Antigravity installer's own SHA-512 manifest verification.
 curl -fsSL --ssl-no-revoke "%ANTIGRAVITY_INSTALL_URL%" -o "%outfile%"
 if errorlevel 1 (
+    call :confirm_insecure_download "Antigravity CLI installer"
+    if errorlevel 1 exit /b 1
     curl -fsSL -k "%ANTIGRAVITY_INSTALL_URL%" -o "%outfile%"
     if errorlevel 1 (
         echo %RED%[ERROR]%NC% Failed to download Antigravity CLI installer
