@@ -3,15 +3,20 @@ setlocal EnableDelayedExpansion
 set "SCRIPT_DIR=%~dp0"
 
 REM ###############################################
-REM Agentic Coders Installer v1.12.0
+REM Agentic Coders Installer v1.13.0
 REM Interactive installer for AI coding CLI tools
 REM Windows version (run in Anaconda Prompt or CMD)
 REM
-REM Recent improvements (v1.7.13-v1.12.0):
+REM Recent improvements (v1.7.13-v1.13.0):
 REM - v1.12.0: Replace retired Gemini CLI with Antigravity CLI (native agy installer);
 REM            purge Gemini CLI entry + oh-my-opencode --gemini auto-detect + static --gemini=no
 REM            (--gemini=no is the documented default; omitting it is safe and Gemini CLI is retired.
 REM             Earlier 'never had a --gemini flag' rationale was incorrect - the flag IS documented.)
+REM - v1.13.0: Security + Windows parity. Gate insecure curl -k behind consent; block the Claude
+REM            binary on Authenticode HashMismatch; add distinct "upgrade" action state (ACT=3,
+REM            parity with .sh); emit all 9 documented oh-my-opencode provider flags; normalize this
+REM            file to uniform CRLF; document setup.bat divergence; fix oh-my-opencode->opencode-ai
+REM            auto-select on the upgrade path.
 REM - v1.11.0: Remove MoAI-ADK bootstrapper same-origin checksum (MoAI-ADK's own
 REM            downstream binary verification is preserved)
 REM - v1.10.0: Fix Claude Code CLI installation failure on Windows
@@ -1446,7 +1451,7 @@ if "%DEBUG%"=="1" (
     cls
 )
 call :print_banner_sep
-echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.12.0%NC%
+echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.13.0%NC%
 echo Toggle: %CYAN%skip%NC% -^> %GREEN%install%NC%/%CYAN%upgrade%NC% -^> %RED%remove%NC%  Input: 1,3,5  Enter/P=proceed  Q=quit
 call :print_banner_sep
 echo.
