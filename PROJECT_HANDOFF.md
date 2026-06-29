@@ -12,7 +12,7 @@
 
 | Component | Status | Current truth |
 |---|---|---|
-| v1.13.0 deferred-fix release (security + Windows parity + cleanups) | Completed (committed locally, NOT yet pushed) | 8 commits on top of v1.12.0 (`4beae0a`): CRLF normalization (`49b401c`), consent-gated `-k` (`89d2ce0`), Authenticode HashMismatch gate (`7931922`), Windows `upgrade` action state (`d83a1e5`), oh-my-opencode provider-flag completeness (`f6cb6f9`), setup.bat divergence docs (`acd95dd`), independent-review fixes (`ce3190d`), release bump (`a3902cc`). Validated by two independent fresh-context reviews (security: SHIP, no must-fix; parity: SHIP WITH FIXES — all applied). **Push pending** live-test validation + user go-ahead. |
+| v1.13.0 deferred-fix release (security + Windows parity + cleanups) | Completed + pushed | 8 commits on top of v1.12.0 (`4beae0a`): CRLF normalization (`49b401c`), consent-gated `-k` (`89d2ce0`), Authenticode HashMismatch gate (`7931922`), Windows `upgrade` action state (`d83a1e5`), oh-my-opencode provider-flag completeness (`f6cb6f9`), setup.bat divergence docs (`acd95dd`), independent-review fixes (`ce3190d`), release bump (`a3902cc`). Validated by two independent fresh-context reviews (security: SHIP, no must-fix; parity: SHIP WITH FIXES — all applied). Pushed to `origin/master` (`4beae0a..b63e920`) on 2026-06-29 at user direction; live runtime tests are now post-release verification. |
 | v1.12.0 Antigravity replaces retired Gemini CLI | Completed + pushed | `4beae0a` on `origin/master`. Gemini CLI removed from both installers (tool index 4), replaced in-place with Antigravity CLI (`agy`, native bootstrapper). oh-my-opencode `--gemini` auto-detect + static `--gemini=no` purged. |
 | v1.11.0 remove MoAI-ADK bootstrapper same-origin checksum | Completed | Preserved; MoAI-ADK's own downstream tarball verification remains. |
 | v1.10.0 Windows Claude Code install fix | Completed | Third-party `install.cmd` runs in isolated child `cmd.exe`. |
@@ -28,11 +28,11 @@
 | Independent two-reviewer pass + fixes | Completed | 2026-06-29 | Fixed the one High finding (oh-my-opencode→opencode-ai auto-select missed the upgrade path + latent parse-time `%var%` read) and the Medium/Low polish. |
 | v1.13.0 version bump + CHANGELOG + README | Completed | 2026-06-29 | All version sites consistent at v1.13.0. |
 | Phase 1: live runtime verification (Linux/WSL + Windows) | In progress (user-run) | 2026-06-29 | User can run both. Awaiting `agy --version` output (Linux) and the Windows full-flow + Authenticode-status capture. |
-| Push v1.13.0 to origin/master | Pending | 2026-06-29 | Held until live tests validate + user confirms. |
+| Push v1.13.0 to origin/master | Completed | 2026-06-29 | Pushed `4beae0a..b63e920` at user direction (ahead of live tests). |
 
 ## 4. Outstanding Work
 
-- **Push v1.13.0** (8 local commits) to `origin/master` — pending live-test validation and explicit user go-ahead.
+- **Push v1.13.0** — DONE (pushed `4beae0a..b63e920` on 2026-06-29). The live runtime verification below is now POST-RELEASE (user chose to push ahead of it); fix-forward if a live test reveals an issue.
 - **Live runtime verification (Phase 1, user-run):**
   - Linux/WSL: install Antigravity (slot 4); confirm `agy` in `~/.local/bin` and capture `agy --version` output (the one unverified assumption — `--version` is hardcoded in `VERARG_4` and the `.sh` `agy --version` call; patch if the flag differs).
   - Windows: run the `.bat` via the absolute-`%TEMP%`-path method (NOT a PATH-resolved name — see wiki `wsl-cmdexe-unc-cwd-testing`); confirm banner v1.13.0, slot 4 Antigravity, Gemini absent; verify the new `upgrade` display (cyan `[U]`, "Upgrade:" summary, "Upgraded:" result) on an outdated tool; capture `claude.exe` Authenticode status: `powershell -Command "(Get-AuthenticodeSignature \"$env:USERPROFILE\.local\bin\claude.exe\").Status"`.
@@ -77,11 +77,10 @@
 ## 7. Restart Instructions
 
 - **Exact starting point:**
-  1. `git log --oneline 4beae0a..HEAD` shows the 8 local v1.13.0 commits (unpushed).
+  1. v1.13.0 is pushed (`origin/master` at `b63e920`); `git log --oneline` for history.
   2. Sanity: `bash -n install_coding_tools.sh setup.sh`; confirm `.bat` is uniform CRLF (`file install_coding_tools.bat`).
-- **Recommended next actions:**
-  1. Run the Linux/WSL live test (install Antigravity slot 4) and capture `agy --version`; patch `VERARG_4`/`.sh` if the flag differs.
+- **Recommended next actions (post-release verification):**
+  1. Run the Linux/WSL live test (install Antigravity slot 4) and capture `agy --version`; fix-forward (patch `VERARG_4`/`.sh`) if the flag differs.
   2. Run the Windows `.bat` via the absolute-`%TEMP%`-path method; verify the upgrade display and capture `claude.exe` Authenticode status.
-  3. If live tests pass, `git push origin master` to ship v1.13.0.
-  4. If `claude.exe` is normally `Valid`-signed, optionally implement the security Finding 3 `-k`-path hardening.
+  3. If `claude.exe` is normally `Valid`-signed, optionally implement the security Finding 3 `-k`-path hardening.
 - **Last updated:** 2026-06-29

@@ -5,7 +5,7 @@ Append-only history. Active file holds the most recent sessions; older ones live
 - logs/PROJECT_LOG_2026-H1.md — 9 sessions (2026-02 … 2026-02)
 
 ## Session Index (active, newest first)
-- 2026-06-29 — v1.13.0: deferred-fix release (consent-gated -k, Authenticode tamper gate, Windows upgrade action state, oh-my-opencode flag completeness, CRLF normalization, setup.bat docs); 2 independent reviews; committed locally, push pending live tests
+- 2026-06-29 — v1.13.0: deferred-fix release (consent-gated -k, Authenticode tamper gate, Windows upgrade action state, oh-my-opencode flag completeness, CRLF normalization, setup.bat docs); 2 independent reviews; pushed to origin/master at user direction (ahead of live tests)
 - 2026-06-27 21:06 CDT — v1.12.0: Antigravity CLI replaces retired Gemini CLI; --gemini=no purge; multi-expert review + fixes; .bat runtime smoke test
 - 2026-04-23 — v1.11.0: Remove MoAI-ADK bootstrapper same-origin checksum verification
 - 2026-03-14 — v1.9.11: Auto PATH configuration and CLI convenience aliases in setup.sh
@@ -68,7 +68,7 @@ Append-only history. Active file holds the most recent sessions; older ones live
 - Windows `.bat` runtime parse + install/upgrade/remove flows; the new upgrade display; consent prompt + Authenticode gate in their trigger paths.
 - `claude.exe` normal Authenticode status (gates the optional Finding-3 hardening).
 
-**Push status:** v1.13.0 (8 commits) committed locally, NOT pushed — held pending live-test validation + explicit user go-ahead.
+**Push status:** v1.13.0 pushed to origin/master (`4beae0a..b63e920`) on 2026-06-29 at user direction (ahead of live tests; live runtime verification is now post-release).
 
 ---
 
