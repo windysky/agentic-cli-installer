@@ -5,6 +5,7 @@ Append-only history. Active file holds the most recent sessions; older ones live
 - logs/PROJECT_LOG_2026-H1.md — 9 sessions (2026-02 … 2026-02)
 
 ## Session Index (active, newest first)
+- 2026-06-29 — v1.13.0: deferred-fix release (consent-gated -k, Authenticode tamper gate, Windows upgrade action state, oh-my-opencode flag completeness, CRLF normalization, setup.bat docs); 2 independent reviews; committed locally, push pending live tests
 - 2026-06-27 21:06 CDT — v1.12.0: Antigravity CLI replaces retired Gemini CLI; --gemini=no purge; multi-expert review + fixes; .bat runtime smoke test
 - 2026-04-23 — v1.11.0: Remove MoAI-ADK bootstrapper same-origin checksum verification
 - 2026-03-14 — v1.9.11: Auto PATH configuration and CLI convenience aliases in setup.sh
@@ -13,6 +14,61 @@ Append-only history. Active file holds the most recent sessions; older ones live
 - 2026-03-08 11:49 CDT — v1.9.6: Fix 3 Windows-specific bugs reported from live testing
 - 2026-03-08 00:14 CST — v1.9.5: Comprehensive codebase review, version sync, error handling fixes, Windows parity
 - 2026-02-19 — v1.9.2: oh-my-opencode installation bug fixes and feature improvements
+
+---
+
+## Session 2026-06-29
+
+**Coding CLI used:** Claude Code CLI (claude-opus-4-8)
+
+**Phase(s) worked on:**
+- Phase 0: commit + push the previously-uncommitted v1.12.0 release
+- v1.13.0: implement the deferred multi-expert-review findings (P1 security, P1 Windows parity, P2 cleanups)
+
+**Concrete changes implemented:**
+1. **Phase 0** — committed the entire uncommitted v1.12.0 working tree (Antigravity swap, --gemini purge, multi-expert fixes, log rotation, logs/ archive, .gitignore whitelist) as `4beae0a` and pushed to origin/master. The handoff had marked v1.12.0 "Completed" but it was code-complete and unpushed.
+2. **CRLF normalization (`49b401c`)** — normalized `install_coding_tools.bat` from mixed `\r\r\n`/`\r\n` to uniform `\r\n` (2439 stray `\r` removed), proven content-safe by a byte-level identity assertion. This unblocked normal Edit-tool changes (no more Python byte-patchers) for the rest of the session.
+3. **Consent-gated `-k` (`89d2ce0`, P1 security)** — added `:confirm_insecure_download` (y/N, default N → fails safe on closed stdin) before the insecure `curl -k` retry in all three `.bat` download paths (Claude/MoAI/Antigravity). `--ssl-no-revoke` first attempt unchanged.
+4. **Authenticode tamper gate (`7931922`, P1 security)** — `:best_effort_verify_claude_signature` now returns non-zero on HashMismatch; both Claude install call sites delete the suspect `claude.exe` and `exit /b 1`. Valid passes; NotSigned/NotTrusted/UnknownError warn only. (A literal pre-exec gate on the installer is impossible: `install.cmd` is an unsignable `.cmd` and `claude.exe` doesn't exist until it runs — user accepted this framing.)
+5. **Windows `upgrade` action state (`d83a1e5`, P1 parity)** — added `ACTION_UPGRADE=3` across default-action, toggle (outdated cycle skip→upgrade→remove→skip), `:print_tool` (cyan `[U]`), `:display_action_summary` ("Upgrade:" section), `:show_selected_tools` ([UPGRADE]), and the execution dispatch (ACT=3 → `:install_tool`, separate upgrade tally + "Upgraded:" result). Matches the `.sh` 4-state cycle. Sandbox/Playwright Windows port DEFERRED per user.
+6. **oh-my-opencode provider flags (`f6cb6f9`, P2)** — added `--opencode-go=no --kimi-for-coding=no --vercel-ai-gateway=no` to `build_ohmy_flags_*` in both scripts, after verifying all three against the official install guide (per the wiki cli-flag-verification lesson).
+7. **setup.bat docs (`acd95dd`, P2)** — header note + closing PATH hint documenting that the Windows deployer only copies the script (vs setup.sh auto-configuring PATH/aliases).
+8. **Independent-review fixes (`ce3190d`)** — fixed the parity reviewer's one High finding: `resolve_addon_dependencies` auto-selected opencode-ai only for ACT=1 (install), missing ACT=3 (upgrade); now gates on install OR upgrade AND uses delayed `!op_inst!`/`!op_act!` (the prior parse-time `%var%` reads inside the block were stale). Plus the Medium/Low polish (dead-branch alignment to upgrade, state comment, menu hints in both scripts).
+9. **Release bump (`a3902cc`)** — v1.12.0 → v1.13.0 across both installers + setup scripts + banners + version-history comments; v1.13.0 CHANGELOG and README change-log entries.
+
+**Files/modules/functions touched:**
+- `install_coding_tools.bat`: line-ending normalization; `:confirm_insecure_download`, `:download_claude_installer`, `:run_moai_installer`, `:download_antigravity_installer`, `:best_effort_verify_claude_signature` (+2 call sites), `ACTION_UPGRADE`, default-action, toggle handler, `:print_tool`, `:display_action_summary`, `:show_selected_tools`, install dispatch, `resolve_addon_dependencies`, `:build_ohmy_flags_auto`, headers/banner
+- `install_coding_tools.sh`: `build_ohmy_flags_from_installed_tools`, menu hint, header/banner
+- `setup.sh`, `setup.bat`, `README.md`, `CHANGELOG.md`, `PROJECT_HANDOFF.md`, `PROJECT_LOG.md`
+
+**Key technical decisions and rationale:**
+- Normalize CRLF FIRST as its own commit → all later `.bat` edits use the Edit tool cleanly instead of fragile byte-patchers.
+- TLS policy = consent-gated `-k` (not fail-loud, not keep) per user: preserves corporate-proxy usability without silent MITM exposure.
+- Authenticode = HashMismatch-only blocking per user: catches the one unambiguous tamper signal while never breaking unsigned/corporate-trust installs (safe regardless of Anthropic's signing status).
+- Verified the 3 new oh-my-opencode flags against the official install guide before emitting (wiki lesson: don't trust package.json/assumptions for flag surface).
+- Ran two independent fresh-context reviewers (expert-security + expert-devops) over `4beae0a..HEAD` before finalizing — caught a real auto-select regression I introduced.
+
+**Problems encountered and resolutions:**
+- WSL `cmd.exe` interop unavailable this session → could not run the `.bat` parse smoke test; relied on static checks (label resolution, paren balance unchanged, CRLF, content identity) + the two reviews; Windows runtime gate deferred to the user's live run.
+- Parity reviewer found `resolve_addon_dependencies` missed the upgrade path (regression from adding ACT=3) AND a latent parse-time `%var%` read; fixed both with an install-OR-upgrade gate + delayed expansion.
+
+**Items explicitly completed, resolved, or superseded:**
+- Completed: v1.12.0 shipped (committed + pushed); v1.13.0 deferred-fix release (committed locally).
+- Resolved (deferred review findings): Windows insecure TLS fallback (now consent-gated); Authenticode non-blocking (now a HashMismatch gate); `.sh`↔`.bat` 3-vs-4-state action divergence (added upgrade state); oh-my-opencode provider-flag incompleteness (all 9 emitted); `\r\r\n` normalization; setup.bat parity (documented).
+
+**Verification performed:**
+- `bash -n install_coding_tools.sh setup.sh` — pass.
+- `.bat` uniform CRLF after every edit (lone `\n`=0, `\r\r\n`=0); CRLF normalization content-identical to prior commit.
+- `.bat` label resolution: 0 unresolved; paren balance unchanged from baseline.
+- Two independent reviews: security SHIP (no must-fix), parity SHIP WITH FIXES (all applied).
+- v1.13.0 version consistency across all files; CHANGELOG descending, no dupes.
+
+**Not yet verified (deferred to user live run):**
+- Antigravity install + `agy --version` output on Linux/WSL and Windows.
+- Windows `.bat` runtime parse + install/upgrade/remove flows; the new upgrade display; consent prompt + Authenticode gate in their trigger paths.
+- `claude.exe` normal Authenticode status (gates the optional Finding-3 hardening).
+
+**Push status:** v1.13.0 (8 commits) committed locally, NOT pushed — held pending live-test validation + explicit user go-ahead.
 
 ---
 
