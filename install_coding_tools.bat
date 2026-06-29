@@ -725,16 +725,26 @@ for /f "delims=" %%s in ('powershell -NoProfile -ExecutionPolicy Bypass -Command
     if not "%%s"=="" if not defined SIG_SUBJECT set "SIG_SUBJECT=%%s"
 )
 
+REM Gate: HashMismatch (binary modified after signing = tampering) blocks the
+REM install (exit /b 1). Valid passes. Other non-Valid statuses (NotSigned,
+REM NotTrusted, UnknownError) warn only -- Anthropic may ship unsigned and
+REM corporate trust stores can yield NotTrusted, so those must not fail installs.
 if /I "%SIG_STATUS%"=="Valid" (
     echo   %GREEN%[SUCCESS]%NC% Claude Code binary signature: Valid
-) else (
-    if defined SIG_STATUS (
-        echo   %YELLOW%[WARNING]%NC% Claude Code binary signature status: %SIG_STATUS%
-    ) else (
-        echo   %YELLOW%[WARNING]%NC% Claude Code binary signature could not be verified
-    )
-    if defined SIG_SUBJECT echo   %YELLOW%[WARNING]%NC% Signer: %SIG_SUBJECT%
+    exit /b 0
 )
+if /I "%SIG_STATUS%"=="HashMismatch" (
+    echo   %RED%[ERROR]%NC% Claude Code binary FAILED Authenticode integrity ^(HashMismatch^).
+    echo   %RED%[ERROR]%NC% The binary does not match its signature and may be tampered with.
+    if defined SIG_SUBJECT echo   %RED%[ERROR]%NC% Signer: %SIG_SUBJECT%
+    exit /b 1
+)
+if defined SIG_STATUS (
+    echo   %YELLOW%[WARNING]%NC% Claude Code binary signature status: %SIG_STATUS%
+) else (
+    echo   %YELLOW%[WARNING]%NC% Claude Code binary signature could not be verified
+)
+if defined SIG_SUBJECT echo   %YELLOW%[WARNING]%NC% Signer: %SIG_SUBJECT%
 exit /b 0
 
 :run_moai_installer
@@ -2006,6 +2016,11 @@ set "remove_fail=0"
 	del "%TEMP%\install.cmd" >nul 2>nul
 	if %RC% NEQ 0 exit /b %RC%
 	call :best_effort_verify_claude_signature "%USERPROFILE%\.local\bin\claude.exe"
+	if errorlevel 1 (
+		del "%USERPROFILE%\.local\bin\claude.exe" >nul 2>nul
+		echo   %RED%[ERROR]%NC% Removed suspect Claude Code binary; install aborted.
+		exit /b 1
+	)
 	exit /b 0
 
 :install_tool_claude_update
@@ -2025,6 +2040,11 @@ set "remove_fail=0"
 	del "%TEMP%\install.cmd" >nul 2>nul
 	if %RC% NEQ 0 exit /b %RC%
 	call :best_effort_verify_claude_signature "%USERPROFILE%\.local\bin\claude.exe"
+	if errorlevel 1 (
+		del "%USERPROFILE%\.local\bin\claude.exe" >nul 2>nul
+		echo   %RED%[ERROR]%NC% Removed suspect Claude Code binary; install aborted.
+		exit /b 1
+	)
 	exit /b 0
 
 :install_tool_antigravity
