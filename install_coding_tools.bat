@@ -104,7 +104,7 @@ set "TOOL_5=@google/jules|npm|@google/jules|Google Jules CLI"
 set "TOOL_6=opencode-ai|npm|opencode-ai|OpenCode AI CLI"
 set "TOOL_7=oh-my-opencode|addon|oh-my-opencode|OpenCode - oh-my-opencode"
 
-REM Action states: 0=skip, 1=install, 2=remove
+REM Action states (constants are a reference key; comparisons below use literals): 0=skip, 1=install, 2=remove, 3=upgrade
 set ACTION_SKIP=0
 set ACTION_INSTALL=1
 set ACTION_REMOVE=2
@@ -1447,7 +1447,7 @@ if "%DEBUG%"=="1" (
 )
 call :print_banner_sep
 echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.12.0%NC%
-echo Toggle: %CYAN%skip%NC% -^> %GREEN%install%NC% -^> %RED%remove%NC%  Input: 1,3,5  Enter/P=proceed  Q=quit
+echo Toggle: %CYAN%skip%NC% -^> %GREEN%install%NC%/%CYAN%upgrade%NC% -^> %RED%remove%NC%  Input: 1,3,5  Enter/P=proceed  Q=quit
 call :print_banner_sep
 echo.
 echo %BOLD%[MENU]%NC%
@@ -1572,14 +1572,19 @@ if "%opencode_idx%"=="0" exit /b 0
 call set "oh_act=%%ACT_%oh_idx%%%"
 call set "oh_act=%%oh_act%%"
 
-REM If oh-my-opencode is selected for install/update, ensure opencode-ai is installed first.
-if "%oh_act%"=="1" (
+REM If oh-my-opencode is selected for install or upgrade, ensure opencode-ai is installed first.
+REM (Matches .sh, which fires for both install and upgrade; uses delayed expansion so the
+REM values set by `call set` inside the block are read at runtime, not parse time.)
+set "oh_wants_dep=0"
+if "!oh_act!"=="1" set "oh_wants_dep=1"
+if "!oh_act!"=="3" set "oh_wants_dep=1"
+if "!oh_wants_dep!"=="1" (
     call set "op_inst=%%INST_%opencode_idx%%%"
     call set "op_inst=%%op_inst%%"
     call set "op_act=%%ACT_%opencode_idx%%%"
     call set "op_act=%%op_act%%"
-    if /I "%op_inst%"=="Not Installed" (
-        if "%op_act%"=="0" (
+    if /I "!op_inst!"=="Not Installed" (
+        if "!op_act!"=="0" (
             set "ACT_%opencode_idx%=1"
             set "SEL_%opencode_idx%=1"
             echo %BLUE%[INFO]%NC% Auto-selected OpenCode AI CLI ^(required for oh-my-opencode^)
@@ -1682,10 +1687,10 @@ if "!cur!"=="0" (
         set "SEL_%idx%=0"
         echo %BLUE%[INFO]%NC% Deselected: !name!
     ) else (
-        REM Installed (outdated): install -> remove
-        set "ACT_%idx%=2"
+        REM Installed (outdated): install -> upgrade (matches .sh; unreachable since outdated starts at upgrade)
+        set "ACT_%idx%=3"
         set "SEL_%idx%=1"
-        echo %BLUE%[INFO]%NC% Selected for removal: !name!
+        echo %BLUE%[INFO]%NC% Selected for update: !name!
     )
 ) else if "!cur!"=="3" (
     REM Currently upgrade -> remove
