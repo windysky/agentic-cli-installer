@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.12.0
+# Agentic Coders Installer v1.13.0
 # Interactive installer for AI coding CLI tools
 #
 # Version history: v1.7.6 added security improvements, v1.7.12 fixed oh-my-opencode version detection
@@ -23,6 +23,10 @@ set -euo pipefail
 #         --gemini=no flag (--gemini=no is the documented default in oh-my-opencode's install
 #         guide, so omitting it is behaviorally safe; Gemini CLI is retired). Earlier
 #         "v3.7.4+ requires --gemini" and "the flag never existed" notes were both inaccurate.
+# v1.13.0 security + Windows parity: gate Windows insecure curl -k behind consent; block the Claude
+#         binary on Authenticode HashMismatch; add distinct Windows "upgrade" action state (parity
+#         with the .sh 4-state cycle); emit all 9 documented oh-my-opencode provider flags; normalize
+#         install_coding_tools.bat to uniform CRLF; document setup.bat platform divergence.
 # - Secure temporary file creation with restrictive permissions
 # - TLS-pinned downloads via curl --proto '=https' --tlsv1.2
 #############################################
@@ -1525,7 +1529,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.12.0" \
+        "Agentic Coders CLI Installer v1.13.0" \
         "Toggle: skip->install/upgrade->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"

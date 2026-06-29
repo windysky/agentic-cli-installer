@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0] - 2026-06-29
+
+### Security
+
+- **Consent-gated insecure download fallback (Windows)**: the `.bat` download paths for Claude Code, MoAI-ADK, and Antigravity previously fell back to `curl -k` (certificate verification disabled) automatically on the first TLS failure, silently exposing the download to man-in-the-middle tampering. A new `:confirm_insecure_download` prompt now requires explicit `y/N` consent before any `-k` retry and defaults to abort (a closed/redirected stdin fails safe). The `--ssl-no-revoke` first attempt is unchanged.
+- **Authenticode tamper gate (Windows)**: `:best_effort_verify_claude_signature` now returns non-zero on Authenticode `HashMismatch` (the binary was modified after signing); both Claude install call sites delete the suspect `claude.exe` and abort. `Valid` passes; `NotSigned`/`NotTrusted`/`UnknownError` warn only, so legitimate unsigned or corporate-trust installs are not broken. (A literal pre-execution gate on the installer is not achievable: `install.cmd` is an unsignable batch file and `claude.exe` does not exist until it runs.)
+
+### Added
+
+- **Distinct "upgrade" action state (Windows)**: `install_coding_tools.bat` gained `ACTION_UPGRADE=3`, so an installed-but-outdated tool displays "upgrade" (cyan, `[U]`) instead of "install" — matching the `.sh` 4-state cycle (skip → upgrade → remove → skip). The action summary shows a separate "Upgrade:" section and the result shows an "Upgraded:" count. Behavior is unchanged (upgrade and install run the same installer); this is a display/UX parity fix.
+- **Complete oh-my-opencode provider flags**: `build_ohmy_flags_*` now emit all nine documented provider flags, adding `--opencode-go=no`, `--kimi-for-coding=no`, `--vercel-ai-gateway=no` (verified against the official install guide). They default to `no`, so this is completeness with no behavioral change.
+
+### Changed
+
+- **`install_coding_tools.bat` normalized to uniform CRLF**: the file mixed legacy `\r\r\n` and `\r\n` line endings; it is now uniformly `\r\n` (parse-equivalent for cmd.exe; content unchanged, proven by a byte-level content-identity check).
+- **`setup.bat` documents its divergence from `setup.sh`**: a header note plus a closing message explaining that the Windows deployer only copies the script (PATH/alias auto-config is `setup.sh`-only) and printing the directory to add to PATH.
+
+### Fixed
+
+- **oh-my-opencode → opencode-ai auto-select on upgrade (Windows)**: `resolve_addon_dependencies` only auto-selected the required `opencode-ai` when oh-my-opencode was set to install; it now also fires on upgrade, and reads the dependency's state via delayed expansion (the previous parse-time `%var%` reads inside the block were stale).
+
+---
+
 ## [1.12.0] - 2026-06-27
 
 ### Added

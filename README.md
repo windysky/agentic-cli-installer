@@ -1,6 +1,6 @@
-# Agentic CLI Installer v1.12.0
+# Agentic CLI Installer v1.13.0
 
-**Last Modified:** June 27, 2026
+**Last Modified:** June 29, 2026
 
 An interactive installer that manages multiple AI coding CLI tools from one place. It detects installed versions, fetches latest versions, and lets you install, update, or remove tools in a single run.
 
@@ -205,6 +205,13 @@ Backup location: ~/.local/bin.backup
 ```
 
 ## Change Log
+
+### v1.13.0 - June 29, 2026
+
+- **Security (Windows)**: the insecure `curl -k` download fallback (Claude Code, MoAI-ADK, Antigravity) now requires explicit `y/N` consent and defaults to abort; the Claude Code Authenticode check now blocks and removes the binary on `HashMismatch` (tampering), while still warning-only on unsigned/untrusted so legitimate installs are not broken.
+- **Windows "upgrade" action state**: an installed-but-outdated tool now shows a distinct "upgrade" action (cyan, `[U]`) instead of "install", matching the Unix 4-state cycle (skip → upgrade → remove → skip).
+- **oh-my-opencode provider flags**: emit all nine documented provider flags, adding `--opencode-go`, `--kimi-for-coding`, `--vercel-ai-gateway` (all `=no`; verified against the official install guide).
+- **Maintenance**: normalized `install_coding_tools.bat` to uniform CRLF line endings; documented `setup.bat`'s deploy divergence from `setup.sh` (and print the PATH directory); fixed the oh-my-opencode → opencode-ai auto-select on the upgrade path.
 
 ### v1.12.0 - June 27, 2026
 
