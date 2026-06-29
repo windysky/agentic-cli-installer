@@ -105,6 +105,9 @@ ehthumbs.db
 # ===========================================
 *.log
 logs/
+# Keep PROJECT_LOG archives version-controlled (moved here by /endsession rotation)
+!logs/
+!logs/PROJECT_LOG_*.md
 *.tmp
 *.temp
 *.bak

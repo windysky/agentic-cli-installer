@@ -1,6 +1,6 @@
-# Agentic CLI Installer v1.11.0
+# Agentic CLI Installer v1.12.0
 
-**Last Modified:** April 23, 2026
+**Last Modified:** June 27, 2026
 
 An interactive installer that manages multiple AI coding CLI tools from one place. It detects installed versions, fetches latest versions, and lets you install, update, or remove tools in a single run.
 
@@ -81,7 +81,7 @@ Note: Run the Windows installer from an Anaconda Prompt with a non-base conda en
 | [MoAI Agent Development Kit](https://github.com/modu-ai/moai-adk) | `moai-adk` | native | `curl -fsSL https://raw.githubusercontent.com/modu-ai/moai-adk/main/install.sh | bash` |
 | [Claude Code CLI](https://github.com/anthropics/claude-code) | `claude-code` | native | [Official installer](https://claude.ai/install.sh) |
 | [OpenAI Codex CLI](https://github.com/openai/codex) | `@openai/codex` | npm | `npm install -g @openai/codex` |
-| [Google Gemini CLI](https://github.com/google-gemini/gemini-cli) | `@google/gemini-cli` | npm | `npm install -g @google/gemini-cli` |
+| [Antigravity CLI](https://github.com/google-antigravity/antigravity-cli) | `antigravity` | native | `curl -fsSL https://antigravity.google/cli/install.sh | bash` |
 | [Google Jules CLI](https://jules.google) | `@google/jules` | npm | `npm install -g @google/jules` |
 | [OpenCode AI CLI](https://github.com/opencode-ai/opencode) | `opencode-ai` | npm | `npm install -g opencode-ai` |
 | [OpenCode - oh-my-opencode](https://github.com/opencode-ai/oh-my-opencode) | `oh-my-opencode` | addon | `bunx oh-my-opencode install [--flags]` |
@@ -205,6 +205,12 @@ Backup location: ~/.local/bin.backup
 ```
 
 ## Change Log
+
+### v1.12.0 - June 27, 2026
+
+- **Antigravity CLI added (replaces retired Gemini CLI)**: Google retired Gemini CLI; it is replaced by [Antigravity CLI](https://github.com/google-antigravity/antigravity-cli). Installed as a native binary via Google's official bootstrapper (`https://antigravity.google/cli/install.sh` on macOS/Linux, `install.cmd` on Windows), which writes the `agy` command to `~/.local/bin`, performs its own SHA-512 manifest verification of the downloaded binary, and self-updates in the background.
+- **Gemini CLI removed**: Dropped `@google/gemini-cli` from both `install_coding_tools.sh` and `install_coding_tools.bat` (tool index 4), including its oh-my-opencode `--gemini` auto-detect **and** the static `--gemini=no` flag. The `--gemini=yes|no` flag is documented in oh-my-opencode's official install guide, but `--gemini=no` is the default — so omitting it is behaviorally safe, and with Gemini CLI retired `=no` is the desired value regardless. Removed to reduce noise.
+- **Windows parity**: Antigravity's `install.cmd` runs through the same isolated child `cmd.exe` (`:run_cmd_script_isolated`) and `--ssl-no-revoke`/`-k` SSL fallback already used for Claude Code.
 
 ### v1.11.0 - April 23, 2026
 
