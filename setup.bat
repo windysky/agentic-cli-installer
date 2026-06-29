@@ -1,7 +1,11 @@
 @echo off
 REM ###############################################
 REM Agentic CLI Installer Deployment Script (Windows)
-REM Copies install_coding_tools.bat to user's .local/bin directory
+REM Copies install_coding_tools.bat to user's .local/bin directory.
+REM
+REM NOTE: Unlike setup.sh (which also auto-configures PATH and shell aliases),
+REM this Windows deployer only copies the script. PATH setup is left to the user
+REM on Windows; the closing message prints the directory to add to PATH.
 REM
 REM Usage:
 REM   setup.bat
@@ -123,6 +127,10 @@ if exist "%TARGET_FILE%" (
     echo.
     echo You can now run the installer with:
     echo   %CYAN%%TARGET_FILE%%NC%
+    echo.
+    echo %YELLOW%[NOTE]%NC% To run it as 'install_coding_tools' from any directory,
+    echo add this folder to your PATH:
+    echo   %CYAN%%TARGET_DIR%%NC%
     echo.
 ) else (
     echo %RED%[ERROR]%NC% Installation verification failed
