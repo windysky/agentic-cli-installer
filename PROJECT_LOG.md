@@ -2,10 +2,10 @@
 Append-only history. Active file holds the most recent sessions; older ones live in logs/. Newest first.
 
 ## Archives
-- logs/PROJECT_LOG_2026-H1.md — 9 sessions (2026-02 … 2026-02)
+- logs/PROJECT_LOG_2026-H1.md — 10 sessions (2026-02 … 2026-02)
 
 ## Session Index (active, newest first)
-- 2026-06-29 — v1.13.0: deferred-fix release (consent-gated -k, Authenticode tamper gate, Windows upgrade action state, oh-my-opencode flag completeness, CRLF normalization, setup.bat docs); 2 independent reviews; pushed to origin/master at user direction (ahead of live tests)
+- 2026-06-29 09:23 CDT — v1.13.0: deferred-fix release (consent-gated -k, Authenticode tamper gate, Windows upgrade action state, oh-my-opencode flag completeness, CRLF normalization, setup.bat docs); 2 independent reviews; pushed to origin/master at user direction (ahead of live tests)
 - 2026-06-27 21:06 CDT — v1.12.0: Antigravity CLI replaces retired Gemini CLI; --gemini=no purge; multi-expert review + fixes; .bat runtime smoke test
 - 2026-04-23 — v1.11.0: Remove MoAI-ADK bootstrapper same-origin checksum verification
 - 2026-03-14 — v1.9.11: Auto PATH configuration and CLI convenience aliases in setup.sh
@@ -13,11 +13,10 @@ Append-only history. Active file holds the most recent sessions; older ones live
 - 2026-03-08 14:00 CDT — v1.9.7: Reorder tools (Claude Code before MoAI-ADK), add MoAI-ADK dependency check
 - 2026-03-08 11:49 CDT — v1.9.6: Fix 3 Windows-specific bugs reported from live testing
 - 2026-03-08 00:14 CST — v1.9.5: Comprehensive codebase review, version sync, error handling fixes, Windows parity
-- 2026-02-19 — v1.9.2: oh-my-opencode installation bug fixes and feature improvements
 
 ---
 
-## Session 2026-06-29
+## Session 2026-06-29 09:23 CDT
 
 **Coding CLI used:** Claude Code CLI (claude-opus-4-8)
 
@@ -496,78 +495,5 @@ Append-only history. Active file holds the most recent sessions; older ones live
 - `grep '^## \[' CHANGELOG.md` — no duplicates, correct descending order
 - `./install_coding_tools.sh --help` and `./setup.sh --help` — output correct
 - Code review of error handling fixes and gh CLI function insertion
-
----
-
----
-
-## Session 2026-02-19
-
-**Coding CLI used:** Claude Code CLI (glm-5)
-
-**Phase(s) worked on:**
-- v1.9.2: oh-my-opencode installation bug fixes and feature improvements
-
-**Concrete changes implemented:**
-1. Fixed return codes in `install_oh_my_opencode()` and `remove_oh_my_opencode()` - now return 1 on failure instead of silently returning 0
-2. Fixed exit codes in Windows batch file `:install_oh_my_opencode` and `:remove_oh_my_opencode`
-3. Removed hardcoded `--XXX=no` flags - oh-my-opencode now auto-detects installed tools
-4. Added config preservation on update - existing `oh-my-opencode.json` is preserved during reinstall
-5. Added interactive provider prompt for new installations (`prompt_ohmy_providers()`)
-
-**Files/modules/functions touched:**
-- `install_coding_tools.sh`:
-  - Changed `oh_my_opencode_flags` from all `--XXX=no` to just `--no-tui`
-  - Added `prompt_ohmy_providers()` function for interactive provider selection
-  - Modified `install_oh_my_opencode()` to preserve config on update and prompt on fresh install
-  - Added `return 1` after warning logs in both install and remove functions
-  - Version bump to v1.9.2
-- `install_coding_tools.bat`:
-  - Changed `OHMY_FLAGS` from all `--XXX=no` to just `--no-tui`
-  - Added `:prompt_ohmy_providers` function for interactive provider selection
-  - Modified `:install_oh_my_opencode` to preserve config and prompt on fresh install
-  - Added `exit /b 1` after warning logs
-  - Fixed caller code to propagate exit codes
-  - Version bump to v1.9.2
-- `README.md`: Version bump to v1.9.2, added changelog entry
-- `CHANGELOG.md`: Added v1.9.2 entry
-- `PROJECT_HANDOFF.md`: Updated current state to v1.9.2
-- `PROJECT_LOG.md`: This entry
-
-**Key technical decisions and rationale:**
-- Return code fix: Silent failures were causing "Upgraded: 1" even when installation failed
-- Auto-detect: Hardcoded `--XXX=no` flags were disabling all optional plugins including ones user actually uses
-- Config preservation: Reinstall was potentially overwriting user's existing oh-my-opencode.json configuration
-- Interactive prompt: Gives users control over which providers to configure on fresh installs
-
-**Problems encountered and resolutions:**
-- User reported oh-my-opencode upgrade showed success but version remained old
-  - Root cause 1: `install_oh_my_opencode()` returned 0 even on failure (no return statement in else branch)
-  - Root cause 2: Hardcoded flags disabled all providers, so installer ran but didn't configure anything useful
-  - Resolution: Added proper return codes and removed restrictive flags
-
-**Items completed in this session:**
-- v1.9.2: oh-my-opencode installation bug fixes and feature improvements
-
-**Verification performed:**
-- `bash -n install_coding_tools.sh` - syntax check passed
-- `file install_coding_tools.bat` - CRLF line endings confirmed
-- `grep -B2 "return 1" install_coding_tools.sh` - verified return codes follow warnings
-- `grep -B1 "exit /b 1" install_coding_tools.bat` - verified exit codes follow warnings
-- Version consistency check across all files
-
-**Additional fix (same session):**
-- Discovered oh-my-opencode v3.7.4+ REQUIRES provider flags (`--claude`, `--gemini`, `--copilot`)
-- Replaced interactive prompt with auto-detect function `build_ohmy_flags_from_installed_tools()`
-- Auto-detect checks for installed tools (claude, codex, gemini) and sets flags accordingly
-- Windows .bat file updated with `:build_ohmy_flags_auto` function
-- Tested installation with auto-detected flags - success
-
-**Third fix (same session):**
-- User reported version still shows 3.3.1 after "successful" installation
-- Root cause: oh-my-opencode is an `addon` type, installer only runs plugin registration but doesn't update npm package
-- Fix: Added npm package update (`npm install -g oh-my-opencode@latest`) before plugin reinstall
-- Both .sh and .bat updated with proper upgrade flow
-- Verified npm update works: 3.3.1 → 3.7.4
 
 ---

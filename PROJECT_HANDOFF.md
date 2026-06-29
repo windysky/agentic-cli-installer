@@ -4,9 +4,10 @@
 
 - **Name:** agentic-cli-installer
 - **Purpose and scope:** Cross-platform interactive installer for AI coding CLIs (install, update, remove) with Unix/WSL support via `install_coding_tools.sh` and Windows support via `install_coding_tools.bat`.
-- **Last updated:** 2026-06-29
+- **Last updated:** 2026-06-29 09:23 CDT
 - **Last coding CLI used (informational):** Claude Code (Opus 4.8)
 - **Cross-project wiki (consulted this session):** `~/PROJECTS/wiki/concept/wsl-cmdexe-unc-cwd-testing.md` and `~/PROJECTS/wiki/concept/cli-flag-verification-install-guide.md` (the latter drove verifying the oh-my-opencode provider flags against the official install guide before emitting them).
+- **Cross-project wiki (distilled this session):** `~/PROJECTS/wiki/concept/cmd-batch-crlf-normalize-first.md` (normalize a fragile `.bat` to uniform CRLF first) and `~/PROJECTS/wiki/concept/cmd-delayed-expansion-call-set-block.md` (read in-block `set`/`call set` vars with `!var!`, not stale `%var%`).
 
 ## 2. Current State
 
@@ -83,4 +84,4 @@
   1. Run the Linux/WSL live test (install Antigravity slot 4) and capture `agy --version`; fix-forward (patch `VERARG_4`/`.sh`) if the flag differs.
   2. Run the Windows `.bat` via the absolute-`%TEMP%`-path method; verify the upgrade display and capture `claude.exe` Authenticode status.
   3. If `claude.exe` is normally `Valid`-signed, optionally implement the security Finding 3 `-k`-path hardening.
-- **Last updated:** 2026-06-29
+- **Last updated:** 2026-06-29 09:23 CDT
