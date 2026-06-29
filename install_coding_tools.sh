@@ -1526,7 +1526,7 @@ render_menu() {
 
     print_box_header \
         "Agentic Coders CLI Installer v1.12.0" \
-        "Toggle: skip->install->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
+        "Toggle: skip->install/upgrade->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"
     print_sep
