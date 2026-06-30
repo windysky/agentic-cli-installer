@@ -17,7 +17,7 @@
 #   --configure-path    Add ~/.local/bin to PATH in shell config
 #   --force             Skip confirmation prompts
 #
-# Version: 1.14.1
+# Version: 1.14.2
 # License: MIT
 
 set -euo pipefail
@@ -91,6 +91,19 @@ header() {
 # Check if command exists
 command_exists() {
     command -v "$@" >/dev/null 2>&1
+}
+
+# Extract the installer version (e.g. "v1.14.2") from a script's header line
+# ("# Agentic Coders Installer vX.Y.Z" / "REM Agentic Coders Installer vX.Y.Z").
+# Prints nothing if the file is missing or the marker is absent.
+get_installer_version() {
+    local file="$1"
+    [[ -f "$file" ]] || return 0
+    local ver
+    ver=$(grep -m1 -oE 'Agentic Coders Installer v[0-9]+\.[0-9]+\.[0-9]+' "$file" 2>/dev/null \
+        | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true)
+    [[ -n "$ver" ]] && printf '%s\n' "$ver"
+    return 0
 }
 
 # Prompt user for confirmation
@@ -710,15 +723,28 @@ main() {
     echo ""
     success "Deployment completed successfully!"
     echo ""
+
+    # Announce the version of the installer that was just deployed.
+    local installer_version
+    installer_version=$(get_installer_version "${TARGET_DIR}/install_coding_tools.sh")
+    if [[ -z "$installer_version" ]]; then
+        installer_version=$(get_installer_version "$SOURCE_SCRIPT_SH")
+    fi
+    if [[ -n "$installer_version" ]]; then
+        success "Installed installer version: ${installer_version}"
+        echo ""
+    fi
+
     echo "Installed scripts:"
-    echo "  Unix:   ${TARGET_DIR}/install_coding_tools.sh"
+    echo "  Unix:   ${TARGET_DIR}/install_coding_tools.sh${installer_version:+  (${installer_version})}"
     if [[ -f "$SOURCE_SCRIPT_AUTO" ]]; then
         echo "  Auto:   ${TARGET_DIR}/auto_install_coding_tools"
     fi
     if [[ "$platform" == "wsl" ]] && [[ -f "$SOURCE_SCRIPT_BAT" ]]; then
-        local windows_username
+        local windows_username bat_version
         windows_username=$(get_windows_username)
-        echo "  Windows: /mnt/c/Users/${windows_username}/.local/bin/install_coding_tools.bat"
+        bat_version=$(get_installer_version "$SOURCE_SCRIPT_BAT")
+        echo "  Windows: /mnt/c/Users/${windows_username}/.local/bin/install_coding_tools.bat${bat_version:+  (${bat_version})}"
     fi
     echo ""
     echo "Backup location: $BACKUP_DIR"
