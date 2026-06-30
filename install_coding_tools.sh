@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.14.0
+# Agentic Coders Installer v1.14.1
 # Interactive installer for AI coding CLI tools
 #
 # Version history: v1.7.6 added security improvements, v1.7.12 fixed oh-my-opencode version detection
@@ -35,6 +35,9 @@ set -euo pipefail
 #         Antigravity remove to target %LOCALAPPDATA%\agy\bin\agy.exe (the Windows install location,
 #         not the Linux ~/.local/bin), detect agy there before a PATH-refreshing terminal restart,
 #         and suppress a cosmetic stderr leak on the Claude Code upgrade path.
+# v1.14.1 add Antigravity latest-version detection: query its official release manifest (the Cloud
+#         Run auto-updater endpoint its installer uses) so the menu shows/compares Antigravity's
+#         latest like the other tools; degrades to "Unknown" on fetch failure.
 # - Secure temporary file creation with restrictive permissions
 # - TLS-pinned downloads via curl --proto '=https' --tlsv1.2
 #############################################
@@ -1256,6 +1259,47 @@ get_tool_version() {
     fi
 }
 
+# Query Antigravity's official release manifest for the latest version.
+# Source is the same Cloud Run auto-updater endpoint that Antigravity's own
+# install.sh uses; platform detection mirrors that script. Degrades silently
+# to empty output (rendered as "Unknown") on any failure.
+get_latest_antigravity_version() {
+    command -v curl >/dev/null 2>&1 || return 0
+    local base="https://antigravity-cli-auto-updater-974169037036.us-central1.run.app"
+    local os arch platform
+    case "$(uname -s)" in
+        Darwin) os="darwin" ;;
+        Linux)  os="linux" ;;
+        *) return 0 ;;
+    esac
+    case "$(uname -m)" in
+        x86_64|amd64) arch="amd64" ;;
+        arm64|aarch64) arch="arm64" ;;
+        *) return 0 ;;
+    esac
+    if [[ "$os" == "linux" ]]; then
+        if [[ -f /lib/libc.musl-x86_64.so.1 ]] || [[ -f /lib/libc.musl-aarch64.so.1 ]] || ldd /bin/ls 2>&1 | grep -q musl; then
+            platform="linux_${arch}_musl"
+        else
+            platform="linux_${arch}"
+        fi
+    else
+        platform="${os}_${arch}"
+    fi
+    local manifest
+    manifest=$(curl -fsSL --max-time 10 "${base}/manifests/${platform}.json" 2>/dev/null) || return 0
+    [[ -n "$manifest" ]] || return 0
+    local version=""
+    if command -v python3 >/dev/null 2>&1; then
+        version=$(printf '%s' "$manifest" | python3 -c "import sys, json; print(json.load(sys.stdin).get('version', ''))" 2>/dev/null || true)
+    else
+        version=$(printf '%s' "$manifest" | grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' | head -n1 | sed -E 's/.*:[[:space:]]*"([^"]*)".*/\1/')
+    fi
+    version=${version#v}
+    [[ -n "$version" ]] && echo "$version"
+    return 0
+}
+
 get_latest_version() {
     local manager=$1
     local pkg=$2
@@ -1271,6 +1315,10 @@ get_latest_version() {
             get_latest_npm_self_version
             ;;
         native)
+            if [[ "$pkg" == "antigravity" ]]; then
+                get_latest_antigravity_version
+                return 0
+            fi
             local cache_bust
             cache_bust=$(date +%s)
 
@@ -1536,7 +1584,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.14.0" \
+        "Agentic Coders CLI Installer v1.14.1" \
         "Toggle: skip->install/upgrade->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"

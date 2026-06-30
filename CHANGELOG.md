@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.1] - 2026-06-29
+
+### Added
+
+- **Antigravity latest-version detection**: the menu can now show and compare Antigravity CLI's latest version. `get_latest_version` (`.sh`) and `:get_latest_native_version` (`.bat`) query Antigravity's official release manifest (`https://antigravity-cli-auto-updater-…run.app/manifests/<platform>.json` — the same Cloud Run auto-updater endpoint its own installer uses) and parse the `version` field. Platform is detected the same way the official installer does (`linux_amd64` / `darwin_arm64` / `windows_amd64`, etc.). Previously Antigravity always showed "Latest: Unknown" because only `claude-code` and `moai-adk` had a latest-version source. Fetch failures degrade gracefully back to "Unknown" (no regression).
+
 ## [1.14.0] - 2026-06-29
 
 ### Removed
