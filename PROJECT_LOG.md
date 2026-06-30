@@ -5,7 +5,7 @@ Append-only history. Active file holds the most recent sessions; older ones live
 - logs/PROJECT_LOG_2026-H1.md — 11 sessions (2026-02 … 2026-03)
 
 ## Session Index (active, newest first)
-- 2026-06-29 17:55 CDT — v1.13.1: fix setup.sh WSL Windows-user detection (picked `Administrator` when interop disabled) — rewrote `get_windows_username` (WIN_USER override + built-in skip list + writable/newest-NTUSER.DAT heuristic); verified unit-level + real deploy (`jung.hur`); released + pushed
+- 2026-06-29 17:55 CDT — v1.13.1: fix setup.sh WSL Windows-user detection (picked `Administrator` when interop disabled) — rewrote `get_windows_username` (WIN_USER override + built-in skip list + writable/newest-NTUSER.DAT heuristic); verified unit-level + real deploy (`jung.hur`); released + pushed + v1.14.0 (remove Google Jules CLI; Antigravity Windows remove/detect fixes; claude stderr suppression)
 - 2026-06-29 09:23 CDT — v1.13.0: deferred-fix release (consent-gated -k, Authenticode tamper gate, Windows upgrade action state, oh-my-opencode flag completeness, CRLF normalization, setup.bat docs); 2 independent reviews; pushed to origin/master at user direction (ahead of live tests)
 - 2026-06-27 21:06 CDT — v1.12.0: Antigravity CLI replaces retired Gemini CLI; --gemini=no purge; multi-expert review + fixes; .bat runtime smoke test
 - 2026-04-23 — v1.11.0: Remove MoAI-ADK bootstrapper same-origin checksum verification
@@ -57,6 +57,19 @@ Append-only history. Active file holds the most recent sessions; older ones live
 - v1.13.1: all banners/headers at v1.13.1 (only historical version-note comments still mention v1.13.0); `.bat` uniform CRLF (lone-`\n`=0, `\r\r\n`=0); CHANGELOG descending, no dupes.
 
 **Push status (v1.13.1):** committed + pushed to origin/master on 2026-06-29 (see `git log --oneline`). Post-release work (Antigravity `agy --version`, Windows `.bat` upgrade-display + Authenticode status) remains, unchanged.
+
+**Follow-up (same session, 2026-06-29 23:00 CDT) — v1.14.0 (remove Google Jules + Antigravity Windows fixes):**
+- User live-tested v1.13.1: Linux `agy --version` → `1.0.14` (Antigravity install works; `--version` flag confirmed — resolves the long-standing open assumption). Windows install ran fine (banner still v1.13.0 from the stale pre-bump deploy); user flagged 2 follow-up messages.
+- User requested removing Google Jules CLI. Ground-truth check corrected a stale note: the codebase actually had 7 array tools INCLUDING `@google/jules` (menu shows 8 with npm auto-prepended), not 7-without-Jules.
+- Changes (v1.14.0):
+  1. Removed `@google/jules` from `install_coding_tools.sh` (TOOLS array) and `install_coding_tools.bat` (`TOOL_5` + property block; `TOOLS_COUNT` 7→6; `opencode-ai`/`oh-my-opencode` renumbered to indices 5/6 — the `.bat` is index-driven so the `for /L … TOOLS_COUNT` loops adapt) + the README Supported Tools row.
+  2. Antigravity Windows remove path: `%USERPROFILE%\.local\bin\agy.exe` → `%LOCALAPPDATA%\agy\bin\agy.exe` (the real Windows install location; confirmed Linux `~/.local/bin/agy` is correct, unchanged).
+  3. Antigravity Windows version detection: added a `%LOCALAPPDATA%\agy\bin\agy.exe` fallback for when `agy` isn't yet on the active PATH (right after install, before a terminal restart).
+  4. Suppressed the cosmetic "filename, directory name ... incorrect" stderr leak on the Claude Code upgrade by redirecting `:check_npm_claude_code`'s stderr (`2>nul`).
+  5. Version bump v1.13.1 → v1.14.0 across all 4 scripts + CHANGELOG `## [1.14.0]` + README entry.
+- Caught + fixed a self-introduced cmd.exe footgun: a REM I added inside the Antigravity remove `( )` block contained `(...)`; rephrased to avoid the paren-in-block parse hazard (the file's own line ~1974 warns about exactly this).
+- Verification: `bash -n` pass; `.bat` label resolution all-resolve; both edited Antigravity blocks paren-balanced; `.bat` uniform CRLF (lone-`\n`=0, `\r\r\n`=0); `TOOLS_COUNT=6` with `TOOL_1..6` and no orphan `_7`; v1.14.0 consistent across files; CHANGELOG descending; Jules purged from all functional code (only the removal-documentation text mentions it).
+- Committed `72f21a7` (release) + pushed. **NOT yet verified (needs a Windows run):** `.bat` runtime parse with the renumbered tools; Antigravity remove/detect in their trigger paths; the stderr suppression (couldn't reproduce without cmd.exe). The deployed `.bat` in `/mnt/c/Users/jung.hur/.local/bin` is still v1.13.0 — re-run `./setup.sh --force` to redeploy v1.14.0.
 
 ---
 
