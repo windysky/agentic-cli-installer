@@ -1,4 +1,4 @@
-# Agentic CLI Installer v1.14.0
+# Agentic CLI Installer v1.14.1
 
 **Last Modified:** June 29, 2026
 
@@ -204,6 +204,10 @@ Backup location: ~/.local/bin.backup
 ```
 
 ## Change Log
+
+### v1.14.1 - June 29, 2026
+
+- **Antigravity latest-version detection**: the menu now shows and compares Antigravity CLI's latest version (previously always "Unknown"). The installer queries Antigravity's official release manifest — the same Cloud Run auto-updater endpoint its own installer uses — and reads the `version` field, in both `install_coding_tools.sh` and `install_coding_tools.bat`. Falls back to "Unknown" if the manifest can't be reached.
 
 ### v1.14.0 - June 29, 2026
 

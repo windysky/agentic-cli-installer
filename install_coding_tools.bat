@@ -3,11 +3,11 @@ setlocal EnableDelayedExpansion
 set "SCRIPT_DIR=%~dp0"
 
 REM ###############################################
-REM Agentic Coders Installer v1.14.0
+REM Agentic Coders Installer v1.14.1
 REM Interactive installer for AI coding CLI tools
 REM Windows version (run in Anaconda Prompt or CMD)
 REM
-REM Recent improvements (v1.7.13-v1.14.0):
+REM Recent improvements (v1.7.13-v1.14.1):
 REM - v1.12.0: Replace retired Gemini CLI with Antigravity CLI (native agy installer);
 REM            purge Gemini CLI entry + oh-my-opencode --gemini auto-detect + static --gemini=no
 REM            (--gemini=no is the documented default; omitting it is safe and Gemini CLI is retired.
@@ -25,6 +25,9 @@ REM - v1.14.0: Remove Google Jules CLI from the menu (per user request). Antigra
 REM            remove now targets %LOCALAPPDATA%\agy\bin\agy.exe (the real Windows install path, not
 REM            ~/.local/bin), version detection finds agy there before a terminal restart, and the
 REM            Claude Code upgrade path no longer leaks a cosmetic "filename ... incorrect" line.
+REM - v1.14.1: Add Antigravity latest-version detection via its official release manifest (the same
+REM            Cloud Run auto-updater endpoint its installer uses), so the menu shows/compares its
+REM            latest like the other tools; degrades to Unknown on fetch failure.
 REM - v1.11.0: Remove MoAI-ADK bootstrapper same-origin checksum (MoAI-ADK's own
 REM            downstream binary verification is preserved)
 REM - v1.10.0: Fix Claude Code CLI installation failure on Windows
@@ -1126,6 +1129,7 @@ set "outvar=%~2"
 set "%outvar%="
 if /I "%pkg%"=="claude-code" goto get_latest_native_claude
 if /I "%pkg%"=="moai-adk" goto get_latest_native_moai
+if /I "%pkg%"=="antigravity" goto get_latest_native_antigravity
 exit /b 0
 
 :get_latest_native_claude
@@ -1142,6 +1146,18 @@ exit /b 0
 :get_latest_native_moai
 set "tmpfile=%TEMP%\moai_adk_version_%RANDOM%.tmp"
 powershell -NoProfile -Command "$ProgressPreference = 'SilentlyContinue'; $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); $uri = 'https://api.github.com/repos/modu-ai/moai-adk/releases/latest?ts=' + $ts; $headers = @{ 'User-Agent'='agentic-cli-installer'; 'Accept'='application/vnd.github+json' }; try { $result = Invoke-RestMethod -UseBasicParsing -Uri $uri -Headers $headers -TimeoutSec 10 -ErrorAction Stop; if ($result -and $result.tag_name) { $tag = $result.tag_name; $tag = $tag -replace '^go-',''; $tag = $tag -replace '^v',''; Write-Output $tag } } catch { }" >"%tmpfile%" 2>nul
+if exist "%tmpfile%" (
+    for /f "usebackq delims=" %%v in ("%tmpfile%") do (
+        if not "%%v"=="" set "%outvar%=%%v"
+    )
+    del "%tmpfile%" >nul 2>nul
+)
+exit /b 0
+
+:get_latest_native_antigravity
+set "tmpfile=%TEMP%\antigravity_version_%RANDOM%.tmp"
+REM Query Antigravity's official release manifest - the same Cloud Run auto-updater endpoint its installer uses.
+powershell -NoProfile -Command "$ProgressPreference = 'SilentlyContinue'; $arch = $env:PROCESSOR_ARCHITECTURE; if ($arch -eq 'ARM64') { $plat = 'windows_arm64' } else { $plat = 'windows_amd64' }; $uri = 'https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/' + $plat + '.json'; try { $result = Invoke-RestMethod -UseBasicParsing -Uri $uri -TimeoutSec 10 -ErrorAction Stop; if ($result -and $result.version) { Write-Output ($result.version -replace '^v','') } } catch { }" >"%tmpfile%" 2>nul
 if exist "%tmpfile%" (
     for /f "usebackq delims=" %%v in ("%tmpfile%") do (
         if not "%%v"=="" set "%outvar%=%%v"
@@ -1454,7 +1470,7 @@ if "%DEBUG%"=="1" (
     cls
 )
 call :print_banner_sep
-echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.14.0%NC%
+echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.14.1%NC%
 echo Toggle: %CYAN%skip%NC% -^> %GREEN%install%NC%/%CYAN%upgrade%NC% -^> %RED%remove%NC%  Input: 1,3,5  Enter/P=proceed  Q=quit
 call :print_banner_sep
 echo.
