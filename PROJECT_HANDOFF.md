@@ -4,7 +4,7 @@
 
 - **Name:** agentic-cli-installer
 - **Purpose and scope:** Cross-platform interactive installer for AI coding CLIs (install, update, remove) with Unix/WSL support via `install_coding_tools.sh` and Windows support via `install_coding_tools.bat`.
-- **Last updated:** 2026-06-29 23:00 CDT
+- **Last updated:** 2026-06-29 23:21 CDT
 - **Last coding CLI used (informational):** Claude Code (Sonnet 4.6)
 - **Cross-project wiki (consulted this session):** `~/PROJECTS/wiki/index.md` and the related `~/PROJECTS/wiki/concept/wsl-cmdexe-unc-cwd-testing.md` (WSL↔cmd.exe interop / UNC-cwd context).
 - **Cross-project wiki (distilled this session):** `~/PROJECTS/wiki/concept/wsl-windows-user-detection-fallback.md` (when WSL interop is disabled, the `/mnt/c/Users` fallback must skip built-in accounts and prefer the writable, most-recently-used profile — never the alphabetically-first dir).
@@ -13,7 +13,8 @@
 
 | Component | Status | Current truth |
 |---|---|---|
-| v1.14.0: remove Google Jules CLI + Antigravity Windows fixes | Completed + pushed (Windows runtime pending) | Removed `@google/jules` from both installers (`.sh` TOOLS array; `.bat` `TOOL_5` + property block, `TOOLS_COUNT` 7→6, renumbered 5/6) + README row. Antigravity Windows: remove path fixed to `%LOCALAPPDATA%\agy\bin\agy.exe`; version detection falls back to that path before a PATH-refreshing terminal restart. Suppressed a cosmetic claude-code-upgrade stderr leak. Committed `72f21a7`, pushed. Static-verified (bash -n, label resolution, paren balance, CRLF, structure); `.bat` runtime parse + the 3 Windows behaviors need a Windows run. Deployed `.bat` is still v1.13.0 — re-run `./setup.sh --force` to push v1.14.0 to `/mnt/c/Users/jung.hur/.local/bin`. See PROJECT_LOG.md 2026-06-29 23:00 CDT. |
+| v1.14.1: Antigravity latest-version detection | Completed + pushed | `get_latest_version` (`.sh`) / `:get_latest_native_version` (`.bat`) now query Antigravity's official release manifest (`…run.app/manifests/<platform>.json`, the endpoint its own installer uses) and parse `version`; platform detection mirrors the official installer. Previously "Latest: Unknown" (only claude-code/moai-adk had a source). Verified live on Linux (`get_latest_antigravity_version` → `1.0.14`). Committed `c15f6bd`, pushed. `.bat` powershell-manifest path needs a Windows run to confirm. Confirmed by user's 2026-06-29 Windows run: v1.14.0 deployed cleanly (7-tool menu, no Jules; Antigravity detected `1.0.14`). |
+| v1.14.0: remove Google Jules CLI + Antigravity Windows fixes | Completed + pushed (Windows runtime verified for install/detect) | Removed `@google/jules` from both installers (`.sh` TOOLS array; `.bat` `TOOL_5` + property block, `TOOLS_COUNT` 7→6, renumbered 5/6) + README row. Antigravity Windows: remove path fixed to `%LOCALAPPDATA%\agy\bin\agy.exe`; version detection falls back to that path before a PATH-refreshing terminal restart. Suppressed a cosmetic claude-code-upgrade stderr leak. Committed `72f21a7`, pushed. Static-verified (bash -n, label resolution, paren balance, CRLF, structure); `.bat` runtime parse + the 3 Windows behaviors need a Windows run. Deployed `.bat` is still v1.13.0 — re-run `./setup.sh --force` to push v1.14.0 to `/mnt/c/Users/jung.hur/.local/bin`. See PROJECT_LOG.md 2026-06-29 23:00 CDT. |
 | setup.sh WSL Windows-account detection fix (v1.13.1) | Completed + pushed | `get_windows_username()` rewritten so the WSL→Windows-side install no longer targets `Administrator` when WSL interop is disabled. Root cause: interop dead on the host (`/proc/sys/fs/binfmt_misc/WSLInterop` absent → `cmd.exe`/`powershell.exe` fail) → exec-based detection returned empty → old `/mnt/c/Users` fallback picked the alphabetically-first non-system dir (`Administrator`, non-writable → `mkdir` denied). Fix adds `WIN_USER` override + built-in-account skip list + writable/newest-`NTUSER.DAT` heuristic. Verified unit-level (RED `Administrator` → GREEN `jung.hur`) **and** by real deploy: `./setup.sh --force` detected `jung.hur` and copied the `.bat` to `/mnt/c/Users/jung.hur/.local/bin` (91454 bytes), no permission error. Released as **v1.13.1** (version-synced across all scripts + CHANGELOG + README), pushed to origin/master 2026-06-29. See PROJECT_LOG.md 2026-06-29 17:55 CDT. |
 | v1.13.0 deferred-fix release (security + Windows parity + cleanups) | Completed + pushed | 8 commits on top of v1.12.0 (`4beae0a`): CRLF normalization (`49b401c`), consent-gated `-k` (`89d2ce0`), Authenticode HashMismatch gate (`7931922`), Windows `upgrade` action state (`d83a1e5`), oh-my-opencode provider-flag completeness (`f6cb6f9`), setup.bat divergence docs (`acd95dd`), independent-review fixes (`ce3190d`), release bump (`a3902cc`). Validated by two independent fresh-context reviews (security: SHIP, no must-fix; parity: SHIP WITH FIXES — all applied). Pushed to `origin/master` (`4beae0a..b63e920`) on 2026-06-29 at user direction; live runtime tests are now post-release verification. |
 | v1.12.0 Antigravity replaces retired Gemini CLI | Completed + pushed | `4beae0a` on `origin/master`. Gemini CLI removed from both installers (tool index 4), replaced in-place with Antigravity CLI (`agy`, native bootstrapper). oh-my-opencode `--gemini` auto-detect + static `--gemini=no` purged. |
@@ -24,7 +25,8 @@
 
 | Phase / Milestone | Status | Last updated | Note |
 |---|---|---|---|
-| v1.14.0 release (Jules removal + Antigravity Windows fixes) | Completed + pushed | 2026-06-29 23:00 CDT | `72f21a7`. Static-verified; Windows runtime re-test pending (re-deploy via `./setup.sh --force`). |
+| v1.14.1 release (Antigravity latest-version detection) | Completed + pushed | 2026-06-29 23:21 CDT | `c15f6bd`. Manifest query in both installers; Linux live-verified (`1.0.14`); `.bat` powershell path needs a Windows run. |
+| v1.14.0 release (Jules removal + Antigravity Windows fixes) | Completed + pushed; Windows install/detect confirmed | 2026-06-29 23:00 CDT | `72f21a7`. Static-verified; Windows runtime re-test pending (re-deploy via `./setup.sh --force`). |
 | setup.sh Windows-account detection fix | Completed | 2026-06-29 22:21 CDT | `get_windows_username()` rewrite verified unit-level + real-deploy (`jung.hur`, `.bat` copied, no permission error). |
 | v1.13.1 release (setup.sh fix) | Completed + pushed | 2026-06-29 22:21 CDT | Version-synced across all 4 scripts + CHANGELOG `## [1.13.1]` + README entry; committed + pushed to origin/master. |
 | Phase 0: commit + push v1.12.0 | Completed | 2026-06-29 | Pushed `56d91dd..4beae0a`. Closed the "code-complete but uncommitted" gap. |
@@ -68,6 +70,9 @@
 
 | Item | Method | Result | Date |
 |---|---|---|---|
+| v1.14.0 on Windows (user run) | user re-deployed + ran the `.bat` | 7-tool menu, **no Google Jules**; Antigravity detected `1.0.14` (version-detection fix works); banner v1.14.0 | 2026-06-29 23:21 CDT |
+| v1.14.1 Antigravity latest helper | extracted `get_latest_antigravity_version`, ran live (Linux) | `1.0.14` (matches installed → "up to date") | 2026-06-29 23:21 CDT |
+| v1.14.1 `.bat` parse-safety | label resolution; dispatch+label present; CRLF byte-check | all resolve; `get_latest_native_antigravity` present; uniform CRLF | 2026-06-29 23:21 CDT |
 | Antigravity install (Linux) | user ran `agy --version` | `1.0.14` (install works; `--version` flag correct) | 2026-06-29 23:00 CDT |
 | v1.14.0 Jules removal structure | grep TOOLS_COUNT/TOOL_n/properties; `.sh` array; orphan `_7` scan | `TOOLS_COUNT=6`, `TOOL_1..6`, properties renumbered 5/6, no orphan `_7`; `.sh` array 6 entries; Jules purged from functional code | 2026-06-29 23:00 CDT |
 | v1.14.0 `.bat` parse-safety | label resolution; paren balance on edited Antigravity blocks; CRLF byte-check | all labels resolve; blocks balanced; uniform CRLF (lone-`\n`=0, `\r\r\n`=0) | 2026-06-29 23:00 CDT |
@@ -90,17 +95,17 @@
 
 ### Not yet verified
 
-- **v1.14.0 on Windows** (after re-deploying via `./setup.sh --force`): `.bat` runtime parse with the renumbered 6-tool menu (Jules gone); Antigravity remove targeting `%LOCALAPPDATA%\agy\bin\agy.exe`; Antigravity version detection via the `%LOCALAPPDATA%` fallback; the claude-code-upgrade stderr suppression (couldn't reproduce without cmd.exe).
-- Windows runtime: the `remove` flow for any tool; the consent prompt and Authenticode gate in their trigger paths. (Install + upgrade flows ran OK on 2026-06-29.)
+- **Windows, still unverified** (confirmed on 2026-06-29: 6-tool menu w/o Jules, Antigravity install + version detection `1.0.14`): the Antigravity **remove** path (`%LOCALAPPDATA%\agy\bin\agy.exe`); the claude-code-upgrade **stderr suppression** (couldn't reproduce without cmd.exe); the **v1.14.1 `.bat` manifest query** (`:get_latest_native_antigravity` powershell path — Linux equivalent verified, Windows pending). Re-deploy v1.14.1 via `./setup.sh --force` first.
+- Windows runtime: the `remove` flow for any tool; the consent prompt and Authenticode gate in their trigger paths.
 - `claude.exe` Authenticode status on a real Windows host.
 
 ## 7. Restart Instructions
 
 - **Exact starting point:**
-  1. **v1.14.0 is released + pushed** (`origin/master` at `72f21a7`; `git log --oneline`). Working tree clean. Latest: Google Jules removed; Antigravity Windows remove/detect fixed; claude-code-upgrade stderr suppressed. Linux Antigravity confirmed (`agy --version` → `1.0.14`).
+  1. **v1.14.1 is released + pushed** (`origin/master` at `c15f6bd`; `git log --oneline`). Working tree clean. Recent: Google Jules removed (v1.14.0); Antigravity Windows remove/detect fixed (v1.14.0); claude-code-upgrade stderr suppressed (v1.14.0); Antigravity latest-version detection via official manifest (v1.14.1). Windows v1.14.0 confirmed by user (7-tool menu w/o Jules; Antigravity `1.0.14` detected).
   2. Sanity: `bash -n install_coding_tools.sh setup.sh`; confirm `.bat` is uniform CRLF (`file install_coding_tools.bat`).
 - **Recommended next actions (in order):**
-  1. **Re-deploy v1.14.0 to Windows:** `./setup.sh --force` (the deployed `.bat` is still v1.13.0). Then run the Windows `.bat` and verify: 6-tool menu with no Google Jules; Antigravity install/remove against `%LOCALAPPDATA%\agy\bin`; no "filename, directory name…" leak on a claude-code upgrade.
-  2. Exercise the Windows `remove` flow (still unexercised) and the consent prompt / Authenticode gate in their trigger paths; capture `claude.exe` Authenticode status.
+  1. **Re-deploy v1.14.1 to Windows:** `./setup.sh --force` (the deployed `.bat` is older). Then on Windows confirm: Antigravity menu shows a real "Latest" (e.g. `1.0.14`), not "Unknown"; Antigravity **remove** deletes `%LOCALAPPDATA%\agy\bin\agy.exe`; no "filename, directory name…" leak on a claude-code upgrade.
+  2. Exercise the Windows `remove` flow generally and the consent prompt / Authenticode gate in their trigger paths; capture `claude.exe` Authenticode status.
   3. If `claude.exe` is normally `Valid`-signed, optionally implement the security Finding 3 `-k`-path hardening.
-- **Last updated:** 2026-06-29 23:00 CDT
+- **Last updated:** 2026-06-29 23:21 CDT

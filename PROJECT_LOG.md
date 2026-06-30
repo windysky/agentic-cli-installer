@@ -5,7 +5,7 @@ Append-only history. Active file holds the most recent sessions; older ones live
 - logs/PROJECT_LOG_2026-H1.md — 11 sessions (2026-02 … 2026-03)
 
 ## Session Index (active, newest first)
-- 2026-06-29 17:55 CDT — v1.13.1: fix setup.sh WSL Windows-user detection (picked `Administrator` when interop disabled) — rewrote `get_windows_username` (WIN_USER override + built-in skip list + writable/newest-NTUSER.DAT heuristic); verified unit-level + real deploy (`jung.hur`); released + pushed + v1.14.0 (remove Google Jules CLI; Antigravity Windows remove/detect fixes; claude stderr suppression)
+- 2026-06-29 17:55 CDT — v1.13.1: fix setup.sh WSL Windows-user detection (picked `Administrator` when interop disabled) — rewrote `get_windows_username` (WIN_USER override + built-in skip list + writable/newest-NTUSER.DAT heuristic); verified unit-level + real deploy (`jung.hur`); released + pushed + v1.14.0 (remove Google Jules CLI; Antigravity Windows remove/detect fixes; claude stderr suppression) + v1.14.1 (Antigravity latest-version detection via official manifest)
 - 2026-06-29 09:23 CDT — v1.13.0: deferred-fix release (consent-gated -k, Authenticode tamper gate, Windows upgrade action state, oh-my-opencode flag completeness, CRLF normalization, setup.bat docs); 2 independent reviews; pushed to origin/master at user direction (ahead of live tests)
 - 2026-06-27 21:06 CDT — v1.12.0: Antigravity CLI replaces retired Gemini CLI; --gemini=no purge; multi-expert review + fixes; .bat runtime smoke test
 - 2026-04-23 — v1.11.0: Remove MoAI-ADK bootstrapper same-origin checksum verification
@@ -70,6 +70,16 @@ Append-only history. Active file holds the most recent sessions; older ones live
 - Caught + fixed a self-introduced cmd.exe footgun: a REM I added inside the Antigravity remove `( )` block contained `(...)`; rephrased to avoid the paren-in-block parse hazard (the file's own line ~1974 warns about exactly this).
 - Verification: `bash -n` pass; `.bat` label resolution all-resolve; both edited Antigravity blocks paren-balanced; `.bat` uniform CRLF (lone-`\n`=0, `\r\r\n`=0); `TOOLS_COUNT=6` with `TOOL_1..6` and no orphan `_7`; v1.14.0 consistent across files; CHANGELOG descending; Jules purged from all functional code (only the removal-documentation text mentions it).
 - Committed `72f21a7` (release) + pushed. **NOT yet verified (needs a Windows run):** `.bat` runtime parse with the renumbered tools; Antigravity remove/detect in their trigger paths; the stderr suppression (couldn't reproduce without cmd.exe). The deployed `.bat` in `/mnt/c/Users/jung.hur/.local/bin` is still v1.13.0 — re-run `./setup.sh --force` to redeploy v1.14.0.
+
+**Follow-up (same session, 2026-06-29 23:21 CDT) — v1.14.1 (Antigravity latest-version detection):**
+- User re-deployed v1.14.0 to Windows and confirmed it: 7-tool menu, no Google Jules; Antigravity detected as Installed `1.0.14` (the version-detection fix works). Latest still showed "Unknown" → user asked why.
+- Root cause: `get_latest_version` (`.sh`) / `:get_latest_native_version` (`.bat`) only had latest-version sources for `claude-code` and `moai-adk` (GitHub releases); no antigravity branch.
+- Research: fetched Antigravity's `install.sh`/`install.cmd` — both query a release manifest at `https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/<platform>.json` (fields `version`/`url`/`sha512`). Platform: `linux_amd64`/`_arm64`(+`_musl`)/`darwin_*` (`.sh`); `windows_amd64`/`windows_arm64` (`.bat`). Confirmed both Linux and Windows manifests return `version: 1.0.14`.
+- User approved implementing in both installers (v1.14.1):
+  - `.sh`: new `get_latest_antigravity_version()` (platform detection mirrors install.sh incl. musl; curl manifest; parse `version` via python3 or grep fallback); native case branches to it for antigravity.
+  - `.bat`: dispatch `if pkg==antigravity goto get_latest_native_antigravity` + a new label running powershell `Invoke-RestMethod` on the manifest (`PROCESSOR_ARCHITECTURE` → windows_amd64/arm64), mirroring the existing claude/moai tmpfile pattern.
+  - Version bump v1.14.0 → v1.14.1 across all 4 scripts + CHANGELOG `## [1.14.1]` + README entry.
+- Verification: `bash -n` pass; `.sh` helper live → `1.0.14`; `.bat` label resolution all-resolve (dispatch + `:get_latest_native_antigravity` present); `.bat` uniform CRLF; v1.14.1 consistent; CHANGELOG descending. Committed `c15f6bd` + pushed. NOT yet verified (needs a Windows run): the `.bat` powershell-manifest path (the Linux equivalent is verified). Tradeoff: hardcodes the official Cloud Run auto-updater URL — degrades to "Unknown" on any failure (no regression).
 
 ---
 
