@@ -2,6 +2,7 @@
 Verbatim historical sessions moved from the active PROJECT_LOG.md. Newest first. Do not edit.
 
 ## Session Index (newest first)
+- 2026-03-08 11:49 CDT — v1.9.6: Fix 3 Windows-specific bugs reported from live testing
 - 2026-03-08 00:14 CST — v1.9.5: Comprehensive codebase review, version sync, error handling fixes, Windows parity
 - 2026-02-19 — v1.9.2: oh-my-opencode installation bug fixes and feature improvements
 - 2026-02-18 16:37 — Coding CLI used: OpenCode
@@ -13,6 +14,57 @@ Verbatim historical sessions moved from the active PROJECT_LOG.md. Newest first.
 - 2026-02-14 (Morning) — Documentation review and version synchronization after external changes
 - 2026-02-12 — Windows installer alignment with Unix features
 - 2026-02-07 to 2026-02-09 — v1.7.13-1.7.19: Multiple bug fixes and feature additions
+
+---
+
+## Session 2026-03-08 11:49 CDT
+
+**Coding CLI used:** Claude Code CLI (claude-opus-4-6)
+
+**Phase(s) worked on:**
+- v1.9.6: Fix 3 Windows-specific bugs reported from live testing
+
+**Concrete changes implemented:**
+1. Fixed action summary displaying "2nst", "3nst", "4nst" instead of version strings — root cause: `%%inst%%` double-indirection inside `for /L %%i` loops caused `%%i` in `%%inst%%` to match the for-loop variable, replacing the version with the index + "nst"
+2. Added curl SSL certificate fallback for Windows — first tries `--ssl-no-revoke`, then falls back to `-k` (insecure) with warning. Applied to both MoAI-ADK and Claude Code installer downloads
+3. Added error suppression to `check_npm_claude_code` — wrapped `resolve_conda_npm` call and `for /f` npm check block with `2>nul` to suppress "filename, directory name, or volume label syntax is incorrect" error
+
+**Files/modules/functions touched:**
+- `install_coding_tools.bat`:
+  - Removed 2 broken `call set "inst=%%inst%%"` lines inside action summary `for /L %%i` loops (lines ~1735, ~1752)
+  - Added `--ssl-no-revoke` and `-k` fallback to curl in `:run_moai_installer` and `:download_claude_installer`
+  - Added `2>nul` to `call :resolve_conda_npm` and wrapped `for /f` block in `:check_npm_claude_code`
+  - Version bump to v1.9.6
+- `install_coding_tools.sh`: Version bump to v1.9.6
+- `setup.sh`: Version bump to v1.9.6
+- `setup.bat`: Version bump to v1.9.6
+- `README.md`: Version bump, added v1.9.6 changelog entry
+- `CHANGELOG.md`: Added v1.9.6 entry
+- `PROJECT_HANDOFF.md`: Full refresh to v1.9.6 state
+- `PROJECT_LOG.md`: This entry
+
+**Key technical decisions and rationale:**
+- Removed double-indirection `call set "inst=%%inst%%"` rather than renaming the variable, because the first `call set "inst=%%INST_%%i%%"` already resolves correctly (%%I uppercase doesn't collide with %%i lowercase for-variable)
+- curl SSL: `--ssl-no-revoke` is the standard Windows fix for CRL issues; `-k` is a last-resort fallback with user-visible warning
+- Error suppression: `2>nul` at the right scope captures all stderr leakage from npm.cmd and underlying cmd.exe path resolution
+
+**Problems encountered and resolutions:**
+- `.bat` file has `\r\r\n` (double CR) line endings — Edit tool string matching fails. Used Python binary-safe scripts for all modifications.
+
+**Items explicitly completed, resolved, or superseded in this session:**
+- Resolved: Action summary "2nst" display bug
+- Resolved: curl SSL certificate failure for MoAI-ADK on Windows
+- Resolved: "filename, directory name" error during Claude Code installation on Windows
+
+**Verification performed:**
+- `bash -n install_coding_tools.sh setup.sh auto_install_coding_tools` — all pass
+- `file install_coding_tools.bat setup.bat` — CRLF confirmed
+- `grep` version consistency across all 6 files — all show v1.9.6
+- `grep '^## \[' CHANGELOG.md` — no duplicates, correct descending order
+- Confirmed 0 indented `%%inst%%` lines remain in .bat
+- Confirmed `--ssl-no-revoke` present in both curl commands
+- Confirmed `2>nul` present in check_npm_claude_code
+- Git commit `1566742` pushed to origin/master
 
 ---
 

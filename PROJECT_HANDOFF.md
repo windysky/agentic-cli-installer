@@ -4,10 +4,10 @@
 
 - **Name:** agentic-cli-installer
 - **Purpose and scope:** Cross-platform interactive installer for AI coding CLIs (install, update, remove) with Unix/WSL support via `install_coding_tools.sh` and Windows support via `install_coding_tools.bat`.
-- **Last updated:** 2026-06-29 23:32 CDT
+- **Last updated:** 2026-06-30 00:09 CDT
 - **Last coding CLI used (informational):** Claude Code (Sonnet 4.6)
 - **Cross-project wiki (consulted this session):** `~/PROJECTS/wiki/index.md` and the related `~/PROJECTS/wiki/concept/wsl-cmdexe-unc-cwd-testing.md` (WSL↔cmd.exe interop / UNC-cwd context).
-- **Cross-project wiki (distilled this session):** `~/PROJECTS/wiki/concept/wsl-windows-user-detection-fallback.md` (when WSL interop is disabled, the `/mnt/c/Users` fallback must skip built-in accounts and prefer the writable, most-recently-used profile — never the alphabetically-first dir).
+- **Cross-project wiki (distilled this session):** `~/PROJECTS/wiki/concept/wsl-windows-user-detection-fallback.md` (when WSL interop is disabled, the `/mnt/c/Users` fallback must skip built-in accounts and prefer the writable, most-recently-used profile — never the alphabetically-first dir) and `~/PROJECTS/wiki/concept/native-cli-version-and-location-from-installer.md` (read a native CLI's own install.sh/install.cmd to find its version-manifest endpoint and its platform-specific install location — don't assume the Unix path on Windows).
 
 ## 2. Current State
 
@@ -111,4 +111,4 @@
   1. **Verify on Windows** (the v1.14.2 `.bat` is already deployed): run it and confirm the Antigravity row shows **Latest = `1.0.14`** (not "Unknown"); exercise Antigravity **remove** (deletes `%LOCALAPPDATA%\agy\bin\agy.exe`); confirm no "filename, directory name…" leak on a claude-code upgrade.
   2. Exercise the Windows `remove` flow generally and the consent prompt / Authenticode gate in their trigger paths; capture `claude.exe` Authenticode status.
   3. If `claude.exe` is normally `Valid`-signed, optionally implement the security Finding 3 `-k`-path hardening.
-- **Last updated:** 2026-06-29 23:32 CDT
+- **Last updated:** 2026-06-30 00:09 CDT

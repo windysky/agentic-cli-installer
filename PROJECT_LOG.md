@@ -2,7 +2,7 @@
 Append-only history. Active file holds the most recent sessions; older ones live in logs/. Newest first.
 
 ## Archives
-- logs/PROJECT_LOG_2026-H1.md — 11 sessions (2026-02 … 2026-03)
+- logs/PROJECT_LOG_2026-H1.md — 12 sessions (2026-02 … 2026-03)
 
 ## Session Index (active, newest first)
 - 2026-06-29 17:55 CDT — v1.13.1: fix setup.sh WSL Windows-user detection (picked `Administrator` when interop disabled) — rewrote `get_windows_username` (WIN_USER override + built-in skip list + writable/newest-NTUSER.DAT heuristic); verified unit-level + real deploy (`jung.hur`); released + pushed + v1.14.0 (remove Google Jules CLI; Antigravity Windows remove/detect fixes; claude stderr suppression) + v1.14.1 (Antigravity latest-version detection via official manifest) + v1.14.2 (setup.sh announces deployed installer version)
@@ -12,7 +12,6 @@ Append-only history. Active file holds the most recent sessions; older ones live
 - 2026-03-14 — v1.9.11: Auto PATH configuration and CLI convenience aliases in setup.sh
 - 2026-03-11 — v1.9.9: Fix conda command detection in non-interactive script context
 - 2026-03-08 14:00 CDT — v1.9.7: Reorder tools (Claude Code before MoAI-ADK), add MoAI-ADK dependency check
-- 2026-03-08 11:49 CDT — v1.9.6: Fix 3 Windows-specific bugs reported from live testing
 
 ---
 
@@ -454,58 +453,5 @@ Append-only history. Active file holds the most recent sessions; older ones live
 - CHANGELOG ordering — no duplicates, correct descending order
 - Tool order verified in both .sh and .bat
 - Dependency check code reviewed in both .sh and .bat
-
----
-
----
-
-## Session 2026-03-08 11:49 CDT
-
-**Coding CLI used:** Claude Code CLI (claude-opus-4-6)
-
-**Phase(s) worked on:**
-- v1.9.6: Fix 3 Windows-specific bugs reported from live testing
-
-**Concrete changes implemented:**
-1. Fixed action summary displaying "2nst", "3nst", "4nst" instead of version strings — root cause: `%%inst%%` double-indirection inside `for /L %%i` loops caused `%%i` in `%%inst%%` to match the for-loop variable, replacing the version with the index + "nst"
-2. Added curl SSL certificate fallback for Windows — first tries `--ssl-no-revoke`, then falls back to `-k` (insecure) with warning. Applied to both MoAI-ADK and Claude Code installer downloads
-3. Added error suppression to `check_npm_claude_code` — wrapped `resolve_conda_npm` call and `for /f` npm check block with `2>nul` to suppress "filename, directory name, or volume label syntax is incorrect" error
-
-**Files/modules/functions touched:**
-- `install_coding_tools.bat`:
-  - Removed 2 broken `call set "inst=%%inst%%"` lines inside action summary `for /L %%i` loops (lines ~1735, ~1752)
-  - Added `--ssl-no-revoke` and `-k` fallback to curl in `:run_moai_installer` and `:download_claude_installer`
-  - Added `2>nul` to `call :resolve_conda_npm` and wrapped `for /f` block in `:check_npm_claude_code`
-  - Version bump to v1.9.6
-- `install_coding_tools.sh`: Version bump to v1.9.6
-- `setup.sh`: Version bump to v1.9.6
-- `setup.bat`: Version bump to v1.9.6
-- `README.md`: Version bump, added v1.9.6 changelog entry
-- `CHANGELOG.md`: Added v1.9.6 entry
-- `PROJECT_HANDOFF.md`: Full refresh to v1.9.6 state
-- `PROJECT_LOG.md`: This entry
-
-**Key technical decisions and rationale:**
-- Removed double-indirection `call set "inst=%%inst%%"` rather than renaming the variable, because the first `call set "inst=%%INST_%%i%%"` already resolves correctly (%%I uppercase doesn't collide with %%i lowercase for-variable)
-- curl SSL: `--ssl-no-revoke` is the standard Windows fix for CRL issues; `-k` is a last-resort fallback with user-visible warning
-- Error suppression: `2>nul` at the right scope captures all stderr leakage from npm.cmd and underlying cmd.exe path resolution
-
-**Problems encountered and resolutions:**
-- `.bat` file has `\r\r\n` (double CR) line endings — Edit tool string matching fails. Used Python binary-safe scripts for all modifications.
-
-**Items explicitly completed, resolved, or superseded in this session:**
-- Resolved: Action summary "2nst" display bug
-- Resolved: curl SSL certificate failure for MoAI-ADK on Windows
-- Resolved: "filename, directory name" error during Claude Code installation on Windows
-
-**Verification performed:**
-- `bash -n install_coding_tools.sh setup.sh auto_install_coding_tools` — all pass
-- `file install_coding_tools.bat setup.bat` — CRLF confirmed
-- `grep` version consistency across all 6 files — all show v1.9.6
-- `grep '^## \[' CHANGELOG.md` — no duplicates, correct descending order
-- Confirmed 0 indented `%%inst%%` lines remain in .bat
-- Confirmed `--ssl-no-revoke` present in both curl commands
-- Confirmed `2>nul` present in check_npm_claude_code
-- Git commit `1566742` pushed to origin/master
 
 ---
