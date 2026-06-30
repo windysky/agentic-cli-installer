@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.1] - 2026-06-29
+
+### Fixed
+
+- **WSL → Windows account detection (`setup.sh`)**: when WSL Windows-interop is disabled (`/proc/sys/fs/binfmt_misc/WSLInterop` absent, so `cmd.exe`/`powershell.exe` cannot run), `get_windows_username()` fell through to a `/mnt/c/Users` scan that picked the alphabetically-first non-system directory — `Administrator`, a built-in account whose profile is not writable — causing the Windows-side install to fail with `mkdir … Permission denied`. The fallback now skips built-in accounts (`Administrator`, `WDAGUtilityAccount`, `systemprofile`, `LocalService`, `NetworkService`), prefers an exact `$USER` match, and otherwise selects the writable, most-recently-used profile by `NTUSER.DAT` mtime. A new `WIN_USER` environment override takes priority (`WIN_USER=<name> ./setup.sh`), and the detected account is printed with an override hint.
+
 ## [1.13.0] - 2026-06-29
 
 ### Security

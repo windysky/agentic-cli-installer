@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.13.0
+# Agentic Coders Installer v1.13.1
 # Interactive installer for AI coding CLI tools
 #
 # Version history: v1.7.6 added security improvements, v1.7.12 fixed oh-my-opencode version detection
@@ -27,6 +27,10 @@ set -euo pipefail
 #         binary on Authenticode HashMismatch; add distinct Windows "upgrade" action state (parity
 #         with the .sh 4-state cycle); emit all 9 documented oh-my-opencode provider flags; normalize
 #         install_coding_tools.bat to uniform CRLF; document setup.bat platform divergence.
+# v1.13.1 fix setup.sh WSL Windows-account detection on interop-disabled hosts: the /mnt/c/Users
+#         fallback no longer picks the alphabetically-first dir (Administrator, unwritable); add a
+#         WIN_USER override + built-in-account skip list + writable/most-recently-used (NTUSER.DAT)
+#         heuristic. setup.sh-only fix; other scripts version-synced.
 # - Secure temporary file creation with restrictive permissions
 # - TLS-pinned downloads via curl --proto '=https' --tlsv1.2
 #############################################
@@ -1529,7 +1533,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.13.0" \
+        "Agentic Coders CLI Installer v1.13.1" \
         "Toggle: skip->install/upgrade->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"

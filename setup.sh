@@ -17,7 +17,7 @@
 #   --configure-path    Add ~/.local/bin to PATH in shell config
 #   --force             Skip confirmation prompts
 #
-# Version: 1.13.0
+# Version: 1.13.1
 # License: MIT
 
 set -euo pipefail
@@ -147,18 +147,31 @@ detect_platform() {
 }
 
 # Get Windows username in WSL
+#
+# Detection priority:
+#   1. Explicit override env: WIN_USER, then USERPROFILE, then WSL_USER
+#   2. Windows interop: cmd.exe %USERNAME%/%USERPROFILE%, then powershell.exe
+#   3. /mnt/c/Users scan (used when interop is disabled): skip built-in
+#      accounts, prefer an exact $USER match, otherwise the writable +
+#      most-recently-used profile (NTUSER.DAT mtime). This avoids picking
+#      the alphabetically-first built-in account (e.g. Administrator) when
+#      WSL interop is unavailable and the reliable methods return empty.
 get_windows_username() {
     local username=""
+    local win_user="${WIN_USER:-}"
     local wsl_user="${WSL_USER:-}"
     local userprofile="${USERPROFILE:-}"
 
-    # Try multiple methods to get Windows username
-    if [[ -n "$userprofile" ]]; then
+    # 1) Explicit override wins (WIN_USER is the documented override knob).
+    if [[ -n "$win_user" ]]; then
+        username="$win_user"
+    elif [[ -n "$userprofile" ]]; then
         username=$(basename "${userprofile//\\//}")
     elif [[ -n "$wsl_user" ]]; then
         username="$wsl_user"
     fi
 
+    # 2a) Windows interop via cmd.exe.
     if [[ -z "$username" ]]; then
         local cmd=""
         if command_exists cmd.exe; then
@@ -178,6 +191,7 @@ get_windows_username() {
         fi
     fi
 
+    # 2b) Windows interop via powershell.exe.
     if [[ -z "$username" ]]; then
         local pwsh=""
         if command_exists powershell.exe; then
@@ -190,25 +204,53 @@ get_windows_username() {
         fi
     fi
 
+    # 3) /mnt/c/Users scan fallback (interop unavailable). Skip built-in
+    #    accounts; prefer an exact $USER match; otherwise pick the writable,
+    #    most-recently-used profile by NTUSER.DAT mtime (dir mtime fallback).
     if [[ -z "$username" && -d /mnt/c/Users ]]; then
-        # Prefer a match to $USER if available; otherwise pick a non-system directory.
+        local exact=""
+        local best="" best_mtime=0 best_writable=0
+        local user_dir base nt mtime writable
         for user_dir in /mnt/c/Users/*/; do
             [[ -d "$user_dir" ]] || continue
-            local base
             base=$(basename "$user_dir")
             case "$base" in
-                "Public"|"Default"|"Default User"|"All Users"|"DefaultAppPool")
+                "Public"|"Default"|"Default User"|"All Users"|"DefaultAppPool"|"Administrator"|"WDAGUtilityAccount"|"systemprofile"|"LocalService"|"NetworkService")
                     continue
                     ;;
             esac
+
+            # Exact match to the Linux $USER takes absolute precedence.
             if [[ -n "${USER:-}" && "${USER,,}" == "${base,,}" ]]; then
-                username="$base"
+                exact="$base"
                 break
             fi
-            if [[ -z "$username" ]]; then
-                username="$base"
+
+            # Score remaining candidates: writability first, then recency.
+            nt="${user_dir%/}/NTUSER.DAT"
+            if [[ -f "$nt" ]]; then
+                mtime=$(stat -c %Y "$nt" 2>/dev/null) || mtime=0
+            else
+                mtime=$(stat -c %Y "$user_dir" 2>/dev/null) || mtime=0
+            fi
+            [[ -n "$mtime" ]] || mtime=0
+            writable=0
+            if [[ -w "$user_dir" ]]; then
+                writable=1
+            fi
+
+            if (( writable > best_writable )) || { (( writable == best_writable )) && (( mtime > best_mtime )); }; then
+                best="$base"
+                best_mtime=$mtime
+                best_writable=$writable
             fi
         done
+
+        if [[ -n "$exact" ]]; then
+            username="$exact"
+        elif [[ -n "$best" ]]; then
+            username="$best"
+        fi
     fi
 
     echo "$username"
@@ -534,6 +576,7 @@ handle_wsl() {
     fi
 
     success "Detected Windows user: $windows_username"
+    info "(Override with WIN_USER=<name> ./setup.sh if this is not your Windows account)"
 
     local windows_bin_dir="/mnt/c/Users/${windows_username}/.local/bin"
 
