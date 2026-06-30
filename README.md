@@ -1,4 +1,4 @@
-# Agentic CLI Installer v1.13.1
+# Agentic CLI Installer v1.14.0
 
 **Last Modified:** June 29, 2026
 
@@ -82,7 +82,6 @@ Note: Run the Windows installer from an Anaconda Prompt with a non-base conda en
 | [Claude Code CLI](https://github.com/anthropics/claude-code) | `claude-code` | native | [Official installer](https://claude.ai/install.sh) |
 | [OpenAI Codex CLI](https://github.com/openai/codex) | `@openai/codex` | npm | `npm install -g @openai/codex` |
 | [Antigravity CLI](https://github.com/google-antigravity/antigravity-cli) | `antigravity` | native | `curl -fsSL https://antigravity.google/cli/install.sh | bash` |
-| [Google Jules CLI](https://jules.google) | `@google/jules` | npm | `npm install -g @google/jules` |
 | [OpenCode AI CLI](https://github.com/opencode-ai/opencode) | `opencode-ai` | npm | `npm install -g opencode-ai` |
 | [OpenCode - oh-my-opencode](https://github.com/opencode-ai/oh-my-opencode) | `oh-my-opencode` | addon | `bunx oh-my-opencode install [--flags]` |
 
@@ -205,6 +204,13 @@ Backup location: ~/.local/bin.backup
 ```
 
 ## Change Log
+
+### v1.14.0 - June 29, 2026
+
+- **Removed Google Jules CLI**: dropped `@google/jules` from the tool menu in both installers (per user request). Remaining tools renumber automatically (the `.bat` is index-driven).
+- **Antigravity on Windows — remove path fixed**: uninstall now targets `%LOCALAPPDATA%\agy\bin\agy.exe` (where the Windows installer actually places `agy.exe`) instead of the Linux-style `~/.local/bin`, so "remove Antigravity" no longer silently no-ops on Windows. The Linux `.sh` path (`~/.local/bin/agy`) was already correct and is unchanged.
+- **Antigravity on Windows — version detection**: when `agy` isn't yet on the active PATH (right after install, before a terminal restart), detection now falls back to `%LOCALAPPDATA%\agy\bin\agy.exe` so the installed version is recognized.
+- **Claude Code upgrade (Windows)**: suppressed a cosmetic "The filename, directory name, or volume label syntax is incorrect" line that leaked from the npm-migration check during upgrades (the upgrade itself always succeeded).
 
 ### v1.13.1 - June 29, 2026
 

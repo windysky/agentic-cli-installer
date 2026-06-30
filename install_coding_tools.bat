@@ -3,11 +3,11 @@ setlocal EnableDelayedExpansion
 set "SCRIPT_DIR=%~dp0"
 
 REM ###############################################
-REM Agentic Coders Installer v1.13.1
+REM Agentic Coders Installer v1.14.0
 REM Interactive installer for AI coding CLI tools
 REM Windows version (run in Anaconda Prompt or CMD)
 REM
-REM Recent improvements (v1.7.13-v1.13.1):
+REM Recent improvements (v1.7.13-v1.14.0):
 REM - v1.12.0: Replace retired Gemini CLI with Antigravity CLI (native agy installer);
 REM            purge Gemini CLI entry + oh-my-opencode --gemini auto-detect + static --gemini=no
 REM            (--gemini=no is the documented default; omitting it is safe and Gemini CLI is retired.
@@ -21,6 +21,10 @@ REM - v1.13.1: setup.sh deployer Windows-account detection fix (no .bat code cha
 REM            On WSL hosts with interop disabled, the /mnt/c/Users fallback no longer picks the
 REM            alphabetically-first dir (Administrator, unwritable); WIN_USER override + built-in
 REM            skip list + writable/newest-NTUSER.DAT heuristic.
+REM - v1.14.0: Remove Google Jules CLI from the menu (per user request). Antigravity on Windows:
+REM            remove now targets %LOCALAPPDATA%\agy\bin\agy.exe (the real Windows install path, not
+REM            ~/.local/bin), version detection finds agy there before a terminal restart, and the
+REM            Claude Code upgrade path no longer leaks a cosmetic "filename ... incorrect" line.
 REM - v1.11.0: Remove MoAI-ADK bootstrapper same-origin checksum (MoAI-ADK's own
 REM            downstream binary verification is preserved)
 REM - v1.10.0: Fix Claude Code CLI installation failure on Windows
@@ -104,14 +108,13 @@ REM itself verifies the SHA-256 of the downloaded binary tarball against a hash 
 REM its release metadata, so the bootstrapper same-origin hash check was removed in v1.11.0.
 
 REM Tool list: name|manager|package|description
-set TOOLS_COUNT=7
+set TOOLS_COUNT=6
 set "TOOL_1=claude-code|native|claude-code|Claude Code CLI"
 set "TOOL_2=moai-adk|native|moai-adk|MoAI Agent Development Kit"
 set "TOOL_3=@openai/codex|npm|@openai/codex|OpenAI Codex CLI"
 set "TOOL_4=antigravity|native|antigravity|Antigravity CLI"
-set "TOOL_5=@google/jules|npm|@google/jules|Google Jules CLI"
-set "TOOL_6=opencode-ai|npm|opencode-ai|OpenCode AI CLI"
-set "TOOL_7=oh-my-opencode|addon|oh-my-opencode|OpenCode - oh-my-opencode"
+set "TOOL_5=opencode-ai|npm|opencode-ai|OpenCode AI CLI"
+set "TOOL_6=oh-my-opencode|addon|oh-my-opencode|OpenCode - oh-my-opencode"
 
 REM Action states (constants are a reference key; comparisons below use literals): 0=skip, 1=install, 2=remove, 3=upgrade
 set ACTION_SKIP=0
@@ -174,26 +177,19 @@ set "DESC_4=Antigravity CLI"
 set "BIN_4=agy"
 set "VERARG_4=--version"
 
-set "NAME_5=Google Jules CLI"
+set "NAME_5=OpenCode AI CLI"
 set "MGR_5=npm"
-set "PKG_5=@google/jules"
-set "DESC_5=Google Jules CLI"
-set "BIN_5=jules"
-set "VERARG_5=version"
+set "PKG_5=opencode-ai"
+set "DESC_5=OpenCode AI CLI"
+set "BIN_5=opencode"
+set "VERARG_5=--version"
 
-set "NAME_6=OpenCode AI CLI"
-set "MGR_6=npm"
-set "PKG_6=opencode-ai"
-set "DESC_6=OpenCode AI CLI"
-set "BIN_6=opencode"
-set "VERARG_6=--version"
-
-set "NAME_7=OpenCode - oh-my-opencode"
-set "MGR_7=addon"
-set "PKG_7=oh-my-opencode"
-set "DESC_7=OpenCode - oh-my-opencode"
-set "BIN_7="
-set "VERARG_7="
+set "NAME_6=OpenCode - oh-my-opencode"
+set "MGR_6=addon"
+set "PKG_6=oh-my-opencode"
+set "DESC_6=OpenCode - oh-my-opencode"
+set "BIN_6="
+set "VERARG_6="
 
 REM ###############################################
 REM MAIN EXECUTION
@@ -1176,6 +1172,9 @@ if /I "%pkg%"=="antigravity" (
     where agy >nul 2>nul
     if not errorlevel 1 (
         call :get_semver_from_command "agy" "--version" "%outvar%"
+    ) else if exist "%LOCALAPPDATA%\agy\bin\agy.exe" (
+        REM Windows installs agy to %LOCALAPPDATA%\agy\bin; detect there before a terminal restart adds it to PATH.
+        call :get_semver_from_command "%LOCALAPPDATA%\agy\bin\agy.exe" "--version" "%outvar%"
     )
 )
 exit /b 0
@@ -1455,7 +1454,7 @@ if "%DEBUG%"=="1" (
     cls
 )
 call :print_banner_sep
-echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.13.1%NC%
+echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.14.0%NC%
 echo Toggle: %CYAN%skip%NC% -^> %GREEN%install%NC%/%CYAN%upgrade%NC% -^> %RED%remove%NC%  Input: 1,3,5  Enter/P=proceed  Q=quit
 call :print_banner_sep
 echo.
@@ -2037,7 +2036,7 @@ set "remove_fail=0"
 
 :install_tool_claude
 	set "HAS_NPM_CLAUDE=0"
-	call :check_npm_claude_code HAS_NPM_CLAUDE
+	call :check_npm_claude_code HAS_NPM_CLAUDE 2>nul
 	if "!HAS_NPM_CLAUDE!"=="1" goto install_tool_claude_migrate
 	goto install_tool_claude_post_migrate
 
@@ -2548,15 +2547,11 @@ if /I "!mgr!"=="npm-self" (
         )
     ) else if /I "!pkg!"=="antigravity" (
         echo   Uninstalling native...
-        call :dbg   %BLUE%[DEBUG]%NC% remove: %USERPROFILE%\.local\bin\agy
-        if exist "%USERPROFILE%\.local\bin\agy.exe" del "%USERPROFILE%\.local\bin\agy.exe" >nul 2>nul
-        if exist "%USERPROFILE%\.local\bin\agy" del "%USERPROFILE%\.local\bin\agy" >nul 2>nul
-        if exist "%USERPROFILE%\.local\bin\agy.exe" (
+        REM Windows Antigravity installs to %LOCALAPPDATA%\agy\bin, not the Linux-style ~/.local/bin.
+        call :dbg   %BLUE%[DEBUG]%NC% remove: %LOCALAPPDATA%\agy\bin\agy.exe
+        if exist "%LOCALAPPDATA%\agy\bin\agy.exe" del "%LOCALAPPDATA%\agy\bin\agy.exe" >nul 2>nul
+        if exist "%LOCALAPPDATA%\agy\bin\agy.exe" (
             echo %RED%[ERROR]%NC% Failed to remove Antigravity CLI binary (agy.exe)
-            exit /b 1
-        )
-        if exist "%USERPROFILE%\.local\bin\agy" (
-            echo %RED%[ERROR]%NC% Failed to remove Antigravity CLI binary (agy)
             exit /b 1
         )
     )

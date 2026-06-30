@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.13.1
+# Agentic Coders Installer v1.14.0
 # Interactive installer for AI coding CLI tools
 #
 # Version history: v1.7.6 added security improvements, v1.7.12 fixed oh-my-opencode version detection
@@ -31,6 +31,10 @@ set -euo pipefail
 #         fallback no longer picks the alphabetically-first dir (Administrator, unwritable); add a
 #         WIN_USER override + built-in-account skip list + writable/most-recently-used (NTUSER.DAT)
 #         heuristic. setup.sh-only fix; other scripts version-synced.
+# v1.14.0 remove Google Jules CLI from the tool menu (per user request). Windows .bat also: fix
+#         Antigravity remove to target %LOCALAPPDATA%\agy\bin\agy.exe (the Windows install location,
+#         not the Linux ~/.local/bin), detect agy there before a PATH-refreshing terminal restart,
+#         and suppress a cosmetic stderr leak on the Claude Code upgrade path.
 # - Secure temporary file creation with restrictive permissions
 # - TLS-pinned downloads via curl --proto '=https' --tlsv1.2
 #############################################
@@ -95,7 +99,6 @@ declare -a TOOLS=(
     "moai-adk|native|moai-adk|MoAI Agent Development Kit"
     "@openai/codex|npm|@openai/codex|OpenAI Codex CLI"
     "antigravity|native|antigravity|Antigravity CLI"
-    "@google/jules|npm|@google/jules|Google Jules CLI"
     "opencode-ai|npm|opencode-ai|OpenCode AI CLI"
     "oh-my-opencode|addon|oh-my-opencode|OpenCode - oh-my-opencode"
 )
@@ -1533,7 +1536,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.13.1" \
+        "Agentic Coders CLI Installer v1.14.0" \
         "Toggle: skip->install/upgrade->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"
