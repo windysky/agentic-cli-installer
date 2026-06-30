@@ -1,4 +1,4 @@
-# Agentic CLI Installer v1.13.0
+# Agentic CLI Installer v1.13.1
 
 **Last Modified:** June 29, 2026
 
@@ -205,6 +205,10 @@ Backup location: ~/.local/bin.backup
 ```
 
 ## Change Log
+
+### v1.13.1 - June 29, 2026
+
+- **WSL → Windows account detection fix (`setup.sh`)**: on WSL hosts where Windows-interop is disabled, the deployer picked the wrong Windows account (`Administrator`, unwritable) for the `.bat` install target, failing with a permission error. Detection now skips built-in accounts and selects the writable, most-recently-used profile by `NTUSER.DAT` mtime; a `WIN_USER=<name>` override is available and the detected account is shown with a hint.
 
 ### v1.13.0 - June 29, 2026
 
