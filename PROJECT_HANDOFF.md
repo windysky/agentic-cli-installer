@@ -4,7 +4,7 @@
 
 - **Name:** agentic-cli-installer
 - **Purpose and scope:** Cross-platform interactive installer for AI coding CLIs (install, update, remove) with Unix/WSL support via `install_coding_tools.sh` and Windows support via `install_coding_tools.bat`.
-- **Last updated:** 2026-06-29 23:21 CDT
+- **Last updated:** 2026-06-29 23:32 CDT
 - **Last coding CLI used (informational):** Claude Code (Sonnet 4.6)
 - **Cross-project wiki (consulted this session):** `~/PROJECTS/wiki/index.md` and the related `~/PROJECTS/wiki/concept/wsl-cmdexe-unc-cwd-testing.md` (WSL↔cmd.exe interop / UNC-cwd context).
 - **Cross-project wiki (distilled this session):** `~/PROJECTS/wiki/concept/wsl-windows-user-detection-fallback.md` (when WSL interop is disabled, the `/mnt/c/Users` fallback must skip built-in accounts and prefer the writable, most-recently-used profile — never the alphabetically-first dir).
@@ -13,6 +13,7 @@
 
 | Component | Status | Current truth |
 |---|---|---|
+| v1.14.2: setup.sh announces deployed installer version | Completed + pushed | `setup.sh` deployment summary now prints `Installed installer version: vX.Y.Z` + the version inline next to each deployed script (new `get_installer_version` helper parses the `Agentic Coders Installer vX.Y.Z` header). **Verified live** — `./setup.sh --force` summary shows `v1.14.2`. Committed `481dadc`, pushed. That run also re-deployed v1.14.2 to Linux `~/.local/bin` and Windows `/mnt/c/Users/jung.hur/.local/bin` (so the Windows `.bat` is now v1.14.2 with all Antigravity work). |
 | v1.14.1: Antigravity latest-version detection | Completed + pushed | `get_latest_version` (`.sh`) / `:get_latest_native_version` (`.bat`) now query Antigravity's official release manifest (`…run.app/manifests/<platform>.json`, the endpoint its own installer uses) and parse `version`; platform detection mirrors the official installer. Previously "Latest: Unknown" (only claude-code/moai-adk had a source). Verified live on Linux (`get_latest_antigravity_version` → `1.0.14`). Committed `c15f6bd`, pushed. `.bat` powershell-manifest path needs a Windows run to confirm. Confirmed by user's 2026-06-29 Windows run: v1.14.0 deployed cleanly (7-tool menu, no Jules; Antigravity detected `1.0.14`). |
 | v1.14.0: remove Google Jules CLI + Antigravity Windows fixes | Completed + pushed (Windows runtime verified for install/detect) | Removed `@google/jules` from both installers (`.sh` TOOLS array; `.bat` `TOOL_5` + property block, `TOOLS_COUNT` 7→6, renumbered 5/6) + README row. Antigravity Windows: remove path fixed to `%LOCALAPPDATA%\agy\bin\agy.exe`; version detection falls back to that path before a PATH-refreshing terminal restart. Suppressed a cosmetic claude-code-upgrade stderr leak. Committed `72f21a7`, pushed. Static-verified (bash -n, label resolution, paren balance, CRLF, structure); `.bat` runtime parse + the 3 Windows behaviors need a Windows run. Deployed `.bat` is still v1.13.0 — re-run `./setup.sh --force` to push v1.14.0 to `/mnt/c/Users/jung.hur/.local/bin`. See PROJECT_LOG.md 2026-06-29 23:00 CDT. |
 | setup.sh WSL Windows-account detection fix (v1.13.1) | Completed + pushed | `get_windows_username()` rewritten so the WSL→Windows-side install no longer targets `Administrator` when WSL interop is disabled. Root cause: interop dead on the host (`/proc/sys/fs/binfmt_misc/WSLInterop` absent → `cmd.exe`/`powershell.exe` fail) → exec-based detection returned empty → old `/mnt/c/Users` fallback picked the alphabetically-first non-system dir (`Administrator`, non-writable → `mkdir` denied). Fix adds `WIN_USER` override + built-in-account skip list + writable/newest-`NTUSER.DAT` heuristic. Verified unit-level (RED `Administrator` → GREEN `jung.hur`) **and** by real deploy: `./setup.sh --force` detected `jung.hur` and copied the `.bat` to `/mnt/c/Users/jung.hur/.local/bin` (91454 bytes), no permission error. Released as **v1.13.1** (version-synced across all scripts + CHANGELOG + README), pushed to origin/master 2026-06-29. See PROJECT_LOG.md 2026-06-29 17:55 CDT. |
@@ -25,6 +26,7 @@
 
 | Phase / Milestone | Status | Last updated | Note |
 |---|---|---|---|
+| v1.14.2 release (setup.sh version announcement) | Completed + pushed | 2026-06-29 23:32 CDT | `481dadc`. Verified live (summary shows `v1.14.2`). Also re-deployed v1.14.2 to Linux + Windows targets. |
 | v1.14.1 release (Antigravity latest-version detection) | Completed + pushed | 2026-06-29 23:21 CDT | `c15f6bd`. Manifest query in both installers; Linux live-verified (`1.0.14`); `.bat` powershell path needs a Windows run. |
 | v1.14.0 release (Jules removal + Antigravity Windows fixes) | Completed + pushed; Windows install/detect confirmed | 2026-06-29 23:00 CDT | `72f21a7`. Static-verified; Windows runtime re-test pending (re-deploy via `./setup.sh --force`). |
 | setup.sh Windows-account detection fix | Completed | 2026-06-29 22:21 CDT | `get_windows_username()` rewrite verified unit-level + real-deploy (`jung.hur`, `.bat` copied, no permission error). |
@@ -70,6 +72,7 @@
 
 | Item | Method | Result | Date |
 |---|---|---|---|
+| v1.14.2 version announcement (live) | `./setup.sh --force` on this host | Summary printed `Installed installer version: v1.14.2` + `(v1.14.2)` inline next to Unix and Windows scripts | 2026-06-29 23:32 CDT |
 | v1.14.0 on Windows (user run) | user re-deployed + ran the `.bat` | 7-tool menu, **no Google Jules**; Antigravity detected `1.0.14` (version-detection fix works); banner v1.14.0 | 2026-06-29 23:21 CDT |
 | v1.14.1 Antigravity latest helper | extracted `get_latest_antigravity_version`, ran live (Linux) | `1.0.14` (matches installed → "up to date") | 2026-06-29 23:21 CDT |
 | v1.14.1 `.bat` parse-safety | label resolution; dispatch+label present; CRLF byte-check | all resolve; `get_latest_native_antigravity` present; uniform CRLF | 2026-06-29 23:21 CDT |
@@ -102,10 +105,10 @@
 ## 7. Restart Instructions
 
 - **Exact starting point:**
-  1. **v1.14.1 is released + pushed** (`origin/master` at `c15f6bd`; `git log --oneline`). Working tree clean. Recent: Google Jules removed (v1.14.0); Antigravity Windows remove/detect fixed (v1.14.0); claude-code-upgrade stderr suppressed (v1.14.0); Antigravity latest-version detection via official manifest (v1.14.1). Windows v1.14.0 confirmed by user (7-tool menu w/o Jules; Antigravity `1.0.14` detected).
+  1. **v1.14.2 is released + pushed** (`origin/master` at `481dadc`; `git log --oneline`). Working tree clean. Recent: Google Jules removed + Antigravity Windows remove/detect + claude stderr suppression (v1.14.0); Antigravity latest-version detection via official manifest (v1.14.1); setup.sh announces deployed version (v1.14.2). v1.14.2 already deployed to Linux + Windows targets (`/mnt/c/Users/jung.hur/.local/bin/install_coding_tools.bat` is v1.14.2).
   2. Sanity: `bash -n install_coding_tools.sh setup.sh`; confirm `.bat` is uniform CRLF (`file install_coding_tools.bat`).
 - **Recommended next actions (in order):**
-  1. **Re-deploy v1.14.1 to Windows:** `./setup.sh --force` (the deployed `.bat` is older). Then on Windows confirm: Antigravity menu shows a real "Latest" (e.g. `1.0.14`), not "Unknown"; Antigravity **remove** deletes `%LOCALAPPDATA%\agy\bin\agy.exe`; no "filename, directory name…" leak on a claude-code upgrade.
+  1. **Verify on Windows** (the v1.14.2 `.bat` is already deployed): run it and confirm the Antigravity row shows **Latest = `1.0.14`** (not "Unknown"); exercise Antigravity **remove** (deletes `%LOCALAPPDATA%\agy\bin\agy.exe`); confirm no "filename, directory name…" leak on a claude-code upgrade.
   2. Exercise the Windows `remove` flow generally and the consent prompt / Authenticode gate in their trigger paths; capture `claude.exe` Authenticode status.
   3. If `claude.exe` is normally `Valid`-signed, optionally implement the security Finding 3 `-k`-path hardening.
-- **Last updated:** 2026-06-29 23:21 CDT
+- **Last updated:** 2026-06-29 23:32 CDT

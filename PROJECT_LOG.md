@@ -5,7 +5,7 @@ Append-only history. Active file holds the most recent sessions; older ones live
 - logs/PROJECT_LOG_2026-H1.md — 11 sessions (2026-02 … 2026-03)
 
 ## Session Index (active, newest first)
-- 2026-06-29 17:55 CDT — v1.13.1: fix setup.sh WSL Windows-user detection (picked `Administrator` when interop disabled) — rewrote `get_windows_username` (WIN_USER override + built-in skip list + writable/newest-NTUSER.DAT heuristic); verified unit-level + real deploy (`jung.hur`); released + pushed + v1.14.0 (remove Google Jules CLI; Antigravity Windows remove/detect fixes; claude stderr suppression) + v1.14.1 (Antigravity latest-version detection via official manifest)
+- 2026-06-29 17:55 CDT — v1.13.1: fix setup.sh WSL Windows-user detection (picked `Administrator` when interop disabled) — rewrote `get_windows_username` (WIN_USER override + built-in skip list + writable/newest-NTUSER.DAT heuristic); verified unit-level + real deploy (`jung.hur`); released + pushed + v1.14.0 (remove Google Jules CLI; Antigravity Windows remove/detect fixes; claude stderr suppression) + v1.14.1 (Antigravity latest-version detection via official manifest) + v1.14.2 (setup.sh announces deployed installer version)
 - 2026-06-29 09:23 CDT — v1.13.0: deferred-fix release (consent-gated -k, Authenticode tamper gate, Windows upgrade action state, oh-my-opencode flag completeness, CRLF normalization, setup.bat docs); 2 independent reviews; pushed to origin/master at user direction (ahead of live tests)
 - 2026-06-27 21:06 CDT — v1.12.0: Antigravity CLI replaces retired Gemini CLI; --gemini=no purge; multi-expert review + fixes; .bat runtime smoke test
 - 2026-04-23 — v1.11.0: Remove MoAI-ADK bootstrapper same-origin checksum verification
@@ -80,6 +80,11 @@ Append-only history. Active file holds the most recent sessions; older ones live
   - `.bat`: dispatch `if pkg==antigravity goto get_latest_native_antigravity` + a new label running powershell `Invoke-RestMethod` on the manifest (`PROCESSOR_ARCHITECTURE` → windows_amd64/arm64), mirroring the existing claude/moai tmpfile pattern.
   - Version bump v1.14.0 → v1.14.1 across all 4 scripts + CHANGELOG `## [1.14.1]` + README entry.
 - Verification: `bash -n` pass; `.sh` helper live → `1.0.14`; `.bat` label resolution all-resolve (dispatch + `:get_latest_native_antigravity` present); `.bat` uniform CRLF; v1.14.1 consistent; CHANGELOG descending. Committed `c15f6bd` + pushed. NOT yet verified (needs a Windows run): the `.bat` powershell-manifest path (the Linux equivalent is verified). Tradeoff: hardcodes the official Cloud Run auto-updater URL — degrades to "Unknown" on any failure (no regression).
+
+**Follow-up (same session, 2026-06-29 23:32 CDT) — v1.14.2 (setup.sh announces deployed installer version):**
+- User: `setup.sh`'s summary lists only paths, not the exact version just installed. Requested announcing it.
+- Changes: new `get_installer_version()` helper in `setup.sh` (greps the `Agentic Coders Installer vX.Y.Z` header from a deployed script, `set -euo pipefail`-safe via `|| true`). The `main()` summary now prints `Installed installer version: vX.Y.Z` (read from the deployed `install_coding_tools.sh`, source fallback) + the version inline next to each script path (`${ver:+  (${ver})}`). Bumped v1.14.1 → v1.14.2 across all 4 scripts + CHANGELOG + README.
+- Verified live: `./setup.sh --force` → summary prints `Installed installer version: v1.14.2` and `(v1.14.2)` next to the Unix + Windows scripts. That run also re-deployed v1.14.2 to Linux `~/.local/bin` + Windows `/mnt/c/Users/jung.hur/.local/bin` (so the Windows `.bat` is now v1.14.2 with all Antigravity work). `bash -n` pass; version consistent; `.bat` uniform CRLF. Committed `481dadc` + pushed.
 
 ---
 
