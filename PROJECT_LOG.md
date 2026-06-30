@@ -2,9 +2,10 @@
 Append-only history. Active file holds the most recent sessions; older ones live in logs/. Newest first.
 
 ## Archives
-- logs/PROJECT_LOG_2026-H1.md — 10 sessions (2026-02 … 2026-02)
+- logs/PROJECT_LOG_2026-H1.md — 11 sessions (2026-02 … 2026-03)
 
 ## Session Index (active, newest first)
+- 2026-06-29 17:55 CDT — v1.13.1: fix setup.sh WSL Windows-user detection (picked `Administrator` when interop disabled) — rewrote `get_windows_username` (WIN_USER override + built-in skip list + writable/newest-NTUSER.DAT heuristic); verified unit-level + real deploy (`jung.hur`); released + pushed
 - 2026-06-29 09:23 CDT — v1.13.0: deferred-fix release (consent-gated -k, Authenticode tamper gate, Windows upgrade action state, oh-my-opencode flag completeness, CRLF normalization, setup.bat docs); 2 independent reviews; pushed to origin/master at user direction (ahead of live tests)
 - 2026-06-27 21:06 CDT — v1.12.0: Antigravity CLI replaces retired Gemini CLI; --gemini=no purge; multi-expert review + fixes; .bat runtime smoke test
 - 2026-04-23 — v1.11.0: Remove MoAI-ADK bootstrapper same-origin checksum verification
@@ -12,7 +13,50 @@ Append-only history. Active file holds the most recent sessions; older ones live
 - 2026-03-11 — v1.9.9: Fix conda command detection in non-interactive script context
 - 2026-03-08 14:00 CDT — v1.9.7: Reorder tools (Claude Code before MoAI-ADK), add MoAI-ADK dependency check
 - 2026-03-08 11:49 CDT — v1.9.6: Fix 3 Windows-specific bugs reported from live testing
-- 2026-03-08 00:14 CST — v1.9.5: Comprehensive codebase review, version sync, error handling fixes, Windows parity
+
+---
+
+## Session 2026-06-29 17:55 CDT
+
+**Coding CLI used:** Claude Code CLI (claude-sonnet-4-6)
+
+**Phase(s) worked on:**
+- Bug fix: `setup.sh` WSL → Windows-side install targeted the wrong account (`Administrator`) instead of the active Windows user
+
+**Concrete changes implemented:**
+1. Diagnosed (reproduction-first, against this host's real `/mnt/c/Users`): WSL Windows-interop is disabled here (`/proc/sys/fs/binfmt_misc/WSLInterop` absent → `cmd.exe`/`powershell.exe` return `command not found` / `Exec format error`). So every exec-based method in `get_windows_username()` returned empty and the `/mnt/c/Users` fallback picked the alphabetically-first non-system dir — `Administrator`, which is non-writable → `mkdir … Permission denied`. Real account is `jung.hur`.
+2. Fix (Option A, user-approved): rewrote `get_windows_username()` in `setup.sh`:
+   - Added `WIN_USER` as the top-priority explicit override (before `USERPROFILE` → `WSL_USER`).
+   - Kept interop methods (`cmd.exe`/`powershell.exe`) unchanged.
+   - Rewrote the `/mnt/c/Users` fallback: expanded skip list to built-in accounts (`Administrator`, `WDAGUtilityAccount`, `systemprofile`, `LocalService`, `NetworkService`); exact-`$USER`-match takes precedence; otherwise pick the **writable, most-recently-used** profile by `NTUSER.DAT` mtime (dir-mtime fallback).
+   - Added a call-site override-hint line after "Detected Windows user".
+
+**Files/modules/functions touched:**
+- `setup.sh`: `get_windows_username()` (full rewrite, +51/-8 overall), `install_windows_script` call site (added override-hint `info` line)
+
+**Key technical decisions and rationale:**
+- Reproduction-first: built a harness extracting the live function from `setup.sh`; confirmed RED (`Administrator`) on current code, GREEN (`jung.hur`) after fix.
+- Writable + newest-`NTUSER.DAT` heuristic deterministically lands on the real active account among multiple real profiles (james.schnack / jung.hur / tempadmin / undmedlisalee), where a skip-list-only fix would alphabetically mis-pick `james.schnack`.
+- `WIN_USER=<name>` is the documented override knob; immediate workaround with prior code was `WSL_USER=jung.hur`.
+- Written safe under `set -euo pipefail` (guarded `stat … || mtime=0`; arithmetic only inside `if` conditions; explicit `if`/`then` for conditional assignments).
+
+**Problems encountered and resolutions:**
+- WSL interop being dead (binfmt `WSLInterop` unregistered) is an environment condition `setup.sh` cannot fix; the fix makes the fallback degrade correctly (skip built-ins, prefer writable+recent) instead of silently picking an unwritable built-in.
+
+**Items explicitly completed, resolved, or superseded in this session:**
+- Completed: `setup.sh` Windows-account detection fix — verified unit-level AND by real deploy (`./setup.sh --force` → detected `jung.hur`, copied the `.bat` to `/mnt/c/Users/jung.hur/.local/bin` (91454 bytes), no permission error).
+- Completed: **v1.13.1 release** — version-synced across `install_coding_tools.sh` / `install_coding_tools.bat` / `setup.sh` / `setup.bat` (banners + headers + version-history comments), CHANGELOG `## [1.13.1]` Fixed entry, README `### v1.13.1` entry + header bump; committed + pushed to origin/master.
+- Resolved: the WSL `setup.sh` → `Administrator` mis-detection (shipped in v1.13.1).
+
+**Verification performed:**
+- `bash -n install_coding_tools.sh setup.sh` — pass.
+- Reproduction harness: RED current = `Administrator`; GREEN fixed = `jung.hur`.
+- `WIN_USER=` override, `USERPROFILE=` override, exact-`$USER` match — each returns the expected account.
+- `grep` confirmed no duplicate Windows-user detection logic in `install_coding_tools.sh` / `auto_install_coding_tools`.
+- Real deploy: `./setup.sh --force` succeeded end-to-end (Windows-side `.bat` present at `/mnt/c/Users/jung.hur/.local/bin`).
+- v1.13.1: all banners/headers at v1.13.1 (only historical version-note comments still mention v1.13.0); `.bat` uniform CRLF (lone-`\n`=0, `\r\r\n`=0); CHANGELOG descending, no dupes.
+
+**Push status (v1.13.1):** committed + pushed to origin/master on 2026-06-29 (see `git log --oneline`). Post-release work (Antigravity `agy --version`, Windows `.bat` upgrade-display + Authenticode status) remains, unchanged.
 
 ---
 
@@ -435,65 +479,5 @@ Append-only history. Active file holds the most recent sessions; older ones live
 - Confirmed `--ssl-no-revoke` present in both curl commands
 - Confirmed `2>nul` present in check_npm_claude_code
 - Git commit `1566742` pushed to origin/master
-
----
-
----
-
-## Session 2026-03-08 00:14 CST
-
-**Coding CLI used:** Claude Code CLI (claude-opus-4-6)
-
-**Phase(s) worked on:**
-- v1.9.5: Comprehensive codebase review, version sync, error handling fixes, Windows parity, documentation cleanup
-
-**Concrete changes implemented:**
-1. Fixed version display: `.sh` banner was showing v1.9.3, `.bat` banner was showing v1.8.1 — both now show v1.9.5
-2. Synced version strings across all 6 files (install_coding_tools.sh, install_coding_tools.bat, setup.sh, setup.bat, README.md, CHANGELOG.md)
-3. Fixed missing error checks on `remove_oh_my_opencode` calls during addon upgrade (line 2045) and opencode-ai removal (line 2293) — now warns on failure instead of silently continuing
-4. Added GitHub CLI auto-installation (`:install_gh_cli`) and auth reminder (`:show_gh_auth_reminder`) to Windows `.bat` installer for moai-adk parity with Unix `.sh`
-5. Cleaned up CHANGELOG.md: merged duplicate v1.7.20 entries (gh CLI was duplicated between v1.7.21 and v1.7.20), merged duplicate v1.7.0 entries, moved v1.7.1 to correct position before v1.7.0
-6. Added oh-my-opencode to README.md Supported Tools table (was missing)
-7. Added v1.9.4 and v1.9.5 changelog entries to README.md (v1.9.4 entry was missing)
-
-**Files/modules/functions touched:**
-- `install_coding_tools.sh`:
-  - Updated version header and banner to v1.9.5
-  - Added error checking for `remove_oh_my_opencode` calls at 2 locations (lines 2045, 2293)
-- `install_coding_tools.bat`:
-  - Updated version header and banner to v1.9.5
-  - Added `:install_gh_cli` function (GitHub CLI auto-install via conda-forge)
-  - Added `:show_gh_auth_reminder` function
-  - Added calls in `:install_tool_moai` section
-- `setup.sh`: Version bump to 1.9.5
-- `setup.bat`: Version bump to 1.9.5
-- `README.md`: Version bump, date update, added oh-my-opencode to tools table, added v1.9.4/v1.9.5 changelog entries
-- `CHANGELOG.md`: Added v1.9.5 entry, merged duplicate v1.7.20 and v1.7.0 entries, fixed v1.7.1 ordering
-- `PROJECT_HANDOFF.md`: Full refresh to v1.9.5 state
-- `PROJECT_LOG.md`: This entry
-
-**Key technical decisions and rationale:**
-- Error handling fix uses warning (not error) when `remove_oh_my_opencode` fails during upgrade, because the subsequent reinstall may still succeed
-- gh CLI install on Windows follows same pattern as Unix: conda-forge, non-blocking on failure
-- CHANGELOG duplicate v1.7.20: Kept the line-ending fix entry (the real v1.7.20), removed the duplicate gh CLI entry (already covered by v1.7.21)
-- CHANGELOG duplicate v1.7.0: Merged into single entry with Added, Changed, Security, and Fixed sections
-
-**Problems encountered and resolutions:**
-- `.bat` file has `\r\r\n` line endings (double CR), which caused Edit tool string matching to fail. Used Python script for binary-safe insertion.
-
-**Items explicitly completed, resolved, or superseded in this session:**
-- Completed: v1.9.5 release — version sync, error handling, Windows parity, documentation cleanup
-- Resolved: Banner version mismatch (.sh v1.9.3, .bat v1.8.1)
-- Resolved: Windows missing gh CLI auto-install for moai-adk
-- Resolved: CHANGELOG duplicate entries (v1.7.20, v1.7.0) and wrong ordering (v1.7.1)
-- Resolved: oh-my-opencode missing from README Supported Tools table
-
-**Verification performed:**
-- `bash -n install_coding_tools.sh setup.sh auto_install_coding_tools` — all pass
-- `file install_coding_tools.bat setup.bat` — CRLF confirmed
-- `grep` version consistency across all files — all show v1.9.5
-- `grep '^## \[' CHANGELOG.md` — no duplicates, correct descending order
-- `./install_coding_tools.sh --help` and `./setup.sh --help` — output correct
-- Code review of error handling fixes and gh CLI function insertion
 
 ---

@@ -2,6 +2,7 @@
 Verbatim historical sessions moved from the active PROJECT_LOG.md. Newest first. Do not edit.
 
 ## Session Index (newest first)
+- 2026-03-08 00:14 CST — v1.9.5: Comprehensive codebase review, version sync, error handling fixes, Windows parity
 - 2026-02-19 — v1.9.2: oh-my-opencode installation bug fixes and feature improvements
 - 2026-02-18 16:37 — Coding CLI used: OpenCode
 - 2026-02-18 (Micro Release) — v1.9.1 micro version update and release
@@ -12,6 +13,64 @@ Verbatim historical sessions moved from the active PROJECT_LOG.md. Newest first.
 - 2026-02-14 (Morning) — Documentation review and version synchronization after external changes
 - 2026-02-12 — Windows installer alignment with Unix features
 - 2026-02-07 to 2026-02-09 — v1.7.13-1.7.19: Multiple bug fixes and feature additions
+
+---
+
+## Session 2026-03-08 00:14 CST
+
+**Coding CLI used:** Claude Code CLI (claude-opus-4-6)
+
+**Phase(s) worked on:**
+- v1.9.5: Comprehensive codebase review, version sync, error handling fixes, Windows parity, documentation cleanup
+
+**Concrete changes implemented:**
+1. Fixed version display: `.sh` banner was showing v1.9.3, `.bat` banner was showing v1.8.1 — both now show v1.9.5
+2. Synced version strings across all 6 files (install_coding_tools.sh, install_coding_tools.bat, setup.sh, setup.bat, README.md, CHANGELOG.md)
+3. Fixed missing error checks on `remove_oh_my_opencode` calls during addon upgrade (line 2045) and opencode-ai removal (line 2293) — now warns on failure instead of silently continuing
+4. Added GitHub CLI auto-installation (`:install_gh_cli`) and auth reminder (`:show_gh_auth_reminder`) to Windows `.bat` installer for moai-adk parity with Unix `.sh`
+5. Cleaned up CHANGELOG.md: merged duplicate v1.7.20 entries (gh CLI was duplicated between v1.7.21 and v1.7.20), merged duplicate v1.7.0 entries, moved v1.7.1 to correct position before v1.7.0
+6. Added oh-my-opencode to README.md Supported Tools table (was missing)
+7. Added v1.9.4 and v1.9.5 changelog entries to README.md (v1.9.4 entry was missing)
+
+**Files/modules/functions touched:**
+- `install_coding_tools.sh`:
+  - Updated version header and banner to v1.9.5
+  - Added error checking for `remove_oh_my_opencode` calls at 2 locations (lines 2045, 2293)
+- `install_coding_tools.bat`:
+  - Updated version header and banner to v1.9.5
+  - Added `:install_gh_cli` function (GitHub CLI auto-install via conda-forge)
+  - Added `:show_gh_auth_reminder` function
+  - Added calls in `:install_tool_moai` section
+- `setup.sh`: Version bump to 1.9.5
+- `setup.bat`: Version bump to 1.9.5
+- `README.md`: Version bump, date update, added oh-my-opencode to tools table, added v1.9.4/v1.9.5 changelog entries
+- `CHANGELOG.md`: Added v1.9.5 entry, merged duplicate v1.7.20 and v1.7.0 entries, fixed v1.7.1 ordering
+- `PROJECT_HANDOFF.md`: Full refresh to v1.9.5 state
+- `PROJECT_LOG.md`: This entry
+
+**Key technical decisions and rationale:**
+- Error handling fix uses warning (not error) when `remove_oh_my_opencode` fails during upgrade, because the subsequent reinstall may still succeed
+- gh CLI install on Windows follows same pattern as Unix: conda-forge, non-blocking on failure
+- CHANGELOG duplicate v1.7.20: Kept the line-ending fix entry (the real v1.7.20), removed the duplicate gh CLI entry (already covered by v1.7.21)
+- CHANGELOG duplicate v1.7.0: Merged into single entry with Added, Changed, Security, and Fixed sections
+
+**Problems encountered and resolutions:**
+- `.bat` file has `\r\r\n` line endings (double CR), which caused Edit tool string matching to fail. Used Python script for binary-safe insertion.
+
+**Items explicitly completed, resolved, or superseded in this session:**
+- Completed: v1.9.5 release — version sync, error handling, Windows parity, documentation cleanup
+- Resolved: Banner version mismatch (.sh v1.9.3, .bat v1.8.1)
+- Resolved: Windows missing gh CLI auto-install for moai-adk
+- Resolved: CHANGELOG duplicate entries (v1.7.20, v1.7.0) and wrong ordering (v1.7.1)
+- Resolved: oh-my-opencode missing from README Supported Tools table
+
+**Verification performed:**
+- `bash -n install_coding_tools.sh setup.sh auto_install_coding_tools` — all pass
+- `file install_coding_tools.bat setup.bat` — CRLF confirmed
+- `grep` version consistency across all files — all show v1.9.5
+- `grep '^## \[' CHANGELOG.md` — no duplicates, correct descending order
+- `./install_coding_tools.sh --help` and `./setup.sh --help` — output correct
+- Code review of error handling fixes and gh CLI function insertion
 
 ---
 
