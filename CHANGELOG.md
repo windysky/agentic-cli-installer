@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0] - 2026-06-29
+
+### Removed
+
+- **Google Jules CLI**: dropped `@google/jules` from the tool menu in both `install_coding_tools.sh` (TOOLS array) and `install_coding_tools.bat` (`TOOL_5` + property block; `TOOLS_COUNT` 7 → 6, with `opencode-ai`/`oh-my-opencode` renumbered to indices 5/6), and removed its row from the README Supported Tools table. Removed per user request.
+
+### Fixed
+
+- **Antigravity remove path on Windows**: `install_coding_tools.bat` deleted `%USERPROFILE%\.local\bin\agy.exe` on uninstall, but the Windows Antigravity installer places the binary at `%LOCALAPPDATA%\agy\bin\agy.exe` — so "remove Antigravity" silently no-opped. Removal now targets the correct `%LOCALAPPDATA%\agy\bin\agy.exe`. The Linux `.sh` path (`~/.local/bin/agy`) was already correct and is unchanged.
+- **Antigravity version detection on Windows**: detection relied solely on `where agy` (PATH); immediately after install `agy` is not yet on the active PATH (the installer updates the registry PATH, which needs a new terminal), so the menu showed "Not Installed". A fallback now checks `%LOCALAPPDATA%\agy\bin\agy.exe` directly.
+- **Cosmetic stderr leak on Claude Code upgrade (Windows)**: the npm-migration probe (`:check_npm_claude_code`) leaked a "The filename, directory name, or volume label syntax is incorrect" line during the Claude Code upgrade path; the call's stderr is now redirected to nul. The upgrade itself was always succeeding; this only removes the spurious message.
+
 ## [1.13.1] - 2026-06-29
 
 ### Fixed
