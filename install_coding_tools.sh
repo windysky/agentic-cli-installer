@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.14.1
+# Agentic Coders Installer v1.14.2
 # Interactive installer for AI coding CLI tools
 #
 # Version history: v1.7.6 added security improvements, v1.7.12 fixed oh-my-opencode version detection
@@ -38,6 +38,8 @@ set -euo pipefail
 # v1.14.1 add Antigravity latest-version detection: query its official release manifest (the Cloud
 #         Run auto-updater endpoint its installer uses) so the menu shows/compares Antigravity's
 #         latest like the other tools; degrades to "Unknown" on fetch failure.
+# v1.14.2 setup.sh now announces the deployed installer version in its summary (parsed from the
+#         install_coding_tools.sh header), with the version shown inline next to each script.
 # - Secure temporary file creation with restrictive permissions
 # - TLS-pinned downloads via curl --proto '=https' --tlsv1.2
 #############################################
@@ -1584,7 +1586,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.14.1" \
+        "Agentic Coders CLI Installer v1.14.2" \
         "Toggle: skip->install/upgrade->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"

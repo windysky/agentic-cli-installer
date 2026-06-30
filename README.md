@@ -1,4 +1,4 @@
-# Agentic CLI Installer v1.14.1
+# Agentic CLI Installer v1.14.2
 
 **Last Modified:** June 29, 2026
 
@@ -204,6 +204,10 @@ Backup location: ~/.local/bin.backup
 ```
 
 ## Change Log
+
+### v1.14.2 - June 29, 2026
+
+- **`setup.sh` now reports the deployed installer version**: the deployment summary prints the exact `install_coding_tools` version it just installed (e.g. `Installed installer version: v1.14.2`) and shows the version inline next to each deployed script, so you can confirm at a glance which version is now on your PATH.
 
 ### v1.14.1 - June 29, 2026
 
