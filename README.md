@@ -1,4 +1,4 @@
-# Agentic CLI Installer v1.14.2
+# Agentic CLI Installer v1.14.3
 
 **Last Modified:** June 29, 2026
 
@@ -204,6 +204,10 @@ Backup location: ~/.local/bin.backup
 ```
 
 ## Change Log
+
+### v1.14.3 - July 12, 2026
+
+- **Self-healing conda Node.js/npm**: environments where npm existed but could not run (outdated node), or where nodejs shipped without npm, previously forced a manual "update node, then install npm" fix. The installer now checks the conda env's own `node` binary (not the first one on PATH), retries failed conda nodejs solves through a ladder (`install "nodejs>=22.9.0"` → `update nodejs` → unpinned `install nodejs`), and — if npm is still missing or broken after Node.js is current — bootstraps npm from the official registry tarball using the env's node. Applies to both `install_coding_tools.sh` and `install_coding_tools.bat`.
 
 ### v1.14.2 - June 29, 2026
 

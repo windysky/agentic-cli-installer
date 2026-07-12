@@ -3,11 +3,11 @@ setlocal EnableDelayedExpansion
 set "SCRIPT_DIR=%~dp0"
 
 REM ###############################################
-REM Agentic Coders Installer v1.14.2
+REM Agentic Coders Installer v1.14.3
 REM Interactive installer for AI coding CLI tools
 REM Windows version (run in Anaconda Prompt or CMD)
 REM
-REM Recent improvements (v1.7.13-v1.14.2):
+REM Recent improvements (v1.7.13-v1.14.3):
 REM - v1.12.0: Replace retired Gemini CLI with Antigravity CLI (native agy installer);
 REM            purge Gemini CLI entry + oh-my-opencode --gemini auto-detect + static --gemini=no
 REM            (--gemini=no is the documented default; omitting it is safe and Gemini CLI is retired.
@@ -30,6 +30,11 @@ REM            Cloud Run auto-updater endpoint its installer uses), so the menu 
 REM            latest like the other tools; degrades to Unknown on fetch failure.
 REM - v1.14.2: setup.sh announces the deployed installer version in its summary (no .bat behavior
 REM            change; version sync).
+REM - v1.14.3: Self-heal broken conda node/npm. Conda nodejs installs retry through a ladder
+REM            (pinned install -> conda update -> unpinned install) when the pinned solve fails,
+REM            and when npm is missing or does not run even though Node.js is current, npm is
+REM            bootstrapped from the official registry tarball using the env's node.exe
+REM            (automates the manual 'update node, then install npm' recovery).
 REM - v1.11.0: Remove MoAI-ADK bootstrapper same-origin checksum (MoAI-ADK's own
 REM            downstream binary verification is preserved)
 REM - v1.10.0: Fix Claude Code CLI installation failure on Windows
@@ -509,7 +514,7 @@ call :resolve_conda_npm
 if errorlevel 1 (
     echo %YELLOW%[WARNING]%NC% npm is not installed in the active conda environment but required for npm-managed tools.
     echo Installing Node.js + npm via conda...
-    call conda install -y -c conda-forge "nodejs>=%MIN_NODEJS_VERSION%"
+    call :conda_install_nodejs
     if errorlevel 1 (
         echo %RED%[ERROR]%NC% Failed to install Node.js/npm via conda.
         exit /b 1
@@ -518,6 +523,11 @@ if errorlevel 1 (
 
 call :resolve_conda_npm
 if errorlevel 1 (
+    echo %YELLOW%[WARNING]%NC% npm still missing after the conda install. Bootstrapping npm with the environment's Node.js...
+    call :bootstrap_npm_from_registry
+    call :resolve_conda_npm
+)
+if not defined CONDA_NPM (
     echo %RED%[ERROR]%NC% npm installation via conda completed but npm is still not available.
     exit /b 1
 )
@@ -546,7 +556,7 @@ if not defined NODE_VERSION (
 )
 if "!NEED_NODE_UPDATE!"=="1" (
     echo %YELLOW%[WARNING]%NC% Node.js !NODE_VERSION! is below required %MIN_NODEJS_VERSION%. Updating via conda...
-    call conda install -y -c conda-forge "nodejs>=%MIN_NODEJS_VERSION%"
+    call :conda_install_nodejs
     if errorlevel 1 (
         echo %RED%[ERROR]%NC% Failed to install/update Node.js via conda.
         exit /b 1
@@ -584,6 +594,18 @@ for /f "delims=" %%v in ('"!CONDA_NPM!" --version 2^>nul') do (
 
 call :dbg %BLUE%[DEBUG]%NC% NPM_VERSION=!NPM_VERSION!
 if not defined NPM_VERSION (
+    echo %YELLOW%[WARNING]%NC% npm exists in the conda env but does not run ^(broken node/npm pairing^). Bootstrapping npm...
+    call :bootstrap_npm_from_registry
+    if errorlevel 1 (
+        echo %RED%[ERROR]%NC% Unable to determine npm version from conda npm.
+        exit /b 1
+    )
+    call :resolve_conda_npm
+    for /f "delims=" %%v in ('"!CONDA_NPM!" --version 2^>nul') do (
+        if not "%%v"=="" set "NPM_VERSION=%%v"
+    )
+)
+if not defined NPM_VERSION (
     echo %RED%[ERROR]%NC% Unable to determine npm version from conda npm.
     exit /b 1
 )
@@ -613,6 +635,66 @@ if errorlevel 1 (
 ) else (
     echo %BLUE%[INFO]%NC% npm version !NPM_VERSION! detected. Minimum required: %MIN_NPM_VERSION%.
 )
+exit /b 0
+
+:conda_install_nodejs
+REM Install/upgrade Node.js (conda-forge builds bundle npm) with a retry ladder:
+REM pinned install -> conda update -> unpinned install. Old environments with
+REM pinned dependencies can fail the pinned solve, so degrade gracefully.
+call conda install -y -c conda-forge "nodejs>=%MIN_NODEJS_VERSION%"
+if not errorlevel 1 exit /b 0
+echo %YELLOW%[WARNING]%NC% Pinned nodejs solve failed ^(solver conflict?^). Retrying with 'conda update nodejs'...
+call conda update -y -c conda-forge nodejs
+if not errorlevel 1 exit /b 0
+echo %YELLOW%[WARNING]%NC% conda update failed. Retrying with an unpinned 'conda install nodejs'...
+call conda install -y -c conda-forge nodejs
+if not errorlevel 1 exit /b 0
+exit /b 1
+
+:bootstrap_npm_from_registry
+REM Manual npm (re)install for a conda env whose Node.js is current but whose
+REM npm is missing or broken: download the official npm tarball and let the
+REM env's node.exe install it into the environment prefix (automates the
+REM manual "update node first, then install npm" recovery).
+if not defined CONDA_NODE call :resolve_conda_npm
+if not defined CONDA_NODE (
+    echo %RED%[ERROR]%NC% Cannot bootstrap npm: node.exe not found in the conda environment.
+    exit /b 1
+)
+set "NPM_BOOT_VER="
+for /f "delims=" %%v in ('powershell -NoProfile -Command "(Invoke-RestMethod -Uri https://registry.npmjs.org/npm/latest -TimeoutSec 15).version" 2^>nul') do set "NPM_BOOT_VER=%%v"
+if not defined NPM_BOOT_VER (
+    echo %RED%[ERROR]%NC% Could not determine the latest npm version from registry.npmjs.org.
+    exit /b 1
+)
+set "NPM_BOOT_TMP=%TEMP%\npm-bootstrap-%RANDOM%%RANDOM%"
+mkdir "%NPM_BOOT_TMP%" >nul 2>nul
+if not exist "%NPM_BOOT_TMP%" (
+    echo %RED%[ERROR]%NC% Failed to create a temporary directory for the npm bootstrap.
+    exit /b 1
+)
+echo %BLUE%[INFO]%NC% Downloading npm !NPM_BOOT_VER! from registry.npmjs.org...
+curl -fsSL --proto "=https" --tlsv1.2 "https://registry.npmjs.org/npm/-/npm-!NPM_BOOT_VER!.tgz" -o "%NPM_BOOT_TMP%\npm.tgz"
+if errorlevel 1 (
+    echo %RED%[ERROR]%NC% Failed to download the npm !NPM_BOOT_VER! tarball.
+    rmdir /s /q "%NPM_BOOT_TMP%" >nul 2>nul
+    exit /b 1
+)
+tar -xzf "%NPM_BOOT_TMP%\npm.tgz" -C "%NPM_BOOT_TMP%"
+if errorlevel 1 (
+    echo %RED%[ERROR]%NC% Failed to extract the npm tarball.
+    rmdir /s /q "%NPM_BOOT_TMP%" >nul 2>nul
+    exit /b 1
+)
+REM npm installs itself into the prefix derived from the invoking node.exe;
+REM --force overwrites remnants of a broken npm.
+call "!CONDA_NODE!" "%NPM_BOOT_TMP%\package\bin\npm-cli.js" install -g --force npm@!NPM_BOOT_VER!
+if errorlevel 1 (
+    echo %RED%[ERROR]%NC% Node.js failed to install npm !NPM_BOOT_VER! into the conda environment.
+    rmdir /s /q "%NPM_BOOT_TMP%" >nul 2>nul
+    exit /b 1
+)
+rmdir /s /q "%NPM_BOOT_TMP%" >nul 2>nul
 exit /b 0
 
 :ensure_uv_prerequisite
@@ -1472,7 +1554,7 @@ if "%DEBUG%"=="1" (
     cls
 )
 call :print_banner_sep
-echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.14.2%NC%
+echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.14.3%NC%
 echo Toggle: %CYAN%skip%NC% -^> %GREEN%install%NC%/%CYAN%upgrade%NC% -^> %RED%remove%NC%  Input: 1,3,5  Enter/P=proceed  Q=quit
 call :print_banner_sep
 echo.
