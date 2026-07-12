@@ -5,7 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.14.2] - 2026-06-29
+## [1.14.3] - 2026-07-12
+
+### Fixed
+
+- **Self-healing conda Node.js/npm prerequisite** (`install_coding_tools.sh` + `install_coding_tools.bat`): the installer previously assumed `conda install "nodejs>=22.9.0"` always produced a working npm, which fails on real-world conda environments — an outdated node paired with an npm it cannot run, a nodejs build shipped without npm, or a conda solver that refuses the pinned spec. Users had to update Node.js and reinstall npm by hand. `ensure_npm_prerequisite` is now a node-first repair sequence:
+  1. **Env-local node check** (`.sh`): the version gate now reads `$CONDA_PREFIX/bin/node` explicitly (new `get_conda_node_path` / `get_conda_env_bin_dir` helpers) instead of the first `node` on PATH, so a newer system/nvm node can no longer mask an outdated conda node (the `.bat` already probed `CONDA_NODE`).
+  2. **Conda retry ladder** (both platforms, new `conda_install_nodejs` / `:conda_install_nodejs`): when the pinned `conda install "nodejs>=22.9.0"` solve fails (dependency conflicts in older envs), the installer retries with `conda update nodejs`, then an unpinned `conda install nodejs`, before failing with manual guidance.
+  3. **npm must run, not merely exist** (both platforms): npm is validated by executing `npm --version`; a present-but-broken npm (typically left behind by a node upgrade) is no longer a hard error.
+  4. **Manual npm bootstrap fallback** (both platforms, new `bootstrap_npm_from_registry` / `:bootstrap_npm_from_registry`): when npm is missing or broken even though Node.js is current, the installer downloads the official npm tarball from `registry.npmjs.org` (TLS-pinned curl) and has the environment's own node run `npm-cli.js install -g --force npm@<latest>` — installing npm into the conda env prefix. This automates the manual "update node first, then install npm" recovery.
+
+
 
 ### Added
 

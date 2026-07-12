@@ -17,7 +17,7 @@
 #   --configure-path    Add ~/.local/bin to PATH in shell config
 #   --force             Skip confirmation prompts
 #
-# Version: 1.14.2
+# Version: 1.14.3
 # License: MIT
 
 set -euo pipefail
