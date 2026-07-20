@@ -184,6 +184,21 @@ secret-*.*
 .moai/status_line.sh
 .moai/memory/
 .moai/worktrees/
+.moai/branches/
+
+# ===========================================
+# Update Noise-Suppression Ledgers (per-machine, never tracked)
+# Per-machine state + cache ledgers used to suppress redundant update noise.
+# ===========================================
+.moai/state/
+.moai/cache/
+
+# ===========================================
+# Plan Audit Reports (local artifacts)
+# Plan-audit verdict reports are local artifacts; only .gitkeep is tracked.
+# ===========================================
+.moai/reports/plan-audit/*.md
+!.moai/reports/plan-audit/.gitkeep
 
 # ===========================================
 # Evolution Telemetry (local-only usage data)
@@ -215,7 +230,10 @@ dist-ssr/
 .netlify/
 .firebase/
 
+# ===========================================
 # User Custom Patterns (preserved by moai update)
+# Agent tooling is machine-specific; keep it out of this public installer repo.
+# ===========================================
 .moai/
 .claude/
 .agency/
