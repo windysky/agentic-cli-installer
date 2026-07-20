@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.14.3
+# Agentic Coders Installer v1.14.4
 # Interactive installer for AI coding CLI tools
 #
 # Version history: v1.7.6 added security improvements, v1.7.12 fixed oh-my-opencode version detection
@@ -798,7 +798,13 @@ parse_version() {
     # Extract major, minor, patch
     local major minor patch
     IFS='.' read -r major minor patch <<< "$version"
-    # Strip pre-release tags (everything after hyphen)
+    # Strip build metadata (everything after '+') then pre-release tags
+    # (everything after '-'). Both must go: the callers feed these fields to
+    # arithmetic comparison, which errors out on non-numeric input.
+    # Note: this yields the NUMERIC CORE only. Callers that need SemVer
+    # pre-release precedence must use semver_compare_core instead.
+    minor="${minor%%+*}"
+    patch="${patch%%+*}"
     minor="${minor%%-*}"
     patch="${patch%%-*}"
     echo "$major $minor $patch"
@@ -1128,21 +1134,279 @@ get_installed_npm_self_version() {
     "$npm_bin" --version 2>/dev/null | head -n1 || true
 }
 
-# Get npm's own latest version
-get_latest_npm_self_version() {
+# Diagnostic for the npm engine check. Every fallback here is a normal
+# operating condition (offline, unknown range syntax, no conda node), not an
+# error: the caller always degrades to the dist-tag latest, so surfacing these
+# as warnings would be noise. Set DEBUG=1 to see them.
+npm_engine_debug() {
+    if [[ "${DEBUG:-}" == "1" ]]; then
+        printf "${BLUE}[DEBUG]${NC} %s\n" "$*" >&2
+    fi
+}
+
+# Node binary used purely to parse registry JSON. The conda environment's node
+# is preferred so a missing PATH node does not silently disable the check.
+get_json_parser_node() {
+    local n
+    n=$(get_conda_node_path || true)
+    if [[ -n "$n" && -x "$n" ]]; then
+        printf "%s" "$n"
+        return 0
+    fi
+    if command -v node >/dev/null 2>&1; then
+        command -v node
+        return 0
+    fi
+    return 1
+}
+
+# Read a single-version registry document (stdin), emit "version<TAB>engines.node".
+npm_version_and_engines() {
+    local node_bin="$1"
+    "$node_bin" -e '
+const fs = require("fs");
+let d;
+try { d = JSON.parse(fs.readFileSync(0, "utf8")); } catch (e) { process.exit(1); }
+if (!d || typeof d.version !== "string") process.exit(1);
+const e = d.engines;
+const n = e && typeof e.node === "string" ? e.node : "";
+process.stdout.write(d.version + "\t" + n + "\n");
+' 2>/dev/null
+}
+
+# Transform an abbreviated npm packument (stdin) into a "version<TAB>engines.node"
+# table: newest first, stable releases only, never above the dist-tag latest.
+# Line 1 is therefore always the dist-tag latest.
+npm_packument_table() {
+    local node_bin="$1"
+    "$node_bin" -e '
+const fs = require("fs");
+let doc;
+try { doc = JSON.parse(fs.readFileSync(0, "utf8")); } catch (e) { process.exit(1); }
+const latest = doc && doc["dist-tags"] && doc["dist-tags"].latest;
+if (!latest || !doc.versions) process.exit(1);
+const trip = (s) => s.split(".").map(Number);
+const cmp = (a, b) => {
+  const x = trip(a), y = trip(b);
+  for (let i = 0; i < 3; i++) { if (x[i] !== y[i]) return x[i] - y[i]; }
+  return 0;
+};
+const rows = Object.keys(doc.versions)
+  .filter((v) => /^[0-9]+\.[0-9]+\.[0-9]+$/.test(v))
+  .filter((v) => cmp(v, latest) <= 0)
+  .sort((a, b) => cmp(b, a));
+if (!rows.length || rows[0] !== latest) process.exit(1);
+for (const v of rows) {
+  const e = doc.versions[v].engines;
+  const n = e && typeof e.node === "string" ? e.node : "";
+  process.stdout.write(v + "\t" + n + "\n");
+  }
+' 2>/dev/null
+}
+
+# Newest npm release in $2 (a table from npm_packument_table) whose
+# engines.node accepts node version $1. Prints the dist-tag latest on every
+# uncertainty; prints nothing only when the table itself is unusable.
+npm_select_compatible_version() {
+    local node_ver="$1" table="$2"
+    if [[ ! -s "$table" ]]; then
+        npm_engine_debug "npm engines: version table unavailable"
+        return 0
+    fi
+    local latest_ver rest
+    IFS=$'\t' read -r latest_ver rest < "$table"
+    if [[ -z "$latest_ver" ]]; then
+        npm_engine_debug "npm engines: version table has no dist-tag latest"
+        return 0
+    fi
+    if [[ -z "$node_ver" ]]; then
+        npm_engine_debug "npm engines: node version unknown; using dist-tag latest ${latest_ver}"
+        printf "%s" "$latest_ver"
+        return 0
+    fi
+
+    local ver rng rc
+    while IFS=$'\t' read -r ver rng; do
+        if [[ -z "$ver" ]]; then
+            continue
+        fi
+        # A release with no engines field is considered compatible.
+        if semver_range_satisfied "$node_ver" "$rng"; then rc=0; else rc=$?; fi
+        if [[ $rc -eq 0 ]]; then
+            if [[ "$ver" != "$latest_ver" ]]; then
+                npm_engine_debug "npm engines: node ${node_ver} is excluded by npm ${latest_ver}; selecting npm ${ver}"
+            fi
+            printf "%s" "$ver"
+            return 0
+        fi
+        if [[ $rc -eq 2 ]]; then
+            npm_engine_debug "npm engines: unreadable range '${rng}' on npm ${ver}; using dist-tag latest ${latest_ver}"
+            printf "%s" "$latest_ver"
+            return 0
+        fi
+    done < "$table"
+
+    npm_engine_debug "npm engines: no npm release accepts node ${node_ver}; using dist-tag latest ${latest_ver}"
+    printf "%s" "$latest_ver"
+}
+
+# Newest npm version installable on a node of version $2.
+#
+# The dist-tag "latest" is not necessarily installable: npm 12 declares
+# engines.node "^22.22.2 || ^24.15.0 || >=26.0.0", which excludes odd-numbered
+# non-LTS lines such as node 25, and installing it there aborts with EBADENGINE.
+# Offering or force-installing that version is a guaranteed failure, so pick the
+# newest release the target node actually accepts.
+#
+# Fails OPEN by design: no curl, no node, no network, an unparseable document,
+# a range syntax this evaluator does not implement, or no match at all all fall
+# back to the dist-tag latest, i.e. exactly the pre-check behavior.
+npm_pick_installable_version() {
+    local node_bin="$1" env_node="$2"
+
     if ! command -v curl >/dev/null 2>&1; then
         return 0
     fi
-    # Cache-bust to avoid stale CDN responses
-    # Using both Cache-Control header and timestamp query parameter for maximum compatibility
+
+    # Stage 1: the single-version document is small (~65 KB) and already carries
+    # engines, so the common "latest is fine" path costs one small request and
+    # the 2 MB packument below is fetched only on affected machines.
     local cache_bust
     cache_bust=$(date +%s)
-    if command -v node >/dev/null 2>&1; then
-        {
-            curl -fsSL --max-time 10 -H "Cache-Control: no-cache" \
-                "https://registry.npmjs.org/npm/latest?ts=${cache_bust}" 2>/dev/null || echo -n ""
-        } | node -e "const data = require('fs').readFileSync(0, 'utf8').trim(); if(data) console.log(JSON.parse(data).version);" 2>/dev/null || true
+    local latest_line latest_ver latest_range
+    latest_line=$(curl -fsSL --proto '=https' --tlsv1.2 --max-time 10 \
+        -H "Cache-Control: no-cache" \
+        "https://registry.npmjs.org/npm/latest?ts=${cache_bust}" 2>/dev/null \
+        | npm_version_and_engines "$node_bin" || true)
+    IFS=$'\t' read -r latest_ver latest_range <<< "$latest_line"
+    if [[ -z "${latest_ver:-}" ]]; then
+        npm_engine_debug "npm engines: could not read npm/latest from the registry"
+        return 0
     fi
+
+    if [[ -z "$env_node" ]]; then
+        npm_engine_debug "npm engines: node version unknown; using dist-tag latest ${latest_ver}"
+        printf "%s" "$latest_ver"
+        return 0
+    fi
+
+    local rc
+    if semver_range_satisfied "$env_node" "${latest_range:-}"; then rc=0; else rc=$?; fi
+    if [[ $rc -eq 2 ]]; then
+        npm_engine_debug "npm engines: unreadable range '${latest_range:-}'; using dist-tag latest ${latest_ver}"
+        printf "%s" "$latest_ver"
+        return 0
+    fi
+    if [[ $rc -eq 0 ]]; then
+        printf "%s" "$latest_ver"
+        return 0
+    fi
+
+    # Stage 2: latest is incompatible with this node. Walk the abbreviated
+    # packument (carries engines, ~10% the size of the full document) downwards.
+    local table
+    if ! table=$(mktemp); then
+        printf "%s" "$latest_ver"
+        return 0
+    fi
+    local picked=""
+    if curl -fsSL --proto '=https' --tlsv1.2 --max-time 25 \
+        -H "Accept: application/vnd.npm.install-v1+json" \
+        -H "Cache-Control: no-cache" \
+        "https://registry.npmjs.org/npm" 2>/dev/null \
+        | npm_packument_table "$node_bin" > "$table" 2>/dev/null; then
+        picked=$(npm_select_compatible_version "$env_node" "$table")
+    fi
+    rm -f "$table"
+
+    if [[ -n "$picked" ]]; then
+        printf "%s" "$picked"
+        return 0
+    fi
+    npm_engine_debug "npm engines: packument unavailable; using dist-tag latest ${latest_ver}"
+    printf "%s" "$latest_ver"
+}
+
+# Memoized npm_pick_installable_version. Stage 2 downloads a ~2 MB packument,
+# and a single run can reach the picker more than once (npm bootstrap followed
+# by the below-minimum upgrade). The key is the node binary PLUS its version, so
+# a cached answer can never leak into a different environment; empty results are
+# never cached, so a transient network failure does not poison the run.
+NPM_PICK_CACHE_KEY=""
+NPM_PICK_CACHE_VALUE=""
+npm_pick_installable_version_cached() {
+    local node_bin="$1" env_node="$2"
+    local key="${node_bin}|${env_node}"
+    # Read with :- defaults so the function stays correct under `set -u` even if
+    # the declarations above have not been evaluated.
+    if [[ "$key" == "${NPM_PICK_CACHE_KEY:-}" ]] && [[ -n "${NPM_PICK_CACHE_VALUE:-}" ]]; then
+        printf "%s" "$NPM_PICK_CACHE_VALUE"
+        return 0
+    fi
+    local picked
+    picked=$(npm_pick_installable_version "$node_bin" "$env_node")
+    if [[ -n "$picked" ]]; then
+        NPM_PICK_CACHE_KEY="$key"
+        NPM_PICK_CACHE_VALUE="$picked"
+    fi
+    printf "%s" "$picked"
+}
+
+# Resolve which npm the installer should actually install, as an explicit
+# version rather than the "latest" tag.
+#
+# $1 = a version already resolved elsewhere (the menu's own figure), or empty.
+#
+# Installing "npm@latest" is what produced the reported EBADENGINE: the menu can
+# correctly offer 11.18.0 while the tag resolves to 12.0.1, so the promise and
+# the action disagree. Preferring the already-resolved figure also keeps the two
+# in sync without a second registry round trip.
+#
+# Prints a concrete version, or the literal "latest" when nothing better is
+# known. The caller always installs "npm@<result>", so a failed lookup degrades
+# to exactly today's command instead of blocking the upgrade.
+npm_install_target() {
+    local preferred="${1:-}"
+    if [[ "$preferred" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+        printf "%s" "$preferred"
+        return 0
+    fi
+
+    local node_bin picked=""
+    if node_bin=$(get_json_parser_node); then
+        picked=$(npm_pick_installable_version_cached "$node_bin" "$(get_conda_node_version)")
+    fi
+    if [[ "$picked" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+        printf "%s" "$picked"
+        return 0
+    fi
+
+    npm_engine_debug "npm engines: no installable version resolved; using the latest tag"
+    printf "latest"
+}
+
+# Get the newest npm version this environment can actually install.
+get_latest_npm_self_version() {
+    local node_bin
+    if ! node_bin=$(get_json_parser_node); then
+        return 0
+    fi
+    # The conda environment's own node, not the first node on PATH: a newer
+    # system/nvm node must not decide compatibility for the conda npm.
+    npm_pick_installable_version "$node_bin" "$(get_conda_node_version)"
+}
+
+# Extract a version token from a tool's --version output (reads stdin).
+#
+# Recognizes X.Y.Z plus an optional SemVer pre-release suffix (-rc12, -beta.1).
+# The pre-release suffix MUST be preserved: SemVer 2.0.0 section 11 ranks
+# 3.0.0-rc12 BELOW 3.0.0, so discarding it makes a pre-release install look
+# current when a stable release is already published. Build metadata (+...) is
+# excluded because SemVer section 10 says it is ignored for precedence.
+# Input with no recognizable version passes through unchanged, matching the
+# previous inline sed behavior.
+extract_version_token() {
+    sed -E 's/.*([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?).*/\1/'
 }
 
 get_installed_native_version() {
@@ -1150,7 +1414,7 @@ get_installed_native_version() {
     # Check for claude binary
     if [[ "$pkg" == "claude-code" ]]; then
         if command -v claude >/dev/null 2>&1; then
-            claude --version 2>/dev/null | head -n1 | sed -E 's/.*([0-9]+\.[0-9]+\.[0-9]+).*/\1/' || true
+            claude --version 2>/dev/null | head -n1 | extract_version_token || true
         fi
     elif [[ "$pkg" == "moai-adk" ]]; then
         if command -v moai >/dev/null 2>&1; then
@@ -1160,13 +1424,13 @@ get_installed_native_version() {
                 moai_out=$(moai version 2>/dev/null | head -n1 || true)
             fi
             if [[ -n "$moai_out" ]]; then
-                echo "$moai_out" | sed -E 's/.*([0-9]+\.[0-9]+\.[0-9]+).*/\1/' || true
+                echo "$moai_out" | extract_version_token || true
             fi
         fi
     elif [[ "$pkg" == "antigravity" ]]; then
         # Antigravity CLI installs the `agy` binary to ~/.local/bin
         if command -v agy >/dev/null 2>&1; then
-            agy --version 2>/dev/null | head -n1 | sed -E 's/.*([0-9]+\.[0-9]+\.[0-9]+).*/\1/' || true
+            agy --version 2>/dev/null | head -n1 | extract_version_token || true
         fi
     fi
 }
@@ -1390,6 +1654,307 @@ version_parse() {
     parse_version "$1" "standard"
 }
 
+# Isolate the SemVer core "X.Y.Z[-prerelease]" from arbitrary text.
+# Build metadata (+...) is dropped: SemVer 2.0.0 section 10 excludes it from
+# precedence. Prints nothing when no version is present.
+semver_extract() {
+    local raw="$1"
+    raw="${raw#v}"
+    raw="${raw#V}"
+    local re='([0-9]+\.[0-9]+\.[0-9]+)(-[0-9A-Za-z.-]+)?'
+    if [[ "$raw" =~ $re ]]; then
+        printf '%s%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+    fi
+}
+
+# Compare two version strings per SemVer 2.0.0 section 11 precedence.
+# Prints "lt", "eq" or "gt" describing $1 relative to $2.
+# Returns 1 without output when either side has no parseable version.
+semver_compare_core() {
+    local a b
+    a="$(semver_extract "$1")"
+    b="$(semver_extract "$2")"
+    if [[ -z "$a" ]] || [[ -z "$b" ]]; then
+        return 1
+    fi
+
+    # Split "X.Y.Z-pre" into numeric core and pre-release remainder.
+    local a_core="${a%%-*}" b_core="${b%%-*}"
+    local a_pre="" b_pre=""
+    [[ "$a" == *-* ]] && a_pre="${a#*-}"
+    [[ "$b" == *-* ]] && b_pre="${b#*-}"
+
+    local a_major a_minor a_patch b_major b_minor b_patch
+    IFS='.' read -r a_major a_minor a_patch <<< "$a_core"
+    IFS='.' read -r b_major b_minor b_patch <<< "$b_core"
+
+    # Section 11.2: major, minor, patch compared numerically in that order.
+    local field lhs rhs
+    for field in major minor patch; do
+        case "$field" in
+            major) lhs=$a_major; rhs=$b_major ;;
+            minor) lhs=$a_minor; rhs=$b_minor ;;
+            patch) lhs=$a_patch; rhs=$b_patch ;;
+        esac
+        # 10# forces base-10 so leading zeros are not read as octal.
+        lhs=$((10#${lhs:-0}))
+        rhs=$((10#${rhs:-0}))
+        if (( lhs > rhs )); then echo "gt"; return 0; fi
+        if (( lhs < rhs )); then echo "lt"; return 0; fi
+    done
+
+    # Section 11.3: a version WITHOUT a pre-release outranks one WITH it.
+    if [[ -z "$a_pre" ]] && [[ -z "$b_pre" ]]; then echo "eq"; return 0; fi
+    if [[ -z "$a_pre" ]]; then echo "gt"; return 0; fi
+    if [[ -z "$b_pre" ]]; then echo "lt"; return 0; fi
+
+    # Section 11.4: compare dot-separated pre-release identifiers left to right.
+    local -a a_ids=() b_ids=()
+    IFS='.' read -r -a a_ids <<< "$a_pre"
+    IFS='.' read -r -a b_ids <<< "$b_pre"
+
+    local count=${#a_ids[@]}
+    (( ${#b_ids[@]} > count )) && count=${#b_ids[@]}
+
+    local i a_id b_id a_numeric b_numeric
+    for (( i = 0; i < count; i++ )); do
+        a_id="${a_ids[i]-}"
+        b_id="${b_ids[i]-}"
+
+        # Section 11.4.4: when all preceding identifiers are equal, the version
+        # with MORE identifiers outranks the one with fewer.
+        if [[ -z "$a_id" ]]; then echo "lt"; return 0; fi
+        if [[ -z "$b_id" ]]; then echo "gt"; return 0; fi
+        [[ "$a_id" == "$b_id" ]] && continue
+
+        a_numeric=0; b_numeric=0
+        [[ "$a_id" =~ ^[0-9]+$ ]] && a_numeric=1
+        [[ "$b_id" =~ ^[0-9]+$ ]] && b_numeric=1
+
+        # Section 11.4.1: numeric identifiers compare numerically (rc2 < rc10
+        # only holds when the digits are compared as numbers, not as text).
+        if (( a_numeric == 1 && b_numeric == 1 )); then
+            if (( 10#$a_id > 10#$b_id )); then echo "gt"; else echo "lt"; fi
+            return 0
+        fi
+
+        # Section 11.4.3: numeric identifiers always rank LOWER than
+        # alphanumeric identifiers.
+        if (( a_numeric == 1 )); then echo "lt"; return 0; fi
+        if (( b_numeric == 1 )); then echo "gt"; return 0; fi
+
+        # Section 11.4.2: alphanumeric identifiers compare in ASCII sort order,
+        # with one documented refinement. Strict ASCII ranks "rc10" BELOW "rc2"
+        # (byte '1' < '2'), which inverts every undotted rcN scheme -- including
+        # this project's own moai-adk 3.0.0-rc1..rc12 line. So an identifier is
+        # first split into an alphabetic prefix and a trailing numeric run: the
+        # prefixes compare by ASCII, and equal prefixes fall through to a
+        # NUMERIC comparison of the trailing digits (rc2 < rc10). Identifiers
+        # without a trailing numeric run compare by plain ASCII, unchanged.
+        local a_stem="$a_id" b_stem="$a_id" a_num="" b_num=""
+        b_stem="$b_id"
+        local split_re='^(.*[^0-9])([0-9]+)$'
+        if [[ "$a_id" =~ $split_re ]]; then
+            a_stem="${BASH_REMATCH[1]}"; a_num="${BASH_REMATCH[2]}"
+        fi
+        if [[ "$b_id" =~ $split_re ]]; then
+            b_stem="${BASH_REMATCH[1]}"; b_num="${BASH_REMATCH[2]}"
+        fi
+
+        if [[ "$a_stem" == "$b_stem" ]] && [[ -n "$a_num" ]] && [[ -n "$b_num" ]]; then
+            if (( 10#$a_num > 10#$b_num )); then echo "gt"; else echo "lt"; fi
+            return 0
+        fi
+
+        # LC_ALL=C in a subshell forces byte order instead of locale collation.
+        if ( LC_ALL=C; [[ "$a_id" > "$b_id" ]] ); then echo "gt"; else echo "lt"; fi
+        return 0
+    done
+
+    echo "eq"
+}
+
+# Evaluate ONE npm range comparator against a concrete version.
+# Returns: 0 satisfied, 1 not satisfied, 2 unsupported syntax.
+# Callers MUST treat 2 as "cannot decide" and fail open — never as "no".
+semver_comparator_satisfied() {
+    local ver="$1" comp="$2"
+
+    # An empty or wildcard comparator matches everything.
+    case "$comp" in
+        ''|'*'|'x'|'X') return 0 ;;
+    esac
+
+    local op rest
+    case "$comp" in
+        '>='*) op='>=' ; rest="${comp:2}" ;;
+        '<='*) op='<=' ; rest="${comp:2}" ;;
+        '>'*)  op='>'  ; rest="${comp:1}" ;;
+        '<'*)  op='<'  ; rest="${comp:1}" ;;
+        '^'*)  op='^'  ; rest="${comp:1}" ;;
+        '~'*)  op='~'  ; rest="${comp:1}" ;;
+        '='*)  op='='  ; rest="${comp:1}" ;;
+        *)     op='='  ; rest="$comp"     ;;
+    esac
+    rest="${rest#v}"
+    rest="${rest#V}"
+
+    # Only plain numeric forms are supported: X, X.Y, X.Y.Z. Anything else
+    # (x-ranges like 1.2.x, hyphen ranges, pre-release comparators) is
+    # deliberately reported as unsupported so the caller fails open.
+    if [[ ! "$rest" =~ ^[0-9]+(\.[0-9]+)?(\.[0-9]+)?$ ]]; then
+        return 2
+    fi
+
+    local maj min pat parts
+    IFS='.' read -r maj min pat <<< "$rest"
+    parts=1
+    if [[ -n "${min:-}" ]]; then parts=2; fi
+    if [[ -n "${pat:-}" ]]; then parts=3; fi
+    min="${min:-0}"
+    pat="${pat:-0}"
+
+    local lower="${maj}.${min}.${pat}"
+    local upper=""   # exclusive upper bound; "" = unbounded, __exact__ = equality
+
+    case "$op" in
+        '^')
+            # Caret allows changes that do not modify the left-most non-zero
+            # element, so 0.x and 0.0.x are narrower than the X>0 case.
+            if [[ $parts -eq 1 ]] || [[ $((10#$maj)) -gt 0 ]]; then
+                upper="$((10#$maj + 1)).0.0"
+            elif [[ $((10#$min)) -gt 0 ]]; then
+                upper="0.$((10#$min + 1)).0"
+            elif [[ $parts -eq 3 ]]; then
+                upper="0.0.$((10#$pat + 1))"
+            else
+                upper="0.1.0"
+            fi
+            ;;
+        '~')
+            if [[ $parts -eq 1 ]]; then
+                upper="$((10#$maj + 1)).0.0"
+            else
+                upper="${maj}.$((10#$min + 1)).0"
+            fi
+            ;;
+        '=')
+            # A partial bare version is an X-range: "14.17" means >=14.17.0 <14.18.0
+            if [[ $parts -eq 1 ]]; then
+                upper="$((10#$maj + 1)).0.0"
+            elif [[ $parts -eq 2 ]]; then
+                upper="${maj}.$((10#$min + 1)).0"
+            else
+                upper="__exact__"
+            fi
+            ;;
+    esac
+
+    local cmp
+    if ! cmp=$(semver_compare_core "$ver" "$lower"); then
+        return 2
+    fi
+
+    case "$op" in
+        '>=')
+            if [[ "$cmp" == "lt" ]]; then return 1; fi
+            return 0
+            ;;
+        '>')
+            if [[ "$cmp" == "gt" ]]; then return 0; fi
+            return 1
+            ;;
+        '<')
+            if [[ "$cmp" == "lt" ]]; then return 0; fi
+            return 1
+            ;;
+        '<=')
+            if [[ "$cmp" == "gt" ]]; then return 1; fi
+            return 0
+            ;;
+    esac
+
+    # '^', '~', '=' share the half-open interval [lower, upper).
+    if [[ "$cmp" == "lt" ]]; then
+        return 1
+    fi
+    if [[ "$upper" == "__exact__" ]]; then
+        if [[ "$cmp" == "eq" ]]; then return 0; fi
+        return 1
+    fi
+    if ! cmp=$(semver_compare_core "$ver" "$upper"); then
+        return 2
+    fi
+    if [[ "$cmp" == "lt" ]]; then
+        return 0
+    fi
+    return 1
+}
+
+# Evaluate a full npm engines-style range against a concrete version.
+# Supports the subset npm actually publishes plus the common extras:
+#   '||' alternation, space-separated conjunction, ^ ~ >= > <= < =,
+#   bare and partial versions (X, X.Y, X.Y.Z), and '*'.
+# Returns: 0 satisfied, 1 not satisfied, 2 unsupported syntax (fail open).
+semver_range_satisfied() {
+    local ver="$1" range="$2"
+
+    # Trim surrounding whitespace.
+    range="${range#"${range%%[![:space:]]*}"}"
+    range="${range%"${range##*[![:space:]]}"}"
+    if [[ -z "$range" ]] || [[ "$range" == "*" ]]; then
+        return 0
+    fi
+
+    local unsupported=0 alt comp rc all_ok
+    local -a comps=()
+    while IFS= read -r alt; do
+        alt="${alt#"${alt%%[![:space:]]*}"}"
+        alt="${alt%"${alt##*[![:space:]]}"}"
+        if [[ -z "$alt" ]]; then
+            # An empty alternative means the expression was malformed.
+            unsupported=1
+            continue
+        fi
+        comps=()
+        read -r -a comps <<< "$alt"
+        all_ok=1
+        local alt_unsupported=0
+        # Every comparator is evaluated, with no short-circuit on a merely
+        # unsatisfied one: stopping early would hide an unsupported comparator
+        # later in the same conjunction and report a confident "no" for an
+        # expression this evaluator cannot actually read. That would fail
+        # CLOSED, which the caller must never do.
+        for comp in "${comps[@]}"; do
+            if semver_comparator_satisfied "$ver" "$comp"; then
+                rc=0
+            else
+                rc=$?
+            fi
+            if [[ $rc -eq 2 ]]; then
+                alt_unsupported=1
+            elif [[ $rc -ne 0 ]]; then
+                all_ok=0
+            fi
+        done
+        if [[ $alt_unsupported -eq 1 ]]; then
+            # Undecidable conjunction: it can neither prove nor disprove.
+            unsupported=1
+            continue
+        fi
+        # A fully satisfied alternative proves the range: OR wins even when a
+        # different alternative used syntax this evaluator cannot read.
+        if [[ $all_ok -eq 1 ]]; then
+            return 0
+        fi
+    done <<< "${range//||/$'\n'}"
+
+    if [[ $unsupported -eq 1 ]]; then
+        return 2
+    fi
+    return 1
+}
+
 version_compare() {
     local installed=$1
     local latest=$2
@@ -1419,44 +1984,19 @@ version_compare() {
         return
     fi
 
-    # Parse versions into components
-    local installed_major installed_minor installed_patch
-    local latest_major latest_minor latest_patch
-
-    read -r installed_major installed_minor installed_patch <<< "$(version_parse "$installed")"
-    read -r latest_major latest_minor latest_patch <<< "$(version_parse "$latest")"
-
-    # Handle empty components (default to 0)
-    installed_major=${installed_major:-0}
-    installed_minor=${installed_minor:-0}
-    installed_patch=${installed_patch:-0}
-    latest_major=${latest_major:-0}
-    latest_minor=${latest_minor:-0}
-    latest_patch=${latest_patch:-0}
-
-    # Compare major version
-    if [[ "$installed_major" -gt "$latest_major" ]]; then
-        echo "current"
-        return
-    elif [[ "$installed_major" -lt "$latest_major" ]]; then
-        echo "update"
+    # Full SemVer 2.0.0 precedence, including pre-release ordering. A bare
+    # major/minor/patch comparison is not enough: 3.0.0-rc12 must rank BELOW
+    # 3.0.0 even though the numeric cores are identical.
+    local order
+    if ! order=$(semver_compare_core "$installed" "$latest"); then
+        echo "unknown"
         return
     fi
 
-    # Compare minor version
-    if [[ "$installed_minor" -gt "$latest_minor" ]]; then
-        echo "current"
-        return
-    elif [[ "$installed_minor" -lt "$latest_minor" ]]; then
+    if [[ "$order" == "lt" ]]; then
         echo "update"
-        return
-    fi
-
-    # Compare patch version
-    if [[ "$installed_patch" -ge "$latest_patch" ]]; then
-        echo "current"
     else
-        echo "update"
+        echo "current"
     fi
 }
 
@@ -1610,7 +2150,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.14.3" \
+        "Agentic Coders CLI Installer v1.14.4" \
         "Toggle: skip->install/upgrade->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"
@@ -2070,6 +2610,10 @@ install_tool() {
     local manager=$2
     local pkg=$3
     local installed_version=$4
+    # The version the menu displayed as "latest" for this tool. Used by npm-self
+    # so the action installs exactly what the menu promised; optional so older
+    # call sites keep working.
+    local menu_latest_version=${5:-}
 
     printf "\n- %s: " "$pkg"
 
@@ -2311,11 +2855,17 @@ install_tool() {
                 log_error "Conda npm not found. npm tools must use conda npm."
                 return 1
             fi
-            if "$npm_bin" install -g npm@latest; then
-                log_success "Updated npm via conda npm"
+            # Install the exact version the menu offered. Asking for the
+            # "latest" tag instead lets npm resolve a release this node may not
+            # satisfy: the menu can promise 11.18.0 while the tag resolves to
+            # 12.0.1 and the install aborts with EBADENGINE.
+            local npm_target
+            npm_target=$(npm_install_target "$menu_latest_version")
+            if "$npm_bin" install -g "npm@${npm_target}"; then
+                log_success "Updated npm via conda npm (npm@${npm_target})"
                 return 0
             else
-                log_error "Failed to update npm via conda npm"
+                log_error "Failed to update npm via conda npm (npm@${npm_target})"
                 return 1
             fi
             ;;
@@ -2595,7 +3145,8 @@ run_installation() {
                         "${TOOL_NAMES[$i]}" \
                         "${TOOL_MANAGERS[$i]}" \
                         "${TOOL_PACKAGES[$i]}" \
-                        "${INSTALLED_VERSIONS[$i]}"; then
+                        "${INSTALLED_VERSIONS[$i]}" \
+                        "${LATEST_VERSIONS[$i]}"; then
                         install_success=$((install_success + 1))
                     else
                         install_fail=$((install_fail + 1))
@@ -2606,7 +3157,8 @@ run_installation() {
                         "${TOOL_NAMES[$i]}" \
                         "${TOOL_MANAGERS[$i]}" \
                         "${TOOL_PACKAGES[$i]}" \
-                        "${INSTALLED_VERSIONS[$i]}"; then
+                        "${INSTALLED_VERSIONS[$i]}" \
+                        "${LATEST_VERSIONS[$i]}"; then
                         upgrade_success=$((upgrade_success + 1))
                     else
                         upgrade_fail=$((upgrade_fail + 1))
@@ -2678,12 +3230,16 @@ bootstrap_npm_from_registry() {
     # into the environment prefix (the "update node first, then install npm
     # manually" recovery, automated).
     local node_bin=$1
-    local npm_ver
-    npm_ver=$(curl -fsSL --proto '=https' --tlsv1.2 --max-time 15 \
-        "https://registry.npmjs.org/npm/latest" 2>/dev/null \
-        | grep -o '"version":"[^"]*"' | head -n1 | cut -d'"' -f4)
+
+    # Pick the newest npm this very node can run. The install below uses
+    # --force, so an EBADENGINE mismatch is not merely refused: a partial
+    # forced install can leave the environment without a working npm, i.e. the
+    # repair path would break what it was invoked to fix.
+    local node_ver npm_ver
+    node_ver=$("$node_bin" --version 2>/dev/null | sed 's/^v//' | head -n1 || true)
+    npm_ver=$(npm_pick_installable_version "$node_bin" "$node_ver")
     if [[ -z "$npm_ver" ]]; then
-        log_error "Could not determine the latest npm version from registry.npmjs.org."
+        log_error "Could not determine an installable npm version from registry.npmjs.org."
         return 1
     fi
 
@@ -2812,8 +3368,13 @@ ensure_npm_prerequisite() {
     fi
 
     log_warning "npm version $npm_version is below required $MIN_NPM_VERSION. Updating via npm..."
-    if ! "$conda_npm" install -g npm@latest; then
-        log_error "npm update failed. Please run: npm install -g npm@latest (within the conda env)"
+    # Pin to a version this node can run. The "latest" tag may resolve to a
+    # release whose engines.node excludes this node, and this is the
+    # prerequisite chain: a failure here blocks every npm-managed tool.
+    local npm_target
+    npm_target=$(npm_install_target "")
+    if ! "$conda_npm" install -g "npm@${npm_target}"; then
+        log_error "npm update failed. Please run: npm install -g npm@${npm_target} (within the conda env)"
         return 1
     fi
 

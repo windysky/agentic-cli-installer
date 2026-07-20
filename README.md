@@ -1,4 +1,4 @@
-# Agentic CLI Installer v1.14.3
+# Agentic CLI Installer v1.14.4
 
 **Last Modified:** June 29, 2026
 
@@ -204,6 +204,11 @@ Backup location: ~/.local/bin.backup
 ```
 
 ## Change Log
+
+### v1.14.4 - July 20, 2026
+
+- **npm upgrades respect `engines.node`**: on an environment with an odd-numbered (non-LTS) Node such as 25.x, the installer used to offer npm's newest release and then fail with `EBADENGINE`, because npm 12 supports only `^22.22.2 || ^24.15.0 || >=26.0.0`. It now offers the newest npm your conda environment's own Node can actually run, and installs exactly that pinned version rather than the `latest` tag — so the menu and the upgrade can no longer disagree. If the check cannot complete (offline, unreadable registry response, unrecognised version range), it falls back to the previous behaviour instead of blocking the upgrade.
+- **Pre-release versions compare correctly**: an installed release candidate such as `3.0.0-rc12` was reported as up to date against a released `3.0.0`, because the suffix was discarded before comparison. Pre-releases now rank below their final release, and `rc9` / `rc10` / `rc12` sort in the order you would expect. Windows and Unix now share one comparator; previously Windows relied on a failed type conversion and could offer a downgrade as an "upgrade".
 
 ### v1.14.3 - July 12, 2026
 
