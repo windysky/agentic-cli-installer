@@ -3,11 +3,11 @@ setlocal EnableDelayedExpansion
 set "SCRIPT_DIR=%~dp0"
 
 REM ###############################################
-REM Agentic Coders Installer v1.14.3
+REM Agentic Coders Installer v1.14.4
 REM Interactive installer for AI coding CLI tools
 REM Windows version (run in Anaconda Prompt or CMD)
 REM
-REM Recent improvements (v1.7.13-v1.14.3):
+REM Recent improvements (v1.7.13-v1.14.4):
 REM - v1.12.0: Replace retired Gemini CLI with Antigravity CLI (native agy installer);
 REM            purge Gemini CLI entry + oh-my-opencode --gemini auto-detect + static --gemini=no
 REM            (--gemini=no is the documented default; omitting it is safe and Gemini CLI is retired.
@@ -616,9 +616,13 @@ powershell -NoProfile -Command "try { if ([version]$env:AGENTIC_NPM_VER -ge [ver
 if errorlevel 1 (
     echo %YELLOW%[WARNING]%NC% npm version !NPM_VERSION! is below required %MIN_NPM_VERSION%.
     echo Updating npm via conda npm...
-    call "!CONDA_NPM!" install -g npm@latest
+    REM Pin to a version this node can run. The latest tag may resolve to a
+    REM release whose engines.node excludes this node, and this is the
+    REM prerequisite chain: a failure here blocks every npm-managed tool.
+    call :npm_install_target "" NPM_TARGET
+    call "!CONDA_NPM!" install -g npm@!NPM_TARGET!
     if errorlevel 1 (
-        echo %RED%[ERROR]%NC% npm update failed. Please run: npm install -g npm@latest ^(within the conda env^)
+        echo %RED%[ERROR]%NC% npm update failed. Please run: npm install -g npm@!NPM_TARGET! ^(within the conda env^)
         exit /b 1
     )
     for /f "delims=" %%v in ('"!CONDA_NPM!" --version 2^>nul') do (
@@ -661,10 +665,16 @@ if not defined CONDA_NODE (
     echo %RED%[ERROR]%NC% Cannot bootstrap npm: node.exe not found in the conda environment.
     exit /b 1
 )
+REM Pick the newest npm this very node can run. The install below uses
+REM --force, so an EBADENGINE mismatch is not merely refused: a partial forced
+REM install can leave the environment without a working npm, i.e. the repair
+REM path would break what it was invoked to fix.
 set "NPM_BOOT_VER="
-for /f "delims=" %%v in ('powershell -NoProfile -Command "(Invoke-RestMethod -Uri https://registry.npmjs.org/npm/latest -TimeoutSec 15).version" 2^>nul') do set "NPM_BOOT_VER=%%v"
+set "NPM_BOOT_NODEVER="
+for /f "delims=" %%v in ('%ComSpec% /d /c ""!CONDA_NODE!" --version" 2^>nul') do set "NPM_BOOT_NODEVER=%%v"
+call :get_npm_installable_version "!NPM_BOOT_NODEVER!" NPM_BOOT_VER
 if not defined NPM_BOOT_VER (
-    echo %RED%[ERROR]%NC% Could not determine the latest npm version from registry.npmjs.org.
+    echo %RED%[ERROR]%NC% Could not determine an installable npm version from registry.npmjs.org.
     exit /b 1
 )
 set "NPM_BOOT_TMP=%TEMP%\npm-bootstrap-%RANDOM%%RANDOM%"
@@ -1190,21 +1200,105 @@ for /f "delims=" %%v in ('"!CONDA_NPM!" --version 2^>nul') do (
 )
 exit /b 0
 
-REM Get npm's own latest version
+REM Get npm own newest INSTALLABLE version.
+REM
+REM The dist-tag latest is not necessarily installable: npm 12 restricts
+REM engines.node to the even-numbered LTS lines plus 26 and above, so it
+REM excludes odd-numbered non-LTS lines such as node 25 and installing it
+REM there aborts with EBADENGINE. Ask instead for the newest release the
+REM conda environment own node accepts.
 :get_latest_npm_self_version
 	set "outvar=%~1"
 	set "%outvar%="
 	where curl >nul 2>nul
 	if errorlevel 1 exit /b 0
-	set "tmpfile=%TEMP%\npm_self_version_%RANDOM%.tmp"
-	powershell -NoProfile -Command "$ProgressPreference = 'SilentlyContinue'; $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); $uri = 'https://registry.npmjs.org/npm/latest?ts=' + $ts; $attempt = 0; $version = $null; while ($attempt -lt 2 -and -not $version) { try { $result = Invoke-RestMethod -UseBasicParsing -Uri $uri -TimeoutSec 10 -ErrorAction Stop; if ($result -and $result.version) { $version = $result.version } } catch { } if (-not $version -and $attempt -lt 1) { Start-Sleep -Seconds 1 } $attempt++ } if ($version) { Write-Output $version }" >"%tmpfile%" 2>nul
-	if exist "%tmpfile%" (
-	    for /f "usebackq delims=" %%v in ("%tmpfile%") do (
-	        if not "%%v"=="" set "%outvar%=%%v"
+	if not defined CONDA_NODE call :resolve_conda_npm
+	set "NPMSELF_NODEVER="
+	if defined CONDA_NODE for /f "delims=" %%v in ('%ComSpec% /d /c ""!CONDA_NODE!" --version" 2^>nul') do set "NPMSELF_NODEVER=%%v"
+	call :get_npm_installable_version "!NPMSELF_NODEVER!" %outvar%
+	exit /b 0
+
+REM Shared engine-aware npm version picker.
+REM   arg 1 = node version to test against, may be empty or vX.Y.Z
+REM   arg 2 = name of the variable that receives the chosen npm version
+REM
+REM The decision runs in the conda environment own node.exe rather than in
+REM PowerShell: Windows PowerShell 5.1 ConvertFrom-Json enforces a maxJsonLength
+REM near 2 MB and the abbreviated packument is larger than that, so parsing it
+REM in PowerShell would throw on exactly the machines this check exists for.
+REM node is already a hard precondition of both call sites.
+REM
+REM NPMPICK_B64 below is the base64 of that script. install_coding_tools.sh
+REM carries the readable twin: semver_comparator_satisfied, semver_range_satisfied
+REM and npm_pick_installable_version. The two MUST stay in agreement.
+REM
+REM Fails OPEN everywhere: no conda node, no network, an unreadable document or
+REM a range syntax the evaluator does not implement all fall through to
+REM :npmpick_legacy, which is the pre-check behavior of asking the registry
+REM for whatever it calls latest.
+:get_npm_installable_version
+set "npmpick_nodever=%~1"
+set "npmpick_out=%~2"
+set "%npmpick_out%="
+if not defined CONDA_NODE call :resolve_conda_npm
+if not defined CONDA_NODE goto npmpick_legacy
+
+set "NPMPICK_B64=%TEMP%\npmpick-%RANDOM%%RANDOM%.b64"
+set "NPMPICK_JS=%TEMP%\npmpick-%RANDOM%%RANDOM%.js"
+> "%NPMPICK_B64%" echo dmFyIGh0dHBzID0gcmVxdWlyZSgiaHR0cHMiKTsKZnVuY3Rpb24gZmV0Y2hKc29uKHBhdGgsIGFjY2VwdCwgY2IpIHsKICB2YXIgaGRyID0geyAiY2FjaGUtY29udHJvbCI6ICJuby1jYWNoZSIgfTsKICBpZiAoYWNjZXB0KSB7IGhkci5hY2NlcHQgPSBhY2NlcHQ7IH0KICB2YXIgcmVxID0gaHR0cHMucmVxdWVzdCgKICAgIHsgaG9zdDogInJlZ2lzdHJ5Lm5wbWpzLm9yZyIsIHBhdGg6IHBhdGgsIG1ldGhvZDogIkdFVCIsIGhlYWRlcnM6IGhkciwgdGltZW91dDogMjUwMDAgfSwKICAgIGZ1bmN0aW9uIChyZXMpIHsKICAgICAgaWYgKHJlcy5zdGF0dXNDb2RlICE9PSAyMDApIHsgcmVzLnJlc3VtZSgpOyByZXR1cm4gY2IobnVsbCk7IH0KICAgICAgdmFyIGQgPSAiIjsKICAgICAgcmVzLnNldEVuY29kaW5nKCJ1dGY4Iik7CiAgICAgIHJlcy5vbigiZGF0YSIsIGZ1bmN0aW9uIChjKSB7IGQgKz0gYzsgfSk7CiAgICAgIHJlcy5vbigiZW5kIiwgZnVuY3Rpb24gKCkgeyB0cnkgeyBjYihKU09OLnBhcnNlKGQpKTsgfSBjYXRjaCAoZSkgeyBjYihudWxsKTsgfSB9KTsKICAgIH0KICApOwogIHJlcS5vbigiZXJyb3IiLCBmdW5jdGlvbiAoKSB7IGNiKG51bGwpOyB9KTsKICByZXEub24oInRpbWVvdXQiLCBmdW5jdGlvbiAoKSB7IHJlcS5kZXN0cm95KCk7IGNiKG51bGwpOyB9KTsKICByZXEuZW5kKCk7Cn0KZnVuY3Rpb24gdHJpcChzKSB7IHZhciBwID0gcy5zcGxpdCgiLiIpOyByZXR1cm4gWyArcFswXSwgK3BbMV0sICtwWzJdIF07IH0KZnVuY3Rpb24gY21wKGEsIGIpIHsgdmFyIHggPSB0cmlwKGEpLCB5ID0gdHJpcChiKTsgZm9yICh2YXIgaSA9IDA7IGkgPCAzOyBpKyspIHsgaWYgKHhbaV0gIT09IHlbaV0pIHsgcmV0dXJuIHhbaV0gLSB5W2ldOyB9IH0gcmV0dXJuIDA7IH0KLy8g
+>>"%NPMPICK_B64%" echo MCA9IHNhdGlzZmllZCwgMSA9IG5vdCBzYXRpc2ZpZWQsIDIgPSB1bnN1cHBvcnRlZCBzeW50YXggKGNhbGxlciBmYWlscyBvcGVuKQpmdW5jdGlvbiBjb21wYXJhdG9yT2sodmVyLCBjb21wKSB7CiAgaWYgKGNvbXAgPT09ICIiIHx8IGNvbXAgPT09ICIqIiB8fCBjb21wID09PSAieCIgfHwgY29tcCA9PT0gIlgiKSB7IHJldHVybiAwOyB9CiAgdmFyIG9wID0gIj0iLCByZXN0ID0gY29tcDsKICB2YXIgdHdvID0gY29tcC5zdWJzdHJpbmcoMCwgMik7CiAgaWYgKHR3byA9PT0gIj49IiB8fCB0d28gPT09ICI8PSIpIHsgb3AgPSB0d287IHJlc3QgPSBjb21wLnN1YnN0cmluZygyKTsgfQogIGVsc2UgewogICAgdmFyIG9uZSA9IGNvbXAuY2hhckF0KDApOwogICAgaWYgKG9uZSA9PT0gIj4iIHx8IG9uZSA9PT0gIjwiIHx8IG9uZSA9PT0gIl4iIHx8IG9uZSA9PT0gIn4iIHx8IG9uZSA9PT0gIj0iKSB7IG9wID0gb25lOyByZXN0ID0gY29tcC5zdWJzdHJpbmcoMSk7IH0KICB9CiAgaWYgKHJlc3QuY2hhckF0KDApID09PSAidiIgfHwgcmVzdC5jaGFyQXQoMCkgPT09ICJWIikgeyByZXN0ID0gcmVzdC5zdWJzdHJpbmcoMSk7IH0KICBpZiAoIS9eWzAtOV0rKFwuWzAtOV0rKT8oXC5bMC05XSspPyQvLnRlc3QocmVzdCkpIHsgcmV0dXJuIDI7IH0KICB2YXIgcCA9IHJlc3Quc3BsaXQoIi4iKSwgcGFydHMgPSBwLmxlbmd0aDsKICB2YXIgbWFqID0gK3BbMF0sIG1pbiA9IHBhcnRzID4gMSA/ICtwWzFdIDogMCwgcGF0ID0gcGFydHMgPiAyID8gK3BbMl0gOiAwOwogIHZhciBsb3dlciA9IG1haiArICIuIiArIG1pbiArICIuIiArIHBhdCwgdXBwZXIgPSBudWxsLCBleGFjdCA9IGZhbHNlOwogIGlmIChvcCA9PT0gIl4iKSB7CiAgICBpZiAocGFydHMgPT09IDEgfHwgbWFqID4gMCkgeyB1cHBl
+>>"%NPMPICK_B64%" echo ciA9IChtYWogKyAxKSArICIuMC4wIjsgfQogICAgZWxzZSBpZiAobWluID4gMCkgeyB1cHBlciA9ICIwLiIgKyAobWluICsgMSkgKyAiLjAiOyB9CiAgICBlbHNlIGlmIChwYXJ0cyA9PT0gMykgeyB1cHBlciA9ICIwLjAuIiArIChwYXQgKyAxKTsgfQogICAgZWxzZSB7IHVwcGVyID0gIjAuMS4wIjsgfQogIH0gZWxzZSBpZiAob3AgPT09ICJ+IikgewogICAgdXBwZXIgPSBwYXJ0cyA9PT0gMSA/IChtYWogKyAxKSArICIuMC4wIiA6IG1haiArICIuIiArIChtaW4gKyAxKSArICIuMCI7CiAgfSBlbHNlIGlmIChvcCA9PT0gIj0iKSB7CiAgICBpZiAocGFydHMgPT09IDEpIHsgdXBwZXIgPSAobWFqICsgMSkgKyAiLjAuMCI7IH0KICAgIGVsc2UgaWYgKHBhcnRzID09PSAyKSB7IHVwcGVyID0gbWFqICsgIi4iICsgKG1pbiArIDEpICsgIi4wIjsgfQogICAgZWxzZSB7IGV4YWN0ID0gdHJ1ZTsgfQogIH0KICB2YXIgYyA9IGNtcCh2ZXIsIGxvd2VyKTsKICBpZiAob3AgPT09ICI+PSIpIHsgcmV0dXJuIGMgPCAwID8gMSA6IDA7IH0KICBpZiAob3AgPT09ICI+IikgeyByZXR1cm4gYyA+IDAgPyAwIDogMTsgfQogIGlmIChvcCA9PT0gIjwiKSB7IHJldHVybiBjIDwgMCA/IDAgOiAxOyB9CiAgaWYgKG9wID09PSAiPD0iKSB7IHJldHVybiBjID4gMCA/IDEgOiAwOyB9CiAgaWYgKGMgPCAwKSB7IHJldHVybiAxOyB9CiAgaWYgKGV4YWN0KSB7IHJldHVybiBjID09PSAwID8gMCA6IDE7IH0KICByZXR1cm4gY21wKHZlciwgdXBwZXIpIDwgMCA/IDAgOiAxOwp9Ci8vIDAgPSBzYXRpc2ZpZWQsIDEgPSBub3Qgc2F0aXNmaWVkLCAyID0gdW5zdXBwb3J0ZWQgc3ludGF4CmZ1bmN0aW9uIHJhbmdlT2sodmVyLCByYW5nZSkgewogIGlmICh0eXBlb2YgcmFuZ2UgIT09ICJzdHJpbmciKSB7IHJldHVy
+>>"%NPMPICK_B64%" echo biAwOyB9CiAgcmFuZ2UgPSByYW5nZS50cmltKCk7CiAgaWYgKHJhbmdlID09PSAiIiB8fCByYW5nZSA9PT0gIioiKSB7IHJldHVybiAwOyB9CiAgdmFyIHVuc3VwcG9ydGVkID0gMDsKICB2YXIgYWx0cyA9IHJhbmdlLnNwbGl0KCJ8fCIpOwogIGZvciAodmFyIGkgPSAwOyBpIDwgYWx0cy5sZW5ndGg7IGkrKykgewogICAgdmFyIGFsdCA9IGFsdHNbaV0udHJpbSgpOwogICAgaWYgKGFsdCA9PT0gIiIpIHsgdW5zdXBwb3J0ZWQgPSAxOyBjb250aW51ZTsgfQogICAgdmFyIGNvbXBzID0gYWx0LnNwbGl0KC9ccysvKSwgYWxsT2sgPSAxLCBhbHRVbnN1cHBvcnRlZCA9IDA7CiAgICAvLyBObyBzaG9ydC1jaXJjdWl0IG9uIGEgbWVyZWx5IHVuc2F0aXNmaWVkIGNvbXBhcmF0b3I6IHN0b3BwaW5nIGVhcmx5IHdvdWxkCiAgICAvLyBoaWRlIGFuIHVuc3VwcG9ydGVkIGNvbXBhcmF0b3IgbGF0ZXIgaW4gdGhlIHNhbWUgY29uanVuY3Rpb24gYW5kIHByb2R1Y2UKICAgIC8vIGEgY29uZmlkZW50ICJubyIgZm9yIGFuIGV4cHJlc3Npb24gdGhpcyBldmFsdWF0b3IgY2Fubm90IHJlYWQuCiAgICBmb3IgKHZhciBqID0gMDsgaiA8IGNvbXBzLmxlbmd0aDsgaisrKSB7CiAgICAgIHZhciByYyA9IGNvbXBhcmF0b3JPayh2ZXIsIGNvbXBzW2pdKTsKICAgICAgaWYgKHJjID09PSAyKSB7IGFsdFVuc3VwcG9ydGVkID0gMTsgfQogICAgICBlbHNlIGlmIChyYyAhPT0gMCkgeyBhbGxPayA9IDA7IH0KICAgIH0KICAgIGlmIChhbHRVbnN1cHBvcnRlZCkgeyB1bnN1cHBvcnRlZCA9IDE7IGNvbnRpbnVlOyB9CiAgICBpZiAoYWxsT2spIHsgcmV0dXJuIDA7IH0KICB9CiAgcmV0dXJuIHVuc3VwcG9ydGVkID8gMiA6IDE7Cn0KZnVuY3Rpb24gb3V0KHYpIHsgaWYgKHYpIHsgcHJvY2Vzcy5zdGRvdXQud3Jp
+>>"%NPMPICK_B64%" echo dGUoU3RyaW5nKHYpKTsgfSB9Ci8vIExvY2F0ZSB0aGUgdmVyc2lvbiBhcmd1bWVudCB3aXRob3V0IGRlcGVuZGluZyBvbiBhcmd2IGxheW91dDogYXJndlsxXSBpcyB0aGUKLy8gZmlyc3QgYXJndW1lbnQgdW5kZXIgIm5vZGUgLWUiIGJ1dCB0aGUgc2NyaXB0IHBhdGggd2hlbiBydW4gYXMgYSBmaWxlLgp2YXIgbm9kZVZlciA9ICIiOwpmb3IgKHZhciBhaSA9IDE7IGFpIDwgcHJvY2Vzcy5hcmd2Lmxlbmd0aDsgYWkrKykgewogIHZhciBjYW5kID0gU3RyaW5nKHByb2Nlc3MuYXJndlthaV0pLnJlcGxhY2UoL152LywgIiIpLnRyaW0oKTsKICBpZiAoL15bMC05XStcLlswLTldK1wuWzAtOV0rLy50ZXN0KGNhbmQpKSB7IG5vZGVWZXIgPSBjYW5kOyBicmVhazsgfQp9CmZldGNoSnNvbigiL25wbS9sYXRlc3Q/dHM9IiArIERhdGUubm93KCksIG51bGwsIGZ1bmN0aW9uIChsYXRlc3REb2MpIHsKICBpZiAoIWxhdGVzdERvYyB8fCB0eXBlb2YgbGF0ZXN0RG9jLnZlcnNpb24gIT09ICJzdHJpbmciKSB7IHJldHVybiBvdXQoIiIpOyB9CiAgdmFyIGxhdGVzdFZlciA9IGxhdGVzdERvYy52ZXJzaW9uOwogIHZhciBsYXRlc3RSYW5nZSA9IGxhdGVzdERvYy5lbmdpbmVzICYmIHR5cGVvZiBsYXRlc3REb2MuZW5naW5lcy5ub2RlID09PSAic3RyaW5nIiA/IGxhdGVzdERvYy5lbmdpbmVzLm5vZGUgOiAiIjsKICBpZiAoIW5vZGVWZXIgfHwgIS9eWzAtOV0rXC5bMC05XStcLlswLTldKy8udGVzdChub2RlVmVyKSkgeyByZXR1cm4gb3V0KGxhdGVzdFZlcik7IH0KICB2YXIgcmMgPSByYW5nZU9rKG5vZGVWZXIsIGxhdGVzdFJhbmdlKTsKICBpZiAocmMgIT09IDEpIHsgcmV0dXJuIG91dChsYXRlc3RWZXIpOyB9CiAgZmV0Y2hKc29uKCIvbnBtIiwgImFwcGxpY2F0aW9uL3ZuZC5ucG0uaW5zdGFs
+>>"%NPMPICK_B64%" echo bC12MStqc29uIiwgZnVuY3Rpb24gKGRvYykgewogICAgaWYgKCFkb2MgfHwgIWRvYy52ZXJzaW9ucyB8fCAhZG9jWyJkaXN0LXRhZ3MiXSB8fCAhZG9jWyJkaXN0LXRhZ3MiXS5sYXRlc3QpIHsgcmV0dXJuIG91dChsYXRlc3RWZXIpOyB9CiAgICB2YXIgY2FwID0gZG9jWyJkaXN0LXRhZ3MiXS5sYXRlc3Q7CiAgICB2YXIgcm93cyA9IE9iamVjdC5rZXlzKGRvYy52ZXJzaW9ucykKICAgICAgLmZpbHRlcihmdW5jdGlvbiAodikgeyByZXR1cm4gL15bMC05XStcLlswLTldK1wuWzAtOV0rJC8udGVzdCh2KTsgfSkKICAgICAgLmZpbHRlcihmdW5jdGlvbiAodikgeyByZXR1cm4gY21wKHYsIGNhcCkgPD0gMDsgfSkKICAgICAgLnNvcnQoZnVuY3Rpb24gKGEsIGIpIHsgcmV0dXJuIGNtcChiLCBhKTsgfSk7CiAgICBmb3IgKHZhciBpID0gMDsgaSA8IHJvd3MubGVuZ3RoOyBpKyspIHsKICAgICAgdmFyIGUgPSBkb2MudmVyc2lvbnNbcm93c1tpXV0uZW5naW5lczsKICAgICAgdmFyIHIgPSBlICYmIHR5cGVvZiBlLm5vZGUgPT09ICJzdHJpbmciID8gZS5ub2RlIDogIiI7CiAgICAgIHZhciBrID0gcmFuZ2VPayhub2RlVmVyLCByKTsKICAgICAgaWYgKGsgPT09IDApIHsgcmV0dXJuIG91dChyb3dzW2ldKTsgfQogICAgICBpZiAoayA9PT0gMikgeyByZXR1cm4gb3V0KGxhdGVzdFZlcik7IH0KICAgIH0KICAgIHJldHVybiBvdXQobGF0ZXN0VmVyKTsKICB9KTsKfSk7Cg==
+powershell -NoProfile -ExecutionPolicy Bypass -Command "[IO.File]::WriteAllBytes($env:NPMPICK_JS,[Convert]::FromBase64String(((Get-Content -Raw $env:NPMPICK_B64) -replace '\s','')))" >nul 2>nul
+del "%NPMPICK_B64%" >nul 2>nul
+if not exist "%NPMPICK_JS%" goto npmpick_legacy
+for /f "delims=" %%v in ('%ComSpec% /d /c ""!CONDA_NODE!" "%NPMPICK_JS%" %npmpick_nodever%" 2^>nul') do set "%npmpick_out%=%%v"
+del "%NPMPICK_JS%" >nul 2>nul
+set "NPMPICK_B64="
+set "NPMPICK_JS="
+if defined %npmpick_out% exit /b 0
+
+:npmpick_legacy
+set "npmpick_tmp=%TEMP%\npm_self_version_%RANDOM%.tmp"
+	powershell -NoProfile -Command "$ProgressPreference = 'SilentlyContinue'; $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds(); $uri = 'https://registry.npmjs.org/npm/latest?ts=' + $ts; $attempt = 0; $version = $null; while ($attempt -lt 2 -and -not $version) { try { $result = Invoke-RestMethod -UseBasicParsing -Uri $uri -TimeoutSec 10 -ErrorAction Stop; if ($result -and $result.version) { $version = $result.version } } catch { } if (-not $version -and $attempt -lt 1) { Start-Sleep -Seconds 1 } $attempt++ } if ($version) { Write-Output $version }" >"%npmpick_tmp%" 2>nul
+	if exist "%npmpick_tmp%" (
+	    for /f "usebackq delims=" %%v in ("%npmpick_tmp%") do (
+	        if not "%%v"=="" set "%npmpick_out%=%%v"
 	    )
-	    del "%tmpfile%" >nul 2>nul
+	    del "%npmpick_tmp%" >nul 2>nul
 	)
 	exit /b 0
+
+
+REM Resolve which npm the installer should actually install, as an explicit
+REM version rather than the latest tag.
+REM   arg 1 = a version already resolved elsewhere, may be empty or Unknown
+REM   arg 2 = name of the variable that receives the result
+REM
+REM Installing the latest tag is what produced the reported EBADENGINE: the
+REM menu can correctly offer 11.18.0 while the tag resolves to 12.0.1, so the
+REM promise and the action disagree. Prefers the already-resolved figure, then
+REM asks :get_npm_installable_version, and finally yields the literal latest
+REM tag so a lookup failure can never block an upgrade that used to be offered.
+:npm_install_target
+set "npmtgt_pref=%~1"
+set "npmtgt_out=%~2"
+set "npmtgt_val="
+echo %npmtgt_pref%| findstr /R /C:"^[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*" >nul 2>nul
+if not errorlevel 1 set "npmtgt_val=%npmtgt_pref%"
+if defined npmtgt_val goto npm_install_target_done
+set "npmtgt_nodever="
+if not defined CONDA_NODE call :resolve_conda_npm
+if defined CONDA_NODE for /f "delims=" %%v in ('%ComSpec% /d /c ""!CONDA_NODE!" --version" 2^>nul') do set "npmtgt_nodever=%%v"
+call :get_npm_installable_version "!npmtgt_nodever!" npmtgt_val
+echo !npmtgt_val!| findstr /R /C:"^[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*" >nul 2>nul
+if errorlevel 1 set "npmtgt_val="
+:npm_install_target_done
+if not defined npmtgt_val set "npmtgt_val=latest"
+set "%npmtgt_out%=%npmtgt_val%"
+exit /b 0
 
 REM Get latest version for native tools (e.g., Claude Code, MoAI-ADK)
 :get_latest_native_version
@@ -1296,22 +1390,62 @@ if defined NPM_CLAUDE_CHECK (
 exit /b 0
 
 REM Helper function for semantic version comparison
+REM Implements SemVer 2.0.0 section 11 precedence, including pre-release
+REM ordering: 3.0.0-rc12 ranks BELOW 3.0.0, and rc2 below rc10.
+REM
+REM The previous implementation cast both sides with [version], which throws
+REM on any pre-release string, so every pre-release comparison landed in the
+REM catch branch and returned "update" unconditionally. That was right for an
+REM outdated pre-release, but it also returned "update" when the INSTALLED
+REM side was the NEWER pre-release, e.g. 3.1.0-rc1 against latest 3.0.0,
+REM which would push a downgrade.
+REM
+REM Windows PowerShell 5.1 has no [SemanticVersion] type - that type is PS 6
+REM and later - so the comparison is written in plain PowerShell that runs on
+REM 5.1, passed as an encoded command to avoid cmd quoting issues.
+REM
+REM VC_SEMVER_B64 decodes to a script that:
+REM   1. reads installed and latest from the AGENTIC_VC_ environment vars
+REM   2. parses each into major, minor, optional patch, optional pre-release
+REM   3. compares major, then minor, then patch numerically
+REM   4. on an equal core, a version with NO pre-release outranks one with a
+REM      pre-release, per SemVer 11.3
+REM   5. when both have a pre-release, compares dot-separated identifiers
+REM      left to right per SemVer 11.4: numeric identifiers numerically,
+REM      numeric ranking below alphanumeric, alphanumeric by ordinal, and a
+REM      longer identifier list outranking a shorter equal prefix
+REM   6. prints update when installed is lower, otherwise current
+REM
+REM semver_compare_core in install_coding_tools.sh is the readable line-by-
+REM line twin of this script; the two MUST stay in agreement. To audit the
+REM blob: decode VC_SEMVER_B64 as base64 to UTF-16LE text.
 :version_compare_semver
-set "installed=%~1"
-set "latest=%~2"
-set "outvar=%~3"
+set "vc_installed=%~1"
+set "vc_latest=%~2"
+set "vc_outvar=%~3"
+set "vc_result="
 
-if "%installed%"=="Not Installed" echo missing& exit /b 0
-if "%latest%"=="" echo unknown& exit /b 0
+REM Guard vocabulary matches the bash version_compare: missing / unknown.
+REM Each guard is a standalone if with no chaining operator, so the
+REM fall-through path to the PowerShell comparison is unambiguous.
+if "%vc_installed%"=="Not Installed" set "vc_result=missing"
+if "%vc_installed%"=="" set "vc_result=unknown"
+if "%vc_installed%"=="Unknown" set "vc_result=unknown"
+if "%vc_latest%"=="" set "vc_result=unknown"
+if "%vc_latest%"=="Unknown" set "vc_result=unknown"
+if defined vc_result goto vc_semver_return
 
-REM Use PowerShell for proper semver comparison
-set "AGENTIC_VC_INSTALLED=%installed%"
-set "AGENTIC_VC_LATEST=%latest%"
-for /f "delims=" %%r in ('powershell -NoProfile -Command "$i = $env:AGENTIC_VC_INSTALLED; $l = $env:AGENTIC_VC_LATEST; try { $v1 = [version]$i; $v2 = [version]$l; if ($v1 -ge $v2) { 'current' } else { 'update' } } catch { 'update' }" 2^>nul') do (
-    set "%outvar%=%%r"
-)
+set "VC_SEMVER_B64=JABpACAAPQAgACQAZQBuAHYAOgBBAEcARQBOAFQASQBDAF8AVgBDAF8ASQBOAFMAVABBAEwATABFAEQACgAkAGwAIAA9ACAAJABlAG4AdgA6AEEARwBFAE4AVABJAEMAXwBWAEMAXwBMAEEAVABFAFMAVAAKACQAcgBlACAAPQAgACcAKABcAGQAKwApAFwALgAoAFwAZAArACkAKAA/ADoAXAAuACgAXABkACsAKQApAD8AKAA/ADoALQAoAFsAMAAtADkAQQAtAFoAYQAtAHoAXAAuAC0AXQArACkAKQA/ACcACgBmAHUAbgBjAHQAaQBvAG4AIABHAGUAdAAtAFYAUABhAHIAdABzACgAJABzACkAIAB7AAoAIAAgAGkAZgAgACgALQBuAG8AdAAgACQAcwApACAAewAgAHIAZQB0AHUAcgBuACAAJABuAHUAbABsACAAfQAKACAAIAAkAG0AIAA9ACAAWwByAGUAZwBlAHgAXQA6ADoATQBhAHQAYwBoACgAKAAkAHMAIAAtAHIAZQBwAGwAYQBjAGUAIAAnAF4AWwB2AFYAXQAnACwAIAAnACcAKQAsACAAJAByAGUAKQAKACAAIABpAGYAIAAoAC0AbgBvAHQAIAAkAG0ALgBTAHUAYwBjAGUAcwBzACkAIAB7ACAAcgBlAHQAdQByAG4AIAAkAG4AdQBsAGwAIAB9AAoAIAAgACQAcAAgAD0AIAAwAAoAIAAgAGkAZgAgACgAJABtAC4ARwByAG8AdQBwAHMAWwAzAF0ALgBTAHUAYwBjAGUAcwBzACkAIAB7ACAAJABwACAAPQAgAFsAaQBuAHQAXQAkAG0ALgBHAHIAbwB1AHAAcwBbADMAXQAuAFYAYQBsAHUAZQAgAH0ACgAgACAAJABwAHIAZQAgAD0AIAAnACcACgAgACAAaQBmACAAKAAkAG0ALgBHAHIAbwB1AHAAcwBbADQAXQAuAFMAdQBjAGMAZQBzAHMAKQAgAHsAIAAkAHAAcgBlACAAPQAgACQAbQAuAEcAcgBvAHUAcABzAFsANABdAC4AVgBhAGwAdQBlACAAfQAKACAAIAByAGUAdAB1AHIAbgAgAEAAewAgAE4AIAA9ACAAQAAoAFsAaQBuAHQAXQAkAG0ALgBHAHIAbwB1AHAAcwBbADEAXQAuAFYAYQBsAHUAZQAsACAAWwBpAG4AdABdACQAbQAuAEcAcgBvAHUAcABzAFsAMgBdAC4AVgBhAGwAdQBlACwAIAAkAHAAKQA7ACAAUAAgAD0AIAAkAHAAcgBlACAAfQAKAH0ACgBmAHUAbgBjAHQAaQBvAG4AIABDAG8AbQBwAGEAcgBlAC0AVgBJAGQAKAAkAGEALAAgACQAYgApACAAewAKACAAIAAkAGEAbgAgAD0AIAAkAGEAIAAtAG0AYQB0AGMAaAAgACcAXgBcAGQAKwAkACcACgAgACAAJABiAG4AIAA9ACAAJABiACAALQBtAGEAdABjAGgAIAAnAF4AXABkACsAJAAnAAoAIAAgAGkAZgAgACgAJABhAG4AIAAtAGEAbgBkACAAJABiAG4AKQAgAHsAIAByAGUAdAB1AHIAbgAgAFsAbABvAG4AZwBdACQAYQAgAC0AIABbAGwAbwBuAGcAXQAkAGIAIAB9AAoAIAAgAGkAZgAgACgAJABhAG4AKQAgAHsAIAByAGUAdAB1AHIAbgAgAC0AMQAgAH0ACgAgACAAaQBmACAAKAAkAGIAbgApACAAewAgAHIAZQB0AHUAcgBuACAAMQAgAH0ACgAgACAAJABzAHAAIAA9ACAAJwBeACgALgAqAFsAXgAwAC0AOQBdACkAKABbADAALQA5AF0AKwApACQAJwAKACAAIAAkAHgAIAA9ACAAWwByAGUAZwBlAHgAXQA6ADoATQBhAHQAYwBoACgAJABhACwAIAAkAHMAcAApAAoAIAAgACQAeQAgAD0AIABbAHIAZQBnAGUAeABdADoAOgBNAGEAdABjAGgAKAAkAGIALAAgACQAcwBwACkACgAgACAAaQBmACAAKAAkAHgALgBTAHUAYwBjAGUAcwBzACAALQBhAG4AZAAgACQAeQAuAFMAdQBjAGMAZQBzAHMAIAAtAGEAbgBkACAAKAAkAHgALgBHAHIAbwB1AHAAcwBbADEAXQAuAFYAYQBsAHUAZQAgAC0AYwBlAHEAIAAkAHkALgBHAHIAbwB1AHAAcwBbADEAXQAuAFYAYQBsAHUAZQApACkAIAB7AAoAIAAgACAAIAByAGUAdAB1AHIAbgAgAFsAbABvAG4AZwBdACQAeAAuAEcAcgBvAHUAcABzAFsAMgBdAC4AVgBhAGwAdQBlACAALQAgAFsAbABvAG4AZwBdACQAeQAuAEcAcgBvAHUAcABzAFsAMgBdAC4AVgBhAGwAdQBlAAoAIAAgAH0ACgAgACAAcgBlAHQAdQByAG4AIABbAHMAdAByAGkAbgBnAF0AOgA6AEMAbwBtAHAAYQByAGUATwByAGQAaQBuAGEAbAAoACQAYQAsACAAJABiACkACgB9AAoAJAB2AGkAIAA9ACAARwBlAHQALQBWAFAAYQByAHQAcwAgACQAaQAKACQAdgBsACAAPQAgAEcAZQB0AC0AVgBQAGEAcgB0AHMAIAAkAGwACgBpAGYAIAAoACgAJABuAHUAbABsACAALQBlAHEAIAAkAHYAaQApACAALQBvAHIAIAAoACQAbgB1AGwAbAAgAC0AZQBxACAAJAB2AGwAKQApACAAewAgAFcAcgBpAHQAZQAtAE8AdQB0AHAAdQB0ACAAJwB1AG4AawBuAG8AdwBuACcAOwAgAGUAeABpAHQAIAB9AAoAJABjACAAPQAgADAACgBmAG8AcgAgACgAJABrACAAPQAgADAAOwAgACQAawAgAC0AbAB0ACAAMwA7ACAAJABrACsAKwApACAAewAgAGkAZgAgACgAJAB2AGkALgBOAFsAJABrAF0AIAAtAG4AZQAgACQAdgBsAC4ATgBbACQAawBdACkAIAB7ACAAJABjACAAPQAgACQAdgBpAC4ATgBbACQAawBdACAALQAgACQAdgBsAC4ATgBbACQAawBdADsAIABiAHIAZQBhAGsAIAB9ACAAfQAKAGkAZgAgACgAJABjACAALQBlAHEAIAAwACkAIAB7AAoAIAAgAGkAZgAgACgAKAAkAHYAaQAuAFAAIAAtAGUAcQAgACcAJwApACAALQBhAG4AZAAgACgAJAB2AGwALgBQACAALQBuAGUAIAAnACcAKQApACAAewAgACQAYwAgAD0AIAAxACAAfQAKACAAIABlAGwAcwBlAGkAZgAgACgAKAAkAHYAaQAuAFAAIAAtAG4AZQAgACcAJwApACAALQBhAG4AZAAgACgAJAB2AGwALgBQACAALQBlAHEAIAAnACcAKQApACAAewAgACQAYwAgAD0AIAAtADEAIAB9AAoAIAAgAGUAbABzAGUAaQBmACAAKAAkAHYAaQAuAFAAIAAtAG4AZQAgACcAJwApACAAewAKACAAIAAgACAAJABhACAAPQAgACQAdgBpAC4AUAAuAFMAcABsAGkAdAAoACcALgAnACkACgAgACAAIAAgACQAYgAgAD0AIAAkAHYAbAAuAFAALgBTAHAAbABpAHQAKAAnAC4AJwApAAoAIAAgACAAIAAkAG4AIAA9ACAAWwBNAGEAdABoAF0AOgA6AE0AYQB4ACgAJABhAC4ATABlAG4AZwB0AGgALAAgACQAYgAuAEwAZQBuAGcAdABoACkACgAgACAAIAAgAGYAbwByACAAKAAkAGsAIAA9ACAAMAA7ACAAJABrACAALQBsAHQAIAAkAG4AOwAgACQAawArACsAKQAgAHsACgAgACAAIAAgACAAIABpAGYAIAAoACQAawAgAC0AZwBlACAAJABhAC4ATABlAG4AZwB0AGgAKQAgAHsAIAAkAGMAIAA9ACAALQAxADsAIABiAHIAZQBhAGsAIAB9AAoAIAAgACAAIAAgACAAaQBmACAAKAAkAGsAIAAtAGcAZQAgACQAYgAuAEwAZQBuAGcAdABoACkAIAB7ACAAJABjACAAPQAgADEAOwAgAGIAcgBlAGEAawAgAH0ACgAgACAAIAAgACAAIAAkAGQAIAA9ACAAQwBvAG0AcABhAHIAZQAtAFYASQBkACAAJABhAFsAJABrAF0AIAAkAGIAWwAkAGsAXQAKACAAIAAgACAAIAAgAGkAZgAgACgAJABkACAALQBuAGUAIAAwACkAIAB7ACAAJABjACAAPQAgACQAZAA7ACAAYgByAGUAYQBrACAAfQAKACAAIAAgACAAfQAKACAAIAB9AAoAfQAKAGkAZgAgACgAJABjACAALQBsAHQAIAAwACkAIAB7ACAAVwByAGkAdABlAC0ATwB1AHQAcAB1AHQAIAAnAHUAcABkAGEAdABlACcAIAB9ACAAZQBsAHMAZQAgAHsAIABXAHIAaQB0AGUALQBPAHUAdABwAHUAdAAgACcAYwB1AHIAcgBlAG4AdAAnACAAfQAKAA=="
+set "AGENTIC_VC_INSTALLED=%vc_installed%"
+set "AGENTIC_VC_LATEST=%vc_latest%"
+for /f "delims=" %%r in ('powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand "%VC_SEMVER_B64%" 2^>nul') do set "vc_result=%%r"
 set "AGENTIC_VC_INSTALLED="
 set "AGENTIC_VC_LATEST="
+set "VC_SEMVER_B64="
+if not defined vc_result set "vc_result=unknown"
+
+:vc_semver_return
+set "%vc_outvar%=%vc_result%"
 exit /b 0
 
 REM ###############################################
@@ -1554,7 +1688,7 @@ if "%DEBUG%"=="1" (
     cls
 )
 call :print_banner_sep
-echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.14.3%NC%
+echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.14.4%NC%
 echo Toggle: %CYAN%skip%NC% -^> %GREEN%install%NC%/%CYAN%upgrade%NC% -^> %RED%remove%NC%  Input: 1,3,5  Enter/P=proceed  Q=quit
 call :print_banner_sep
 echo.
@@ -2083,8 +2217,15 @@ set "remove_fail=0"
 		echo   Updating npm via conda npm...
 		call :resolve_conda_npm
 		if errorlevel 1 exit /b 1
-		call :dbg   %BLUE%[DEBUG]%NC% run: "!CONDA_NPM!" install -g npm@latest
-		call "!CONDA_NPM!" install -g npm@latest
+		REM Install the exact version the menu offered. Asking for the latest
+		REM tag instead lets npm resolve a release this node may not satisfy:
+		REM the menu can promise 11.18.0 while the tag resolves to 12.0.1 and
+		REM the install aborts with EBADENGINE.
+		call set "npmself_menu=%%LAT_%idx%%%"
+		call set "npmself_menu=%%npmself_menu%%"
+		call :npm_install_target "!npmself_menu!" npmself_target
+		call :dbg   %BLUE%[DEBUG]%NC% run: "!CONDA_NPM!" install -g npm@!npmself_target!
+		call "!CONDA_NPM!" install -g npm@!npmself_target!
 		exit /b %errorlevel%
 
 :install_tool_uv

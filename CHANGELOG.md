@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.4] - 2026-07-20
+
+### Fixed
+
+- **npm upgrades no longer ignore `engines.node`** (`install_coding_tools.sh` + `install_coding_tools.bat`): the installer offered whatever npm's `latest` dist-tag pointed at, without checking whether the conda environment's Node.js could actually run it. On an environment with an odd-numbered (non-LTS) Node — for example Node 25.x — selecting the npm row produced `npm error code EBADENGINE ... Required: {"node":"^22.22.2 || ^24.15.0 || >=26.0.0"}` and the upgrade failed. The installer now resolves the newest npm whose `engines.node` accepts the environment's own Node (via `get_conda_node_path`, not the first `node` on `PATH`) and offers that instead, so the menu never presents a version that cannot be installed. Four install sites were switched from the `npm@latest` tag to the resolved pinned version — the menu upgrade action, the npm-below-minimum path in the prerequisite chain, and both Windows equivalents — so the command that runs always matches the version the menu displayed. `bootstrap_npm_from_registry` (added in v1.14.3) selects through the same path, so the npm repair routine can no longer force-install an incompatible npm into the environment it was invoked to fix. Every failure mode degrades to the previous behaviour rather than blocking: no network, no resolvable conda Node, an unparseable registry document, unsupported range syntax, or no compatible match all fall back to the `latest` tag. Bandwidth is two-stage — a ~65 KB single-version lookup settles the common case, and the 2.3 MB abbreviated packument is fetched only when `latest` is genuinely incompatible.
+- **Pre-release versions are no longer treated as equal to their final release** (`install_coding_tools.sh` + `install_coding_tools.bat`): version comparison discarded any pre-release suffix, so an installed `3.0.0-rc12` compared equal to a released `3.0.0` and the tool was reported as up to date when an update existed. Installed-version extraction now preserves the suffix, and comparison implements SemVer 2.0.0 precedence — a version without a pre-release outranks one with it, and pre-release identifiers compare left to right. Undotted `rcN` identifiers sort numerically (`rc9` before `rc10` before `rc12`) rather than by strict ASCII, which would otherwise rank `rc10` below `rc2` and invert most release-candidate schemes. On Windows the comparison previously depended on a PowerShell `[version]` cast throwing on any pre-release string and falling into its `catch`; that produced the right answer for an outdated pre-release but the wrong one for a newer one, where an installed `3.1.0-rc1` against a released `3.0.0` would have been offered as an "upgrade" that was actually a downgrade. Both platforms now share one comparator and agree on every case.
+
 ## [1.14.3] - 2026-07-12
 
 ### Fixed
@@ -16,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   4. **Manual npm bootstrap fallback** (both platforms, new `bootstrap_npm_from_registry` / `:bootstrap_npm_from_registry`): when npm is missing or broken even though Node.js is current, the installer downloads the official npm tarball from `registry.npmjs.org` (TLS-pinned curl) and has the environment's own node run `npm-cli.js install -g --force npm@<latest>` — installing npm into the conda env prefix. This automates the manual "update node first, then install npm" recovery.
 
 
+## [1.14.2] - 2026-06-29
 
 ### Added
 
