@@ -5,6 +5,7 @@ Append-only history. Active file holds the most recent sessions; older ones live
 - logs/PROJECT_LOG_2026-H1.md — 12 sessions (2026-02 … 2026-03)
 
 ## Session Index (active, newest first)
+- 2026-07-20 — v1.14.4: engine-aware npm selection (EBADENGINE on non-LTS Node) + SemVer pre-release comparison (`3.0.0-rc12` read as up to date); restored the `.gitignore` policy a `moai update` had dropped; reconciled handoff/log to actual HEAD after one-release drift
 - 2026-06-29 17:55 CDT — v1.13.1: fix setup.sh WSL Windows-user detection (picked `Administrator` when interop disabled) — rewrote `get_windows_username` (WIN_USER override + built-in skip list + writable/newest-NTUSER.DAT heuristic); verified unit-level + real deploy (`jung.hur`); released + pushed + v1.14.0 (remove Google Jules CLI; Antigravity Windows remove/detect fixes; claude stderr suppression) + v1.14.1 (Antigravity latest-version detection via official manifest) + v1.14.2 (setup.sh announces deployed installer version)
 - 2026-06-29 09:23 CDT — v1.13.0: deferred-fix release (consent-gated -k, Authenticode tamper gate, Windows upgrade action state, oh-my-opencode flag completeness, CRLF normalization, setup.bat docs); 2 independent reviews; pushed to origin/master at user direction (ahead of live tests)
 - 2026-06-27 21:06 CDT — v1.12.0: Antigravity CLI replaces retired Gemini CLI; --gemini=no purge; multi-expert review + fixes; .bat runtime smoke test
@@ -12,6 +13,51 @@ Append-only history. Active file holds the most recent sessions; older ones live
 - 2026-03-14 — v1.9.11: Auto PATH configuration and CLI convenience aliases in setup.sh
 - 2026-03-11 — v1.9.9: Fix conda command detection in non-interactive script context
 - 2026-03-08 14:00 CDT — v1.9.7: Reorder tools (Claude Code before MoAI-ADK), add MoAI-ADK dependency check
+
+---
+
+## Session 2026-07-20
+
+**Coding CLI used:** Claude Code (Opus 4.8)
+
+**Phase(s) worked on:**
+- Session takeover + drift reconciliation (handoff was one release stale)
+- Two defect fixes released as v1.14.4
+
+**Starting drift (handoff vs reality):**
+- Handoff recorded HEAD `481dadc` / v1.14.2 and "working tree clean". Actual HEAD was `f368841` / v1.14.3 (2026-07-12), and the tree carried 3 modified + 7 untracked paths. v1.14.3 had no log entry at all.
+- Root cause of the tree drift: a `moai update` on 2026-07-12 rewrote `.gitignore`, deleting (a) the `!logs/` + `!logs/PROJECT_LOG_*.md` negations that keep rotation archives version-controlled, and (b) the User-Custom-Patterns block ignoring `.moai/` / `.claude/` / `.agency/`, which exposed ~8.1 MB of agent tooling as untracked. It also dropped the trailing newline.
+
+**Concrete changes implemented:**
+1. **Ignore policy restored** (`358273b`). Both negation blocks and the trailing newline. Verified behaviourally, not by reading the file: created a real `logs/PROJECT_LOG_2026-H2.md` (visible to git) and a `logs/scratch.log` (correctly ignored). Committed `.mcp.json` (sequential-thinking removed, context7 `alwaysLoad`) and `CLAUDE.md` (newer MoAI template) alongside, after auditing all 366 removed `CLAUDE.md` lines and confirming none were project-specific.
+2. **CHANGELOG `[1.14.2]` heading restored.** The v1.14.2 entry had been folded under `[1.14.3]`, so the CHANGELOG and README version lists disagreed. Now gapless and matching.
+3. **v1.14.4 released** (`a494117`), covering two defects — detail below.
+
+**Defect B — pre-release versions compared equal to their final release.**
+User observation: `moai --version` reports `moai-adk 3.0.0-rc12` while GitHub's latest release is `v3.0.0`, yet the installer showed "up to date". Traced to the suffix being discarded twice on the Unix path: the installed-version `sed -E 's/.*([0-9]+\.[0-9]+\.[0-9]+).*/\1/'` reduced `3.0.0-rc12` to `3.0.0` before comparison, and `parse_version` also stripped everything after a hyphen. Windows differed — its extraction regex kept the suffix, then a PowerShell `[version]` cast threw and the `catch` returned `update`: right answer, wrong mechanism, and inverted for a *newer* pre-release (installed `3.1.0-rc1` vs released `3.0.0` would have been offered as an "upgrade" that was a downgrade). Both platforms now share one SemVer 2.0.0 comparator. Deliberate documented deviation from §11.4.2: undotted `rcN` sorts numerically, because strict ASCII ranks `rc10` below `rc2` and would invert moai-adk's own rc1→rc12 line.
+
+**Defect C — npm upgrades ignored `engines.node`.**
+Reported from a second machine running v1.14.2: selecting the npm row produced `npm error code EBADENGINE ... Required: {"node":"^22.22.2 || ^24.15.0 || >=26.0.0"}, Actual: {"node":"v25.6.0"}`. Confirmed at the registry — npm 12.0.1 excludes odd-numbered non-LTS Node 25 by design. The installer asked "what is newest?" and never "will it run here?". v1.14.3 did **not** fix this and had in fact extended the exposure: its new `bootstrap_npm_from_registry` fetched the same unfiltered `npm/latest` and then ran `install -g --force`, so the routine written to repair npm could break it. Fixed by resolving the newest npm whose `engines.node` accepts the conda environment's own node (`get_conda_node_path`, not PATH), with a minimal range evaluator covering `^ ~ >= > <= < =`, X-ranges, `*`, `||` alternation and space conjunction. Two-stage fetch keeps the common case at ~65 KB; the 2.3 MB abbreviated packument is pulled only when `latest` is genuinely incompatible. Fails open to the `latest` tag on any lookup failure so a version check can never block an install.
+
+**Key technical decisions and rationale:**
+- **Independent verification caught an incomplete fix.** The delegated agent made the menu *display* engine-aware but left four install sites hardcoding `npm@latest` — including `install_coding_tools.sh:2796`, which is literally the line that produced the reported error (its `printf` at 2789 matches the user's transcript verbatim). On the reporting machine the symptom vanished by side effect, since the menu now showed `11.18.0 / 11.18.0 / skip`; but anyone whose npm was *behind* the compatible latest would still have been offered 11.18.0 and had 12.0.1 installed. Sent back and fixed: the menu-resolved figure is threaded into the action, so the two cannot disagree.
+- **Fail-open was chosen deliberately and its cost accepted.** Six conditions revert to the old behaviour silently, with `DEBUG=1` as the only signal. Rationale: a version lookup must never become a hard blocker in the prerequisite chain.
+- **Shipped ahead of Windows testing at user direction**, per the v1.13.0 precedent, accepting fix-forward.
+
+**Problems encountered and resolutions:**
+- **Four of the orchestrator's own verification harnesses failed before any real defect was found** — a missing `get_conda_node_version`, undefined colour variables, a missing `npm_pick_installable_version_cached`, and a stub `node` that answered `-v` but not `--version`. Because the design fails open, every one of these looked exactly like a broken fix. Each was diagnosed to the harness before any claim was made. The stub-flag case is the instructive one: it silently measured the host's node instead of the fixture's.
+- **The dev host turned out to be an instance of the reported bug.** `/usr/bin/node` is v18.19.1 but `$CONDA_PREFIX/bin/node` is **v25.2.1** with npm 11.18.0. An early session claim that this machine ran node 18 was wrong — it read the PATH binary. That is precisely the masking v1.14.3's env-local check exists to prevent, and it let the final menu-vs-action test run against a real affected environment rather than a simulation.
+
+**Items explicitly completed, resolved, or superseded in this session:**
+- Completed: `.gitignore` policy restoration (`358273b`), CHANGELOG `[1.14.2]` heading, v1.14.4 release (`a494117`), push to `origin/master` (`f368841..a494117`), deployment to both Linux and Windows targets.
+- Resolved: Defect B (pre-release comparison) and Defect C (npm engine blindness), both Linux-verified.
+- Superseded: the handoff's 2026-06-30 "exact starting point" (v1.14.2 / `481dadc`), retained in §7 as historical.
+
+**Verification performed:**
+- SemVer comparison 30/30; engine-aware selection against the live registry 5/5; menu-vs-action agreement 6/6 against the host's real conda env; deployed-copy behaviour confirmed post-`setup.sh`; `grep` confirms no `install -g npm@latest` remains; `bash -n` clean; `.bat` 98 labels all resolving, uniform CRLF (lone-`\n` 0, `\r\r\n` 0); version consistency at v1.14.4 across 4 scripts + README + CHANGELOG.
+- **Not verified:** the entire Windows surface of v1.14.2/3/4 — no `cmd.exe` or `powershell.exe` on this host. v1.14.3's npm self-heal on any platform. No real `npm install` was executed at any point; what was verified is the command line that would be issued.
+
+**Push status:** committed + pushed to `origin/master` (`f368841..a494117`); both deployed copies confirmed at v1.14.4.
 
 ---
 
