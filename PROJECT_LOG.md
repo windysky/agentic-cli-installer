@@ -5,7 +5,7 @@ Append-only history. Active file holds the most recent sessions; older ones live
 - logs/PROJECT_LOG_2026-H1.md — 12 sessions (2026-02 … 2026-03)
 
 ## Session Index (active, newest first)
-- 2026-07-20 — v1.14.4: engine-aware npm selection (EBADENGINE on non-LTS Node) + SemVer pre-release comparison (`3.0.0-rc12` read as up to date); restored the `.gitignore` policy a `moai update` had dropped; reconciled handoff/log to actual HEAD after one-release drift
+- 2026-07-20 11:24 CDT — v1.14.4: engine-aware npm selection (EBADENGINE on non-LTS Node) + SemVer pre-release comparison (`3.0.0-rc12` read as up to date); restored the `.gitignore` policy a `moai update` had dropped; reconciled handoff/log to actual HEAD after one-release drift
 - 2026-06-29 17:55 CDT — v1.13.1: fix setup.sh WSL Windows-user detection (picked `Administrator` when interop disabled) — rewrote `get_windows_username` (WIN_USER override + built-in skip list + writable/newest-NTUSER.DAT heuristic); verified unit-level + real deploy (`jung.hur`); released + pushed + v1.14.0 (remove Google Jules CLI; Antigravity Windows remove/detect fixes; claude stderr suppression) + v1.14.1 (Antigravity latest-version detection via official manifest) + v1.14.2 (setup.sh announces deployed installer version)
 - 2026-06-29 09:23 CDT — v1.13.0: deferred-fix release (consent-gated -k, Authenticode tamper gate, Windows upgrade action state, oh-my-opencode flag completeness, CRLF normalization, setup.bat docs); 2 independent reviews; pushed to origin/master at user direction (ahead of live tests)
 - 2026-06-27 21:06 CDT — v1.12.0: Antigravity CLI replaces retired Gemini CLI; --gemini=no purge; multi-expert review + fixes; .bat runtime smoke test
@@ -16,7 +16,7 @@ Append-only history. Active file holds the most recent sessions; older ones live
 
 ---
 
-## Session 2026-07-20
+## Session 2026-07-20 11:24 CDT
 
 **Coding CLI used:** Claude Code (Opus 4.8)
 
@@ -56,6 +56,8 @@ Reported from a second machine running v1.14.2: selecting the npm row produced `
 **Verification performed:**
 - SemVer comparison 30/30; engine-aware selection against the live registry 5/5; menu-vs-action agreement 6/6 against the host's real conda env; deployed-copy behaviour confirmed post-`setup.sh`; `grep` confirms no `install -g npm@latest` remains; `bash -n` clean; `.bat` 98 labels all resolving, uniform CRLF (lone-`\n` 0, `\r\r\n` 0); version consistency at v1.14.4 across 4 scripts + README + CHANGELOG.
 - **Not verified:** the entire Windows surface of v1.14.2/3/4 — no `cmd.exe` or `powershell.exe` on this host. v1.14.3's npm self-heal on any platform. No real `npm install` was executed at any point; what was verified is the command line that would be issued.
+
+💡 **Idea:** a *twin-implementation parity gate* — this release ships the same semver/range algorithm twice (bash `semver_range_satisfied` and a base64-embedded JS payload in the `.bat`), cross-checked at 208/208 pairs today with nothing preventing future drift. A small generic harness that extracts N implementations of one algorithm and fuzzes them against each other, wired as a CI gate, would apply anywhere a project maintains parallel platform ports. Secondary: a cross-ecosystem "installable version" resolver (npm `engines.node`, PyPI `requires_python`, gem `required_ruby_version`) as a reusable library — see the wiki page distilled this session. Not captured to Atlas; noted here so it is not lost.
 
 **Push status:** committed + pushed to `origin/master` (`f368841..a494117`); both deployed copies confirmed at v1.14.4.
 

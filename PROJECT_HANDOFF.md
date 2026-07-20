@@ -4,8 +4,9 @@
 
 - **Name:** agentic-cli-installer
 - **Purpose and scope:** Cross-platform interactive installer for AI coding CLIs (install, update, remove) with Unix/WSL support via `install_coding_tools.sh` and Windows support via `install_coding_tools.bat`.
-- **Last updated:** 2026-07-20
+- **Last updated:** 2026-07-20 11:24 CDT
 - **Last coding CLI used (informational):** Claude Code (Opus 4.8)
+- **Cross-project wiki (distilled 2026-07-20):** `~/PROJECTS/wiki/concept/newest-published-version-is-not-installable.md` (a tool-manager must ask "will it run here?", not only "what is newest?"; the displayed and installed version must share one resolution), `~/PROJECTS/wiki/concept/fail-open-verification-harness-masking.md` (in a fail-open system a broken harness is indistinguishable from a broken fix; independent verification means testing a *different* property), `~/PROJECTS/wiki/concept/semver-prerelease-precedence-and-rcn.md` (suffix stripping, strict-ASCII `rcN` inversion, and the PowerShell `[version]` pre-release trap).
 - **Cross-project wiki (consulted this session):** `~/PROJECTS/wiki/index.md` and the related `~/PROJECTS/wiki/concept/wsl-cmdexe-unc-cwd-testing.md` (WSL↔cmd.exe interop / UNC-cwd context).
 - **Cross-project wiki (distilled this session):** `~/PROJECTS/wiki/concept/wsl-windows-user-detection-fallback.md` (when WSL interop is disabled, the `/mnt/c/Users` fallback must skip built-in accounts and prefer the writable, most-recently-used profile — never the alphabetically-first dir) and `~/PROJECTS/wiki/concept/native-cli-version-and-location-from-installer.md` (read a native CLI's own install.sh/install.cmd to find its version-manifest endpoint and its platform-specific install location — don't assume the Unix path on Windows).
 
@@ -157,6 +158,7 @@
   3. Sanity: `bash -n install_coding_tools.sh setup.sh`; `file install_coding_tools.bat` should report CRLF.
   4. **The next action is Windows verification** (§4 item 1) — the `.bat` is deployed but has never been parsed by cmd.exe.
   5. Re-runnable verification harnesses from this session live in the session scratchpad and are disposable; they extract live functions from the installer rather than copying them, so they can be rebuilt from §6 if needed.
+  6. **No paste needed to resume.** Just say **"resume"** (or "start session" / "continue where we left off") and the saved prompt in the auto-memory `next_session_prompt.md` drives the next session — it will summarize, confirm with you, verify the preconditions, and then run. The `.moai/handoff-next-session.md` twin carries the identical prompt inside the repo.
 
 - **Superseded starting point (2026-06-30):**
   1. **v1.14.2 is released + pushed** (`origin/master` at `481dadc`; `git log --oneline`). Working tree clean. Recent: Google Jules removed + Antigravity Windows remove/detect + claude stderr suppression (v1.14.0); Antigravity latest-version detection via official manifest (v1.14.1); setup.sh announces deployed version (v1.14.2). v1.14.2 already deployed to Linux + Windows targets (`/mnt/c/Users/jung.hur/.local/bin/install_coding_tools.bat` is v1.14.2).
