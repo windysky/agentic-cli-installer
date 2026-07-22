@@ -1,4 +1,4 @@
-# Agentic CLI Installer v1.14.5
+# Agentic CLI Installer v1.14.6
 
 **Last Modified:** July 22, 2026
 
@@ -204,6 +204,10 @@ Backup location: ~/.local/bin.backup
 ```
 
 ## Change Log
+
+### v1.14.6 - July 22, 2026
+
+- **Installer flags an old moai that shadows the new one**: moai's installer places the latest version in a fixed location, but an older moai left on your PATH from a previous install location could keep winning, so `moai --version` still showed the old version and the installer warned "version did not change" even though the install succeeded. The installer now reports the newest moai it can find and, if an older copy is shadowing it on PATH, tells you exactly which file and offers to remove it (asks first, defaults to No, never in `--yes` mode, never your only copy).
 
 ### v1.14.5 - July 22, 2026
 

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.14.5
+# Agentic Coders Installer v1.14.6
 # Interactive installer for AI coding CLI tools
 #
 # Version history: v1.7.6 added security improvements, v1.7.12 fixed oh-my-opencode version detection
@@ -449,6 +449,164 @@ record_moai_install_path() {
     fi
     mkdir -p "$STATE_DIR"
     printf "%s\n" "$moai_bin" > "$MOAI_STATE_FILE"
+    return 0
+}
+
+# Read ONE moai binary's version by executing it. Reuses semver_extract, so the
+# result is either a bare SemVer (with any pre-release suffix preserved) or the
+# empty string. Always returns 0 so callers stay safe under `set -euo pipefail`.
+moai_probe_version() {
+    local bin=$1
+    [[ -n "$bin" ]] || return 0
+    [[ -x "$bin" ]] || return 0
+    local out=""
+    out=$("$bin" --version 2>/dev/null | head -n1 || true)
+    if [[ -z "$out" ]]; then
+        out=$("$bin" version 2>/dev/null | head -n1 || true)
+    fi
+    [[ -n "$out" ]] || return 0
+    semver_extract "$out" || true
+    return 0
+}
+
+# Post-install MoAI reporting + "shadowed older moai" handling.
+#
+# The native MoAI installer writes to a fixed location, but an OLDER moai left at
+# a previous install location can sit EARLIER on PATH and shadow the new one, so
+# `moai` keeps running the stale copy and a naive PATH-winner version check
+# reports a false "version did not change". This function:
+#   1. enumerates every resolvable moai binary (PATH order via `which -a`, plus
+#      the recorded ownership marker), existence-checked and de-duplicated;
+#   2. reports the NEWEST version across all copies (kills the false warning);
+#   3. if the PATH winner is STRICTLY OLDER than a newer copy elsewhere, warns
+#      and offers to remove ONLY that stale winner. It never removes the newest
+#      copy, never deletes unattended, and never touches a directory or glob.
+#
+# Args: $1 = install state before this run ("Not Installed" or a version)
+#       $2 = PATH-winner version observed before this run (may be empty)
+handle_moai_post_install() {
+    local installed_state=$1
+    local before_version=$2
+
+    # --- Collect candidate binaries (PATH order first, marker last). ----------
+    local -a candidates=()
+    local line
+    while IFS= read -r line; do
+        if [[ -n "$line" ]]; then
+            candidates+=("$line")
+        fi
+    done < <(which -a moai 2>/dev/null || true)
+    if [[ -f "$MOAI_STATE_FILE" ]]; then
+        local marker
+        marker=$(head -n1 "$MOAI_STATE_FILE" 2>/dev/null || true)
+        if [[ -n "$marker" ]]; then
+            candidates+=("$marker")
+        fi
+    fi
+
+    # --- De-duplicate (preserve order) + existence-check. ---------------------
+    local -a uniq=()
+    local c seen dup
+    if (( ${#candidates[@]} > 0 )); then
+        for c in "${candidates[@]}"; do
+            [[ -e "$c" ]] || continue
+            dup=false
+            if (( ${#uniq[@]} > 0 )); then
+                for seen in "${uniq[@]}"; do
+                    if [[ "$seen" == "$c" ]]; then
+                        dup=true
+                        break
+                    fi
+                done
+            fi
+            if [[ "$dup" != true ]]; then
+                uniq+=("$c")
+            fi
+        done
+    fi
+
+    # --- WINNER = what `moai` actually runs (first PATH hit). -----------------
+    local winner
+    winner=$(command -v moai 2>/dev/null || true)
+
+    # --- Find the newest copy + the winner's own version. --------------------
+    local newest_path="" newest_ver="" winner_ver="" cver cmp
+    if (( ${#uniq[@]} > 0 )); then
+        for c in "${uniq[@]}"; do
+            cver=$(moai_probe_version "$c")
+            [[ -n "$cver" ]] || continue
+            if [[ -n "$winner" && "$c" == "$winner" ]]; then
+                winner_ver="$cver"
+            fi
+            if [[ -z "$newest_ver" ]]; then
+                newest_path="$c"
+                newest_ver="$cver"
+            elif cmp=$(semver_compare_core "$cver" "$newest_ver"); then
+                if [[ "$cmp" == "gt" ]]; then
+                    newest_path="$c"
+                    newest_ver="$cver"
+                fi
+            fi
+        done
+    fi
+
+    # --- Accurate version report (prefer NEWEST across all copies). -----------
+    local report_ver="$newest_ver"
+    if [[ -z "$report_ver" ]]; then
+        report_ver="$before_version"
+    fi
+
+    # Preserve the original "did not change" warning, but measured against the
+    # NEWEST copy -- the whole point of the fix is that the newest copy DID
+    # change even when the (shadowing) PATH winner did not.
+    if [[ "$installed_state" != "Not Installed" ]] && [[ -n "$before_version" ]] \
+       && [[ -n "$report_ver" ]] && [[ "$report_ver" == "$before_version" ]]; then
+        log_warning "MoAI-ADK version did not change after update attempt (${report_ver})."
+    fi
+    log_success "Installed/updated moai-adk (${report_ver:-unknown})"
+
+    # --- Shadow detection: fire ONLY when a strictly-newer moai exists at a
+    #     DIFFERENT path than the (older) winner. ------------------------------
+    [[ -n "$winner" && -n "$newest_path" ]] || return 0
+    [[ "$newest_path" != "$winner" ]] || return 0
+    [[ -n "$winner_ver" && -n "$newest_ver" ]] || return 0
+    cmp=$(semver_compare_core "$newest_ver" "$winner_ver") || return 0
+    [[ "$cmp" == "gt" ]] || return 0
+
+    log_warning "moai ${newest_ver} is installed at ${newest_path}, but 'moai' currently runs ${winner} (${winner_ver}). The older copy shadows the new one on your PATH."
+
+    # Never prompt-or-delete unattended.
+    if [[ "$AUTO_YES" == true ]]; then
+        log_warning "Non-interactive mode: not removing the shadow. To remove it manually: rm -f \"${winner}\""
+        return 0
+    fi
+
+    # Prompt; empty / EOF / closed stdin defaults to No (fail safe), matching
+    # confirm_removals. Only an explicit y/yes removes the stale winner.
+    printf "Remove the old shadowing copy at %s? [y/N]: " "$winner"
+    local response=""
+    read -r response || response=""
+    case "$response" in
+        [Yy]|[Yy][Ee][Ss])
+            if rm -f "$winner" 2>/dev/null; then
+                log_success "Removed old shadowing copy at ${winner}"
+                local new_winner="" new_ver=""
+                new_winner=$(command -v moai 2>/dev/null || true)
+                if [[ -n "$new_winner" ]]; then
+                    new_ver=$(moai_probe_version "$new_winner")
+                    log_success "moai now resolves to ${new_winner} (${new_ver:-unknown})"
+                    record_moai_install_path || log_warning "MoAI ownership marker could not be refreshed."
+                else
+                    log_warning "moai is no longer on PATH after removal; open a new shell or check your PATH."
+                fi
+            else
+                log_warning "Could not remove ${winner} (permission?). Remove it manually: rm -f \"${winner}\""
+            fi
+            ;;
+        *)
+            log_info "Left the old copy in place. To remove it later: rm -f \"${winner}\""
+            ;;
+    esac
     return 0
 }
 
@@ -2150,7 +2308,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.14.5" \
+        "Agentic Coders CLI Installer v1.14.6" \
         "Toggle: skip->install/upgrade->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"
@@ -2798,16 +2956,16 @@ install_tool() {
                         log_error "MoAI-ADK installer completed but moai command is not available."
                         return 1
                     fi
-                    if [[ "$installed_version" != "Not Installed" ]] && [[ -n "$before_version" ]] && [[ "$after_version" == "$before_version" ]]; then
-                        log_warning "MoAI-ADK version did not change after update attempt (${after_version})."
-                    fi
                     if ! record_moai_install_path; then
                         log_warning "MoAI-ADK installed but installer ownership marker could not be written."
                     fi
                     if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
                         printf "  ${YELLOW}Note: $HOME/.local/bin should be in your PATH${NC}\n"
                     fi
-                    log_success "Installed/updated ${name} (${after_version})"
+                    # Report the NEWEST moai across all resolvable copies (not the
+                    # PATH winner, which may be an older shadow) and offer to remove
+                    # an older copy that shadows the freshly-installed one on PATH.
+                    handle_moai_post_install "$installed_version" "$before_version"
 
                     # Show GitHub CLI authentication reminder
                     show_gh_auth_reminder

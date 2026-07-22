@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.6] - 2026-07-22
+
+### Added
+
+- **Post-install detection of a shadowed older moai** (`install_coding_tools.sh` + `install_coding_tools.bat`): moai's native installer writes to a fixed location, but an older moai left at a previous install location (e.g. `~/.local/bin/moai` / `%USERPROFILE%\.local\bin\moai.exe`, from before moai relocated to `%LOCALAPPDATA%\Programs\moai`) can sit earlier on PATH and shadow the freshly-installed copy — so `moai --version` keeps reporting the stale version and the installer emitted a false "version did not change" warning. After a moai install, the installer now enumerates every resolvable `moai` (all PATH hits plus the recorded ownership marker), reports the **newest** version found (removing the false warning), and — when the PATH winner is strictly older than a newer copy elsewhere — warns naming both locations and offers to remove the stale copy. Removal is consent-gated `[y/N]` defaulting to No, matching the existing insecure-download prompt: it never deletes in non-interactive (`--yes`) mode, never on a closed stdin, never the newest/only copy, and only ever the single resolved shadowing file.
+
 ## [1.14.5] - 2026-07-22
 
 ### Fixed
