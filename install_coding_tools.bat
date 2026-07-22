@@ -3,11 +3,11 @@ setlocal EnableDelayedExpansion
 set "SCRIPT_DIR=%~dp0"
 
 REM ###############################################
-REM Agentic Coders Installer v1.14.4
+REM Agentic Coders Installer v1.14.5
 REM Interactive installer for AI coding CLI tools
 REM Windows version (run in Anaconda Prompt or CMD)
 REM
-REM Recent improvements (v1.7.13-v1.14.4):
+REM Recent improvements (v1.7.13-v1.14.5):
 REM - v1.12.0: Replace retired Gemini CLI with Antigravity CLI (native agy installer);
 REM            purge Gemini CLI entry + oh-my-opencode --gemini auto-detect + static --gemini=no
 REM            (--gemini=no is the documented default; omitting it is safe and Gemini CLI is retired.
@@ -49,6 +49,10 @@ REM - Sanitized PowerShell file paths
 REM - Secure temporary file creation with restrictive permissions
 REM - TLS-pinned downloads for bootstrapper
 REM ###############################################
+REM - v1.14.5: Fix engine-aware npm selection on Windows conda. probe_conda_npm now finds
+REM   node.exe/npm in the conda ENV ROOT (the standard Windows layout), not only Scripts\
+REM   and Library\bin\; without it CONDA_NODE was unset and the picker always fell back to
+REM   the unfiltered latest tag (EBADENGINE on a non-LTS node).
 
 REM Runtime flags (also configurable via env vars):
 REM   --yes, -y       Non-interactive mode (auto-proceed with defaults)
@@ -474,12 +478,21 @@ exit /b 1
 :probe_conda_npm
 set "base=%~1"
 if "%base%"=="" exit /b 1
-if exist "%base%\Scripts\npm.cmd" set "CONDA_NPM=%base%\Scripts\npm.cmd"
+REM On Windows conda/miniconda, node.exe and npm.cmd live in the ENV ROOT
+REM (e.g. ...\envs\<name>\node.exe), not Scripts\ or Library\bin\. Check the
+REM root first, then the alternate locations some packages use. Missing the
+REM env root left CONDA_NODE unset, so the engine-aware npm picker always fell
+REM through to the unfiltered latest tag on Windows (EBADENGINE on a non-LTS
+REM node). See install_coding_tools.sh get_conda_node_path for the Unix twin.
+if exist "%base%\npm.cmd" set "CONDA_NPM=%base%\npm.cmd"
+if not defined CONDA_NPM if exist "%base%\npm.exe" set "CONDA_NPM=%base%\npm.exe"
+if not defined CONDA_NPM if exist "%base%\Scripts\npm.cmd" set "CONDA_NPM=%base%\Scripts\npm.cmd"
 if not defined CONDA_NPM if exist "%base%\Scripts\npm.exe" set "CONDA_NPM=%base%\Scripts\npm.exe"
 if not defined CONDA_NPM if exist "%base%\Library\bin\npm.cmd" set "CONDA_NPM=%base%\Library\bin\npm.cmd"
 if not defined CONDA_NPM if exist "%base%\Library\bin\npm.exe" set "CONDA_NPM=%base%\Library\bin\npm.exe"
 
-if exist "%base%\Scripts\node.exe" set "CONDA_NODE=%base%\Scripts\node.exe"
+if exist "%base%\node.exe" set "CONDA_NODE=%base%\node.exe"
+if not defined CONDA_NODE if exist "%base%\Scripts\node.exe" set "CONDA_NODE=%base%\Scripts\node.exe"
 if not defined CONDA_NODE if exist "%base%\Library\bin\node.exe" set "CONDA_NODE=%base%\Library\bin\node.exe"
 
 if defined CONDA_NPM exit /b 0
@@ -1688,7 +1701,7 @@ if "%DEBUG%"=="1" (
     cls
 )
 call :print_banner_sep
-echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.14.4%NC%
+echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.14.5%NC%
 echo Toggle: %CYAN%skip%NC% -^> %GREEN%install%NC%/%CYAN%upgrade%NC% -^> %RED%remove%NC%  Input: 1,3,5  Enter/P=proceed  Q=quit
 call :print_banner_sep
 echo.
