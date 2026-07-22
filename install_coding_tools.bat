@@ -3,11 +3,11 @@ setlocal EnableDelayedExpansion
 set "SCRIPT_DIR=%~dp0"
 
 REM ###############################################
-REM Agentic Coders Installer v1.14.5
+REM Agentic Coders Installer v1.14.6
 REM Interactive installer for AI coding CLI tools
 REM Windows version (run in Anaconda Prompt or CMD)
 REM
-REM Recent improvements (v1.7.13-v1.14.5):
+REM Recent improvements (v1.7.13-v1.14.6):
 REM - v1.12.0: Replace retired Gemini CLI with Antigravity CLI (native agy installer);
 REM            purge Gemini CLI entry + oh-my-opencode --gemini auto-detect + static --gemini=no
 REM            (--gemini=no is the documented default; omitting it is safe and Gemini CLI is retired.
@@ -53,6 +53,9 @@ REM - v1.14.5: Fix engine-aware npm selection on Windows conda. probe_conda_npm 
 REM   node.exe/npm in the conda ENV ROOT (the standard Windows layout), not only Scripts\
 REM   and Library\bin\; without it CONDA_NODE was unset and the picker always fell back to
 REM   the unfiltered latest tag (EBADENGINE on a non-LTS node).
+REM - v1.14.6: Detect an older moai shadowing the freshly-installed one on PATH. After a
+REM   moai install, report the newest resolvable moai version and, if the PATH winner is an
+REM   older shadowing copy, offer to remove it (consent [y/N], default No, never in --yes mode).
 
 REM Runtime flags (also configurable via env vars):
 REM   --yes, -y       Non-interactive mode (auto-proceed with defaults)
@@ -1701,7 +1704,7 @@ if "%DEBUG%"=="1" (
     cls
 )
 call :print_banner_sep
-echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.14.5%NC%
+echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.14.6%NC%
 echo Toggle: %CYAN%skip%NC% -^> %GREEN%install%NC%/%CYAN%upgrade%NC% -^> %RED%remove%NC%  Input: 1,3,5  Enter/P=proceed  Q=quit
 call :print_banner_sep
 echo.
@@ -2585,13 +2588,14 @@ REM Show GitHub CLI authentication reminder
 			exit /b 1
 		)
 	)
-	if /I not "!inst!"=="Not Installed" if defined BEFORE_MOAI_VERSION if /I "!AFTER_MOAI_VERSION!"=="!BEFORE_MOAI_VERSION!" (
-		echo %YELLOW%[WARNING]%NC% MoAI-ADK version did not change after update attempt ^(!AFTER_MOAI_VERSION!^)
-	)
 	call :record_moai_install_path
 	if errorlevel 1 (
 		echo %YELLOW%[WARNING]%NC% MoAI-ADK installed but ownership marker could not be written.
 	)
+	REM Report the NEWEST moai across all resolvable copies (not the PATH winner,
+	REM which may be an older shadow) and offer to remove an older copy that
+	REM shadows the freshly-installed one on PATH.
+	call :handle_moai_shadow "!inst!" "!BEFORE_MOAI_VERSION!" "!AFTER_MOAI_VERSION!"
 
 	REM Install GitHub CLI dependency for moai-adk
 	call :install_gh_cli
@@ -2604,6 +2608,147 @@ REM Show GitHub CLI authentication reminder
 	call :show_gh_auth_reminder
 
 	exit /b 0
+
+REM ###############################################
+REM SHADOWED-OLDER-MOAI DETECTION
+REM ###############################################
+REM The native MoAI installer writes to a fixed location, but an OLDER moai left
+REM at a previous install location can sit EARLIER on PATH and shadow the new one,
+REM so `moai` keeps running the stale copy and the naive PATH-winner version check
+REM reports a false "version did not change". This routine reports the NEWEST
+REM version across all resolvable copies, and offers to remove ONLY a stale copy
+REM that shadows a strictly-newer copy on PATH. It never removes the newest copy,
+REM never deletes unattended, and never touches a directory or glob.
+REM Flat goto-based flow avoids nested parentheses that unescaped ')' in a path
+REM could otherwise break (see the note above :install_tool).
+REM %~1 = install state before this run ("Not Installed" or a version)
+REM %~2 = PATH-winner version observed before this run (may be empty)
+REM %~3 = fallback "after" version (used only if enumeration parses nothing)
+:handle_moai_shadow
+setlocal EnableDelayedExpansion
+set "hms_state=%~1"
+set "hms_before=%~2"
+set "hms_fallback=%~3"
+
+REM --- Enumerate candidate moai binaries (PATH order first, extras last) -----
+set "CAND_COUNT=0"
+set "WINNER="
+for /f "delims=" %%p in ('where moai 2^>nul') do call :hms_add_winner "%%p"
+if exist "%LOCALAPPDATA%\Programs\moai\moai.exe" call :hms_add "%LOCALAPPDATA%\Programs\moai\moai.exe"
+if defined MOAI_INSTALL_DIR call :hms_add "%MOAI_INSTALL_DIR%\moai.exe"
+call :hms_add_marker
+
+REM --- Find newest copy + winner version ------------------------------------
+set "NEWEST_PATH="
+set "NEWEST_VER="
+set "WINNER_VER="
+for /L %%i in (1,1,!CAND_COUNT!) do call :hms_scan "!CAND_%%i!"
+
+REM --- Accurate version report (prefer NEWEST across all copies) ------------
+set "REPORT_VER=!NEWEST_VER!"
+if not defined REPORT_VER set "REPORT_VER=!hms_fallback!"
+call :hms_report
+
+REM --- Shadow detection + consent-remove ------------------------------------
+call :hms_maybe_shadow
+endlocal & exit /b 0
+
+:hms_add_winner
+if not defined WINNER set "WINNER=%~1"
+call :hms_add "%~1"
+exit /b 0
+
+:hms_add
+REM Append %~1 to CAND_* if it exists and is not already present (case-insensitive).
+if not exist "%~1" exit /b 0
+set "hms_new=%~1"
+for /L %%j in (1,1,!CAND_COUNT!) do if /I "!CAND_%%j!"=="!hms_new!" exit /b 0
+set /a CAND_COUNT+=1
+set "CAND_!CAND_COUNT!=!hms_new!"
+exit /b 0
+
+:hms_add_marker
+if not exist "%MOAI_STATE_FILE%" exit /b 0
+set "HMS_MARKER="
+set /p HMS_MARKER=<"%MOAI_STATE_FILE%"
+if not defined HMS_MARKER exit /b 0
+call :hms_add "!HMS_MARKER!"
+exit /b 0
+
+:hms_scan
+REM %~1 = candidate path. Probe its version and keep the newest seen so far.
+set "CV="
+call :get_semver_from_command "%~1" "--version" CV
+if not defined CV call :get_semver_from_command "%~1" "version" CV
+if not defined CV exit /b 0
+if defined WINNER if /I "%~1"=="!WINNER!" set "WINNER_VER=!CV!"
+if not defined NEWEST_VER goto hms_scan_setnewest
+set "HMS_CMP="
+call :version_compare_semver "!NEWEST_VER!" "!CV!" HMS_CMP
+if /I "!HMS_CMP!"=="update" goto hms_scan_setnewest
+exit /b 0
+:hms_scan_setnewest
+set "NEWEST_PATH=%~1"
+set "NEWEST_VER=!CV!"
+exit /b 0
+
+:hms_report
+REM Preserve the "did not change" warning, but measured against the NEWEST copy
+REM -- the point of the fix is that the newest copy DID change even when the
+REM (shadowing) PATH winner did not.
+if /I "!hms_state!"=="Not Installed" goto hms_report_success
+if not defined hms_before goto hms_report_success
+if not defined REPORT_VER goto hms_report_success
+if /I not "!REPORT_VER!"=="!hms_before!" goto hms_report_success
+echo %YELLOW%[WARNING]%NC% MoAI-ADK version did not change after update attempt ^(!REPORT_VER!^)
+:hms_report_success
+if not defined REPORT_VER set "REPORT_VER=unknown"
+echo   %GREEN%[SUCCESS]%NC% Installed/updated moai-adk ^(!REPORT_VER!^)
+exit /b 0
+
+:hms_maybe_shadow
+REM Fire ONLY when a strictly-newer moai exists at a DIFFERENT path than the winner.
+if not defined WINNER exit /b 0
+if not defined NEWEST_PATH exit /b 0
+if /I "!NEWEST_PATH!"=="!WINNER!" exit /b 0
+if not defined WINNER_VER exit /b 0
+if not defined NEWEST_VER exit /b 0
+set "HMS_CMP="
+call :version_compare_semver "!WINNER_VER!" "!NEWEST_VER!" HMS_CMP
+if /I not "!HMS_CMP!"=="update" exit /b 0
+echo %YELLOW%[WARNING]%NC% moai !NEWEST_VER! is installed at !NEWEST_PATH!, but 'moai' currently runs !WINNER! ^(!WINNER_VER!^). The older copy shadows the new one on your PATH.
+if "%AUTO_YES%"=="1" goto hms_shadow_noninteractive
+set "HMS_REMOVE=N"
+set /p "HMS_REMOVE=  Remove the old shadowing copy at !WINNER!? [y/N]: "
+if /I "!HMS_REMOVE!"=="y" goto hms_shadow_remove
+if /I "!HMS_REMOVE!"=="yes" goto hms_shadow_remove
+echo   %BLUE%[INFO]%NC% Left the old copy in place. To remove it later: del "!WINNER!"
+exit /b 0
+:hms_shadow_noninteractive
+echo %YELLOW%[WARNING]%NC% Non-interactive mode: not removing the shadow. To remove it manually: del "!WINNER!"
+exit /b 0
+:hms_shadow_remove
+del /f /q "!WINNER!" >nul 2>nul
+if exist "!WINNER!" goto hms_shadow_remove_failed
+echo   %GREEN%[SUCCESS]%NC% Removed old shadowing copy at !WINNER!
+set "NEW_WINNER="
+for /f "delims=" %%p in ('where moai 2^>nul') do call :hms_set_new_winner "%%p"
+if not defined NEW_WINNER goto hms_shadow_removed_nopath
+set "NEW_WINNER_VER="
+call :get_semver_from_command "!NEW_WINNER!" "--version" NEW_WINNER_VER
+if not defined NEW_WINNER_VER set "NEW_WINNER_VER=unknown"
+echo   %GREEN%[SUCCESS]%NC% moai now resolves to !NEW_WINNER! ^(!NEW_WINNER_VER!^)
+call :record_moai_install_path
+exit /b 0
+:hms_shadow_removed_nopath
+echo %YELLOW%[WARNING]%NC% moai is no longer on PATH after removal; open a new shell or check your PATH.
+exit /b 0
+:hms_shadow_remove_failed
+echo %YELLOW%[WARNING]%NC% Could not remove "!WINNER!" ^(permission?^). Remove it manually: del "!WINNER!"
+exit /b 0
+:hms_set_new_winner
+if not defined NEW_WINNER set "NEW_WINNER=%~1"
+exit /b 0
 
 :install_tool_npm
 	if /I "!inst!"=="Not Installed" goto install_tool_npm_install
