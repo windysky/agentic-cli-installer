@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.5] - 2026-07-22
+
+### Fixed
+
+- **Engine-aware npm selection now works on Windows conda** (`install_coding_tools.bat`): v1.14.4's engine-aware npm picker was silently inert on Windows. On Windows conda/miniconda, `node.exe` and `npm` live in the environment **root** (`...\envs\<name>\node.exe`), but `probe_conda_npm` looked for them only under `Scripts\` and `Library\bin\`. As a result `CONDA_NODE` was never set, the picker hit its `if not defined CONDA_NODE goto npmpick_legacy` guard, and the legacy fallback returned the **unfiltered** `latest` dist-tag — so a machine on a non-LTS Node (e.g. 24.10.0, which npm 12's `^22.22.2 || ^24.15.0 || >=26.0.0` excludes) was still offered `npm@12.0.1` and still failed with `EBADENGINE`. `probe_conda_npm` now checks the environment root first (then `Scripts\`, then `Library\bin\`) for both `node.exe` and `npm`, matching the Unix twin's env-local resolution. With `CONDA_NODE` resolved, the picker runs and returns the newest compatible npm (11.18.0 for Node 24.10.0). The Unix path (`install_coding_tools.sh`) was already correct — this was Windows-only.
+  - Known limitation: when the picker genuinely cannot run (no conda Node found anywhere, or the registry is unreachable), the legacy fallback still returns the unfiltered `latest` tag. Deselect the npm row if that ever offers an incompatible version.
+
 ## [1.14.4] - 2026-07-20
 
 ### Fixed

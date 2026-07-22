@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.14.4
+# Agentic Coders Installer v1.14.5
 # Interactive installer for AI coding CLI tools
 #
 # Version history: v1.7.6 added security improvements, v1.7.12 fixed oh-my-opencode version detection
@@ -2150,7 +2150,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.14.4" \
+        "Agentic Coders CLI Installer v1.14.5" \
         "Toggle: skip->install/upgrade->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"

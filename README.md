@@ -1,6 +1,6 @@
-# Agentic CLI Installer v1.14.4
+# Agentic CLI Installer v1.14.5
 
-**Last Modified:** June 29, 2026
+**Last Modified:** July 22, 2026
 
 An interactive installer that manages multiple AI coding CLI tools from one place. It detects installed versions, fetches latest versions, and lets you install, update, or remove tools in a single run.
 
@@ -204,6 +204,10 @@ Backup location: ~/.local/bin.backup
 ```
 
 ## Change Log
+
+### v1.14.5 - July 22, 2026
+
+- **npm engine-aware selection now works on Windows conda**: v1.14.4's fix that avoids offering an npm your Node cannot run was silently inactive on Windows, because the installer looked for the conda `node.exe` only in `Scripts\` / `Library\bin\` — but on Windows conda it lives in the environment root. So a machine on a non-LTS Node (e.g. 24.10.0) was still offered `npm@12.0.1` and still hit `EBADENGINE`. The installer now finds the env-root `node.exe`, and the picker returns the newest compatible npm (11.18.0 for Node 24.10.0). WSL/Linux was already correct.
 
 ### v1.14.4 - July 20, 2026
 
