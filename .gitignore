@@ -323,3 +323,27 @@ dist-ssr/
 .vercel/
 .netlify/
 .firebase/
+
+# Local AI-tooling and work-log files (never published)
+.claude/
+.moai/
+.agents/
+.codex/
+.agency/
+AGENTS.md
+AGENTS.local.md
+CLAUDE.md
+CLAUDE.local.md
+.claudeignore
+.worktreeinclude
+.mcp.json
+.git_hooks/
+.github/
+PROJECT_LOG.md
+PROJECT_HANDOFF.md
+NEXT_SESSION.md
+*_REPORT.md
+.archive/
+logs/
+resume_session.txt
+.cache/smart-rsync/
