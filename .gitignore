@@ -324,6 +324,7 @@ dist-ssr/
 .netlify/
 .firebase/
 
+# User Custom Patterns (preserved by moai update)
 # Local AI-tooling and work-log files (never published)
 .claude/
 .moai/
