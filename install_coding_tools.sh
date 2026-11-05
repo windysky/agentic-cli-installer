@@ -2,7 +2,7 @@
 set -euo pipefail
 
 #############################################
-# Agentic Coders Installer v1.14.6
+# Agentic Coders Installer v1.15.0
 # Interactive installer for AI coding CLI tools
 #
 # Version history: v1.7.6 added security improvements, v1.7.12 fixed oh-my-opencode version detection
@@ -46,6 +46,13 @@ set -euo pipefail
 #         or broken even though Node.js is current, bootstrap npm from the official registry
 #         tarball using the env's node (automates the manual "update node, then install npm"
 #         recovery). Windows .bat gains the same conda retry ladder + npm bootstrap fallback.
+# v1.15.0 Linux/WSL npm is conda-independent: every npm-managed tool, the npm row and the npm
+#         helpers go through ONE npm, ~/.local/bin/npm, run by the node ~/.local/bin/node points
+#         to (an nvm Node LTS). No conda/system npm fallback; the conda node/npm repair path
+#         (v1.14.3) is removed. The base env is no longer refused; only steps that would
+#         `conda install` into the active env (gh / jq) are skipped there. Leftover copies of
+#         an npm tool inside conda envs are reported and removable on consent [y/N].
+#         Windows .bat unchanged (still conda-scoped).
 # - Secure temporary file creation with restrictive permissions
 # - TLS-pinned downloads via curl --proto '=https' --tlsv1.2
 #############################################
@@ -133,9 +140,15 @@ NPM_LIST_JSON_READY=0
 CONDA_CMD=""  # Resolved conda command path (set by resolve_conda_cmd)
 
 # PERF-003: Cache subprocess paths for npm/conda detection
+# The npm toolchain is resolved once per run by resolve_npm_toolchain:
+# _NPM_RESOLVE_STATE 0 = not yet resolved, 1 = usable, 2 = unusable
+# (reason in _NPM_RESOLVE_ERROR).
 _CACHED_NPM_BIN=""
 _CACHED_NODE_BIN=""
+_CACHED_NODE_VERSION=""
 _CACHED_CONDA_ROOT=""
+_NPM_RESOLVE_STATE=0
+_NPM_RESOLVE_ERROR=""
 
 # Action states for tool selection
 declare -a ACTIONS=("skip" "install" "upgrade" "remove")
@@ -327,82 +340,123 @@ resolve_conda_cmd() {
     return 1
 }
 
-get_conda_env_bin_dir() {
-    # Resolve the active conda environment's bin directory. Unlike
-    # get_conda_npm_path, this succeeds even when npm/node are not yet
-    # installed in the environment (needed to repair such environments).
-    if [[ -n "${CONDA_PREFIX:-}" ]]; then
-        # Verify CONDA_PREFIX is a valid directory with bin subdirectory
-        if [[ ! -d "$CONDA_PREFIX/bin" ]]; then
-            log_warning "CONDA_PREFIX/bin does not exist: $CONDA_PREFIX"
-            return 1
-        fi
-        printf "%s" "$CONDA_PREFIX/bin"
-        return 0
-    fi
-    if [[ -n "${CONDA_DEFAULT_ENV:-}" ]]; then
-        local conda_root
-        conda_root=$(get_conda_root)
-        if [[ -n "$conda_root" ]]; then
-            local env_path="$conda_root/envs/$CONDA_DEFAULT_ENV"
-            # Verify environment directory exists
-            if [[ ! -d "$env_path" ]]; then
-                log_warning "CONDA_DEFAULT_ENV points to non-existent environment: $CONDA_DEFAULT_ENV"
-                return 1
-            fi
-            printf "%s" "$env_path/bin"
-            return 0
-        fi
-    fi
-    return 1
+# Print the one-time setup that provides the npm toolchain this installer uses
+# on Linux/WSL. Generic on purpose: no Node version is hardcoded.
+print_nvm_npm_setup_help() {
+    printf "  ${YELLOW}Point ~/.local/bin/{node,npm} at an nvm-managed Node.js LTS (>= %s):${NC}\n" "$MIN_NODEJS_VERSION"
+    printf '    export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh"\n'
+    printf "    nvm install --lts && nvm alias default 'lts/*'\n"
+    printf "    NEW=\$(nvm version 'lts/*')\n"
+    printf '    ln -sfn "$NVM_DIR/versions/node/$NEW/bin/node" ~/.local/bin/node\n'
+    printf '    ln -sfn "$NVM_DIR/versions/node/$NEW/bin/npm"  ~/.local/bin/npm\n'
+    printf "  (nvm itself: https://github.com/nvm-sh/nvm)\n"
 }
 
-get_conda_npm_path() {
-    # Get npm path from active conda environment
-    local env_bin
-    env_bin=$(get_conda_env_bin_dir) || return 1
-    # Check if npm exists in the conda environment
-    if [[ ! -x "$env_bin/npm" ]]; then
-        # npm not installed in this conda environment (not an error)
-        return 1
-    fi
-    printf "%s" "$env_bin/npm"
-    return 0
-}
+# Resolve the ONE npm toolchain every npm-managed tool, the npm row and the npm
+# helpers use on Linux/WSL: npm = ~/.local/bin/npm, node = the binary that
+# ~/.local/bin/node resolves to (an nvm Node LTS). Deliberately
+# conda-independent: whichever conda env is active (base included), installs
+# land in that node's global prefix. There is NO conda and NO system
+# (/usr/bin) npm fallback.
+#
+# On success the node's bin dir is put FIRST on this process's PATH: npm's
+# `#!/usr/bin/env node` shebang (and anything npm runs) must use that node, not
+# a conda env's node that may precede ~/.local/bin on the caller's PATH -- npm
+# derives its global prefix from the node running it.
+#
+# Resolves once per run (state in _NPM_RESOLVE_STATE). Call it in the main
+# shell before npm is used: a call inside $(...) cannot persist the cache or
+# the PATH change. On failure _NPM_RESOLVE_ERROR names the failed check.
+# @MX:ANCHOR: [AUTO] single npm/node resolution point for every npm-managed tool and helper
+# @MX:REASON: fan_in >= 3 (get_npm_bin, get_npm_node_bin, get_npm_node_version, ensure_npm_prerequisite, main); a fallback added here silently re-routes every npm install
+resolve_npm_toolchain() {
+    case "${_NPM_RESOLVE_STATE:-0}" in
+        1) return 0 ;;
+        2) return 1 ;;
+    esac
+    _NPM_RESOLVE_STATE=2
+    _CACHED_NPM_BIN=""
+    _CACHED_NODE_BIN=""
+    _CACHED_NODE_VERSION=""
+    _NPM_RESOLVE_ERROR=""
 
-get_conda_node_path() {
-    # Node.js binary belonging to the active conda environment. Checked
-    # explicitly by path: a newer system/nvm node earlier on PATH must not
-    # mask an outdated conda node (and vice versa).
-    local env_bin
-    env_bin=$(get_conda_env_bin_dir) || return 1
-    if [[ ! -x "$env_bin/node" ]]; then
+    local npm_link="$HOME/.local/bin/npm"
+    local node_link="$HOME/.local/bin/node"
+    local node_real node_ver node_dir node_prefix npm_real npm_ver npm_prefix
+
+    # 1. node: must exist, run, and meet the minimum.
+    if [[ ! -e "$node_link" ]]; then
+        _NPM_RESOLVE_ERROR="$node_link is missing (or a dangling symlink)"
         return 1
     fi
-    printf "%s" "$env_bin/node"
+    node_real=$(readlink -f "$node_link" 2>/dev/null || true)
+    if [[ -z "$node_real" || ! -f "$node_real" || ! -x "$node_real" ]]; then
+        _NPM_RESOLVE_ERROR="$node_link does not resolve to an executable node (resolved: ${node_real:-nothing})"
+        return 1
+    fi
+    node_ver=$("$node_real" --version 2>/dev/null | head -n1 | sed 's/^v//' || true)
+    if [[ -z "$node_ver" ]]; then
+        _NPM_RESOLVE_ERROR="$node_real does not run ('node --version' failed)"
+        return 1
+    fi
+    if ! version_ge "$node_ver" "$MIN_NODEJS_VERSION"; then
+        _NPM_RESOLVE_ERROR="node $node_ver at $node_real is below the required $MIN_NODEJS_VERSION"
+        return 1
+    fi
+    node_dir="${node_real%/*}"
+    node_prefix="${node_real%/bin/node}"
+
+    # 2. npm: must be executable and run under that node.
+    if [[ ! -x "$npm_link" || -d "$npm_link" ]]; then
+        _NPM_RESOLVE_ERROR="$npm_link is missing or not executable"
+        return 1
+    fi
+    npm_ver=$(PATH="$node_dir:$PATH" "$npm_link" --version 2>/dev/null | head -n1 || true)
+    if [[ -z "$npm_ver" ]]; then
+        _NPM_RESOLVE_ERROR="$npm_link does not run under $node_real ('npm --version' failed)"
+        return 1
+    fi
+
+    # 3. sanity: npm and node must belong to the same Node install. The npm
+    #    symlink must resolve inside the node's prefix (catches node -> vA with
+    #    npm -> vB), and npm's global prefix must equal the node's prefix
+    #    (catches an npmrc / NPM_CONFIG_PREFIX override).
+    npm_real=$(readlink -f "$npm_link" 2>/dev/null || true)
+    if [[ "$npm_real" != "$node_prefix"/* ]]; then
+        _NPM_RESOLVE_ERROR="npm/node mismatch: $npm_link resolves to '${npm_real:-unknown}', outside the prefix '$node_prefix' of $node_link (the two symlinks point at different Node installs)"
+        return 1
+    fi
+    npm_prefix=$(PATH="$node_dir:$PATH" "$npm_link" prefix -g 2>/dev/null | head -n1 || true)
+    if [[ "$npm_prefix" != "$node_prefix" ]]; then
+        _NPM_RESOLVE_ERROR="npm/node mismatch: $npm_link global prefix is '${npm_prefix:-unknown}' but $node_link resolves to prefix '$node_prefix' (mismatched symlinks, or an npmrc / NPM_CONFIG_PREFIX prefix override)"
+        return 1
+    fi
+
+    _CACHED_NPM_BIN="$npm_link"
+    _CACHED_NODE_BIN="$node_real"
+    _CACHED_NODE_VERSION="$node_ver"
+    if [[ "${PATH%%:*}" != "$node_dir" ]]; then
+        export PATH="$node_dir:$PATH"
+    fi
+    hash -r 2>/dev/null || true
+    _NPM_RESOLVE_STATE=1
     return 0
 }
 
 get_npm_bin() {
-    local npm_path
-    npm_path=$(get_conda_npm_path || true)
-    if [[ -n "$npm_path" && -x "$npm_path" ]]; then
-        printf "%s" "$npm_path"
-        return 0
-    fi
-    return 1
+    resolve_npm_toolchain || return 1
+    printf "%s" "$_CACHED_NPM_BIN"
 }
 
 get_npm_node_bin() {
-    local npm_bin
-    npm_bin=$(get_npm_bin) || return 1
-    local node_bin
-    node_bin="$(dirname "$npm_bin")/node"
-    if [[ -x "$node_bin" ]]; then
-        printf "%s" "$node_bin"
-        return 0
-    fi
-    return 1
+    resolve_npm_toolchain || return 1
+    printf "%s" "$_CACHED_NODE_BIN"
+}
+
+# Version (no leading "v") of the resolver's node; empty if unusable.
+get_npm_node_version() {
+    resolve_npm_toolchain || return 0
+    printf "%s" "$_CACHED_NODE_VERSION"
 }
 
 get_npm_version_from_path() {
@@ -610,6 +664,102 @@ handle_moai_post_install() {
     return 0
 }
 
+# Top-level "version" of an installed npm package directory ($1); empty if
+# unreadable. Uses the resolver's node when known, else a plain-text read.
+npm_package_dir_version() {
+    local pj="$1/package.json"
+    [[ -f "$pj" ]] || return 0
+    if [[ -n "${_CACHED_NODE_BIN:-}" && -x "${_CACHED_NODE_BIN}" ]]; then
+        "$_CACHED_NODE_BIN" -e '
+try {
+  const v = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).version;
+  if (typeof v === "string") console.log(v);
+} catch (e) {}
+' "$pj" 2>/dev/null | head -n1 || true
+        return 0
+    fi
+    grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' "$pj" 2>/dev/null | head -n1 \
+        | sed 's/.*"\([^"]*\)"$/\1/' || true
+}
+
+# After an npm tool is installed/updated through the nvm npm, report leftover
+# copies of the SAME package inside conda envs (put there by pre-v1.15.0 runs,
+# which installed npm tools into the active conda env):
+#   <conda_root>/envs/*/lib/node_modules/<pkg> and <conda_root>/lib/node_modules/<pkg>
+# While such an env is active its bin/ usually precedes ~/.local/bin on PATH, so
+# the stale copy shadows the nvm one. Each copy may be removed with THAT env's
+# own npm, consent-gated exactly like handle_moai_post_install: [y/N] default
+# No, never in --yes mode, never on an empty/closed stdin. Silent no-op when
+# conda is absent. Always returns 0.
+# @MX:WARN: [AUTO] deletes from other conda envs (npm uninstall -g in a foreign prefix)
+# @MX:REASON: removal must stay behind an explicit y/yes; any default-yes or unattended path deletes user installs
+scan_conda_npm_shadows() {
+    local pkg=$1
+    local conda_root=""
+    conda_root=$(get_conda_root 2>/dev/null || true)
+    [[ -n "$conda_root" && -d "$conda_root" ]] || return 0
+
+    local -a prefixes=("$conda_root")
+    local d
+    for d in "$conda_root"/envs/*/; do
+        [[ -d "$d" ]] || continue
+        prefixes+=("${d%/}")
+    done
+
+    local nvm_copy=""
+    if [[ -n "${_CACHED_NODE_BIN:-}" ]]; then
+        nvm_copy="${_CACHED_NODE_BIN%/bin/node}/lib/node_modules/$pkg"
+    fi
+
+    local prefix copy ver env_label manual response
+    for prefix in "${prefixes[@]}"; do
+        copy="$prefix/lib/node_modules/$pkg"
+        [[ -d "$copy" ]] || continue
+        [[ "$copy" != "$nvm_copy" ]] || continue
+        ver=$(npm_package_dir_version "$copy")
+        if [[ "$prefix" == "$conda_root" ]]; then
+            env_label="base"
+        else
+            env_label="${prefix##*/}"
+        fi
+        manual="conda activate ${env_label} && npm uninstall -g ${pkg}"
+
+        log_warning "Leftover ${pkg} ${ver:-unknown} in conda env '${env_label}': ${copy}"
+        printf "  While '%s' is active it can shadow the nvm copy installed through ~/.local/bin/npm.\n" "$env_label"
+
+        if [[ "$AUTO_YES" == true ]]; then
+            log_warning "Non-interactive mode: not removing it. To remove it manually: ${manual}"
+            continue
+        fi
+
+        # Empty / EOF / closed stdin defaults to No (fail safe).
+        printf "Remove %s from conda env '%s' with that env's own npm? [y/N]: " "$pkg" "$env_label"
+        response=""
+        read -r response 2>/dev/null || response=""
+        case "$response" in
+            [Yy]|[Yy][Ee][Ss]) ;;
+            *)
+                log_info "Left it in place. To remove it later: ${manual}"
+                continue
+                ;;
+        esac
+
+        # The env's npm runs under the env's own node (its bin/ first on PATH).
+        if [[ ! -x "$prefix/bin/npm" || ! -x "$prefix/bin/node" ]] \
+           || ! PATH="$prefix/bin:$PATH" "$prefix/bin/npm" --version >/dev/null 2>&1; then
+            log_warning "The npm/node of conda env '${env_label}' cannot run; not removing. Remove it manually: ${manual}"
+            printf "  (if that env's npm stays broken: rm -rf \"%s\" and its link in %s/bin)\n" "$copy" "$prefix"
+            continue
+        fi
+        if PATH="$prefix/bin:$PATH" "$prefix/bin/npm" uninstall -g --prefix "$prefix" "$pkg" && [[ ! -e "$copy" ]]; then
+            log_success "Removed ${pkg} from conda env '${env_label}'"
+        else
+            log_warning "Could not remove ${pkg} from conda env '${env_label}'. Remove it manually: ${manual}"
+        fi
+    done
+    return 0
+}
+
 #############################################
 # HTTP CLIENT AND VERSION UTILITIES
 #############################################
@@ -718,6 +868,14 @@ setup_claude_sandbox() {
     printf "${GREEN}[SUCCESS]${NC} Claude Code sandbox setup complete\n\n"
 }
 
+# True only when `conda install` would write into an active NON-base env. With
+# base active -- or no env active, where conda also defaults to base -- every
+# step that installs INTO the conda env is skipped instead.
+conda_install_allowed() {
+    local env="${CONDA_DEFAULT_ENV:-}"
+    [[ -n "$env" && "$env" != "base" ]]
+}
+
 # Install or update GitHub CLI via conda (required for moai-adk)
 install_gh_cli() {
     printf "\n${CYAN}[MOAI DEPENDENCY]${NC} Checking GitHub CLI...\n"
@@ -734,6 +892,13 @@ install_gh_cli() {
     if [[ -z "${CONDA_CMD:-}" ]]; then
         log_warning "conda not found, cannot install GitHub CLI"
         printf "  ${YELLOW}Please install manually: conda install -c conda-forge gh${NC}\n"
+        return 0
+    fi
+
+    # Never conda-install into base
+    if ! conda_install_allowed; then
+        log_warning "Skipping GitHub CLI install: conda would install it into the base environment (active env: ${CONDA_DEFAULT_ENV:-none})"
+        printf "  ${YELLOW}Please install manually in a non-base env: conda activate <env> && conda install -c conda-forge gh${NC}\n"
         return 0
     fi
 
@@ -783,6 +948,14 @@ install_jq() {
         log_warning "conda not found, cannot install jq"
         printf "  ${YELLOW}[WARNING] Without jq, moai-adk may corrupt ~/.claude/settings.json${NC}\n"
         printf "  ${YELLOW}Please install manually: conda install -c conda-forge jq${NC}\n"
+        return 0
+    fi
+
+    # Never conda-install into base
+    if ! conda_install_allowed; then
+        log_warning "Skipping jq install: conda would install it into the base environment (active env: ${CONDA_DEFAULT_ENV:-none})"
+        printf "  ${YELLOW}[WARNING] Without jq, moai-adk may corrupt ~/.claude/settings.json${NC}\n"
+        printf "  ${YELLOW}Please install manually in a non-base env: conda activate <env> && conda install -c conda-forge jq${NC}\n"
         return 0
     fi
 
@@ -1293,7 +1466,7 @@ get_installed_npm_self_version() {
 }
 
 # Diagnostic for the npm engine check. Every fallback here is a normal
-# operating condition (offline, unknown range syntax, no conda node), not an
+# operating condition (offline, unknown range syntax, no usable node), not an
 # error: the caller always degrades to the dist-tag latest, so surfacing these
 # as warnings would be noise. Set DEBUG=1 to see them.
 npm_engine_debug() {
@@ -1302,11 +1475,12 @@ npm_engine_debug() {
     fi
 }
 
-# Node binary used purely to parse registry JSON. The conda environment's node
-# is preferred so a missing PATH node does not silently disable the check.
+# Node binary used purely to parse registry JSON. The resolver's node
+# (~/.local/bin/node) is preferred so a missing PATH node does not silently
+# disable the check.
 get_json_parser_node() {
     local n
-    n=$(get_conda_node_path || true)
+    n=$(get_npm_node_bin || true)
     if [[ -n "$n" && -x "$n" ]]; then
         printf "%s" "$n"
         return 0
@@ -1486,8 +1660,8 @@ npm_pick_installable_version() {
 }
 
 # Memoized npm_pick_installable_version. Stage 2 downloads a ~2 MB packument,
-# and a single run can reach the picker more than once (npm bootstrap followed
-# by the below-minimum upgrade). The key is the node binary PLUS its version, so
+# and a single run can reach the picker more than once (the below-minimum
+# upgrade in ensure_npm_prerequisite plus the npm row). The key is the node binary PLUS its version, so
 # a cached answer can never leak into a different environment; empty results are
 # never cached, so a transient network failure does not poison the run.
 NPM_PICK_CACHE_KEY=""
@@ -1532,7 +1706,7 @@ npm_install_target() {
 
     local node_bin picked=""
     if node_bin=$(get_json_parser_node); then
-        picked=$(npm_pick_installable_version_cached "$node_bin" "$(get_conda_node_version)")
+        picked=$(npm_pick_installable_version_cached "$node_bin" "$(get_npm_node_version)")
     fi
     if [[ "$picked" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
         printf "%s" "$picked"
@@ -1549,9 +1723,10 @@ get_latest_npm_self_version() {
     if ! node_bin=$(get_json_parser_node); then
         return 0
     fi
-    # The conda environment's own node, not the first node on PATH: a newer
-    # system/nvm node must not decide compatibility for the conda npm.
-    npm_pick_installable_version "$node_bin" "$(get_conda_node_version)"
+    # The resolver's node (the one ~/.local/bin/npm runs under), not the first
+    # node on PATH: a conda/system node must not decide compatibility for the
+    # nvm npm.
+    npm_pick_installable_version "$node_bin" "$(get_npm_node_version)"
 }
 
 # Extract a version token from a tool's --version output (reads stdin).
@@ -2239,7 +2414,8 @@ prefetch_latest_versions() {
 #############################################
 
 initialize_tools() {
-    # Always add npm to the tool list (users can install it via conda if not present)
+    # Always add npm to the tool list (it is the nvm npm at ~/.local/bin/npm;
+    # see print_nvm_npm_setup_help if it is not set up)
     TOOL_NAMES+=("npm")
     TOOL_MANAGERS+=("npm-self")
     TOOL_PACKAGES+=("npm")
@@ -2308,7 +2484,7 @@ render_menu() {
     clear_screen
 
     print_box_header \
-        "Agentic Coders CLI Installer v1.14.6" \
+        "Agentic Coders CLI Installer v1.15.0" \
         "Toggle: skip->install/upgrade->remove | Input: 1,3,5 | Enter/P=proceed | Q=quit"
 
     print_section "MENU"
@@ -2804,22 +2980,24 @@ install_tool() {
             local npm_bin
             npm_bin=$(get_npm_bin || true)
             if [[ -z "$npm_bin" ]]; then
-                log_error "Conda npm not found. npm tools must use conda npm."
+                log_error "nvm npm (~/.local/bin/npm) not usable: ${_NPM_RESOLVE_ERROR:-unknown}. npm tools must use nvm npm (~/.local/bin/npm)."
                 return 1
             fi
             if [[ "$installed_version" == "Not Installed" ]]; then
-                printf "Installing via npm...\n"
+                printf "Installing via nvm npm (~/.local/bin/npm)...\n"
                 if "$npm_bin" install -g "$pkg"; then
                     log_success "Installed ${name}"
+                    scan_conda_npm_shadows "$pkg"
                     return 0
                 else
                     log_error "Failed to install ${name}"
                     return 1
                 fi
             else
-                printf "Updating via npm...\n"
+                printf "Updating via nvm npm (~/.local/bin/npm)...\n"
                 if "$npm_bin" install -g "$pkg@latest"; then
                     log_success "Updated ${name}"
+                    scan_conda_npm_shadows "$pkg"
                     return 0
                 else
                     log_error "Failed to update ${name}"
@@ -3005,12 +3183,13 @@ install_tool() {
             ;;
         npm-self)
             # npm-self should only be "update" action, never "install" from scratch
-            # If npm is not installed, this should have been handled via conda
-            printf "Updating npm via conda npm...\n"
+            # If npm is not set up, ensure_npm_prerequisite already printed the
+            # nvm setup steps. This updates the npm behind ~/.local/bin/npm.
+            printf "Updating npm via nvm npm (~/.local/bin/npm)...\n"
             local npm_bin
             npm_bin=$(get_npm_bin || true)
             if [[ -z "$npm_bin" ]]; then
-                log_error "Conda npm not found. npm tools must use conda npm."
+                log_error "nvm npm (~/.local/bin/npm) not usable: ${_NPM_RESOLVE_ERROR:-unknown}. npm tools must use nvm npm (~/.local/bin/npm)."
                 return 1
             fi
             # Install the exact version the menu offered. Asking for the
@@ -3020,10 +3199,10 @@ install_tool() {
             local npm_target
             npm_target=$(npm_install_target "$menu_latest_version")
             if "$npm_bin" install -g "npm@${npm_target}"; then
-                log_success "Updated npm via conda npm (npm@${npm_target})"
+                log_success "Updated npm via nvm npm (~/.local/bin/npm) (npm@${npm_target})"
                 return 0
             else
-                log_error "Failed to update npm via conda npm (npm@${npm_target})"
+                log_error "Failed to update npm via nvm npm (~/.local/bin/npm) (npm@${npm_target})"
                 return 1
             fi
             ;;
@@ -3056,11 +3235,11 @@ remove_tool() {
             fi
             ;;
         npm)
-            printf "Uninstalling via npm...\n"
+            printf "Uninstalling via nvm npm (~/.local/bin/npm)...\n"
             local npm_bin
             npm_bin=$(get_npm_bin || true)
             if [[ -z "$npm_bin" ]]; then
-                log_error "Conda npm not found. npm tools must use conda npm."
+                log_error "nvm npm (~/.local/bin/npm) not usable: ${_NPM_RESOLVE_ERROR:-unknown}. npm tools must use nvm npm (~/.local/bin/npm)."
                 return 1
             fi
             if "$npm_bin" uninstall -g "$pkg"; then
@@ -3348,90 +3527,6 @@ run_installation() {
 # DEPENDENCY CHECKS
 #############################################
 
-get_conda_node_version() {
-    # Version of the conda environment's own node (empty if absent/broken)
-    local node_bin
-    node_bin=$(get_conda_node_path || true)
-    if [[ -z "$node_bin" ]]; then
-        return 0
-    fi
-    "$node_bin" --version 2>/dev/null | sed 's/^v//' | head -n1 || true
-}
-
-conda_install_nodejs() {
-    # Install/upgrade Node.js (conda-forge builds bundle npm) inside the
-    # active conda environment. Older environments with pinned dependencies
-    # can fail the pinned solve, so fall back through progressively looser
-    # specs before giving up.
-    printf "Installing Node.js + npm via conda (nodejs>=%s)...\n" "$MIN_NODEJS_VERSION"
-    if "$CONDA_CMD" install -y -c conda-forge "nodejs>=${MIN_NODEJS_VERSION}"; then
-        return 0
-    fi
-    log_warning "conda install \"nodejs>=${MIN_NODEJS_VERSION}\" failed (solver conflict?). Retrying with 'conda update nodejs'..."
-    if "$CONDA_CMD" update -y -c conda-forge nodejs; then
-        return 0
-    fi
-    log_warning "conda update failed. Retrying with an unpinned 'conda install nodejs'..."
-    if "$CONDA_CMD" install -y -c conda-forge nodejs; then
-        return 0
-    fi
-    log_error "All conda attempts to install/update Node.js failed."
-    printf "  ${YELLOW}Try manually inside the env: conda install -c conda-forge \"nodejs>=${MIN_NODEJS_VERSION}\" -y${NC}\n"
-    return 1
-}
-
-bootstrap_npm_from_registry() {
-    # Manual npm (re)install for a conda environment whose Node.js is current
-    # but whose npm is missing or broken — e.g. a stale npm left behind by a
-    # Node.js upgrade, or a nodejs build that shipped without npm. Downloads
-    # the official npm tarball and lets the environment's node install it
-    # into the environment prefix (the "update node first, then install npm
-    # manually" recovery, automated).
-    local node_bin=$1
-
-    # Pick the newest npm this very node can run. The install below uses
-    # --force, so an EBADENGINE mismatch is not merely refused: a partial
-    # forced install can leave the environment without a working npm, i.e. the
-    # repair path would break what it was invoked to fix.
-    local node_ver npm_ver
-    node_ver=$("$node_bin" --version 2>/dev/null | sed 's/^v//' | head -n1 || true)
-    npm_ver=$(npm_pick_installable_version "$node_bin" "$node_ver")
-    if [[ -z "$npm_ver" ]]; then
-        log_error "Could not determine an installable npm version from registry.npmjs.org."
-        return 1
-    fi
-
-    local tmp_dir
-    if ! tmp_dir=$(mktemp -d); then
-        log_error "Failed to create temporary directory for the npm bootstrap."
-        return 1
-    fi
-
-    printf "  ${BLUE}[INFO]${NC} Downloading npm %s from registry.npmjs.org...\n" "$npm_ver"
-    if ! curl -fsSL --proto '=https' --tlsv1.2 \
-        "https://registry.npmjs.org/npm/-/npm-${npm_ver}.tgz" -o "$tmp_dir/npm.tgz"; then
-        log_error "Failed to download the npm ${npm_ver} tarball."
-        rm -rf "$tmp_dir"
-        return 1
-    fi
-    if ! tar -xzf "$tmp_dir/npm.tgz" -C "$tmp_dir"; then
-        log_error "Failed to extract the npm tarball."
-        rm -rf "$tmp_dir"
-        return 1
-    fi
-
-    # npm installs itself into the prefix derived from the invoking node
-    # binary's location ($CONDA_PREFIX); --force overwrites remnants of a
-    # broken npm (bin symlinks, stale node_modules/npm).
-    if ! "$node_bin" "$tmp_dir/package/bin/npm-cli.js" install -g --force "npm@${npm_ver}"; then
-        log_error "Node.js failed to install npm ${npm_ver} into the conda environment."
-        rm -rf "$tmp_dir"
-        return 1
-    fi
-    rm -rf "$tmp_dir"
-    return 0
-}
-
 ensure_npm_prerequisite() {
     local has_npm_tool=0
     for tool in "${TOOLS[@]}"; do
@@ -3446,97 +3541,38 @@ ensure_npm_prerequisite() {
         return 0
     fi
 
-    if [[ -z "${CONDA_PREFIX:-}" && -z "${CONDA_DEFAULT_ENV:-}" ]]; then
-        log_error "Conda environment is not active. npm tools must use conda npm."
-        printf "Activate a conda environment and re-run this installer.\n"
+    # STEP 1 — the npm toolchain: ~/.local/bin/npm run by the node that
+    # ~/.local/bin/node resolves to. conda is not involved (and no longer
+    # repaired here): the installer never falls back to a conda or system npm.
+    if ! resolve_npm_toolchain; then
+        log_error "nvm npm (~/.local/bin/npm) is not usable: ${_NPM_RESOLVE_ERROR}"
+        printf "npm-managed tools install only through ~/.local/bin/npm and the node ~/.local/bin/node points to.\n"
+        print_nvm_npm_setup_help
         return 1
     fi
+    log_success "Node.js ready (${_CACHED_NODE_VERSION} at ${_CACHED_NODE_BIN})"
 
-    if [[ -z "${CONDA_CMD:-}" ]]; then
-        log_error "conda command not found. npm tools require conda-provided Node.js/npm."
-        printf "Ensure conda is installed and accessible (check CONDA_EXE or PATH).\n"
-        return 1
-    fi
+    local npm_version
+    npm_version=$(get_npm_version_from_path "$_CACHED_NPM_BIN")
 
-    # STEP 1 — Node.js first. npm can only run once the environment's own
-    # node meets the minimum, so node is validated and repaired before npm
-    # is even considered (an outdated node is the usual reason npm breaks).
-    local node_version
-    node_version=$(get_conda_node_version)
-
-    if [[ -z "$node_version" ]]; then
-        log_warning "Node.js not found in the active conda environment. Installing nodejs>=${MIN_NODEJS_VERSION}..."
-        conda_install_nodejs || return 1
-    elif ! version_ge "$node_version" "$MIN_NODEJS_VERSION"; then
-        log_warning "Node.js version ${node_version} is below required ${MIN_NODEJS_VERSION}. Updating via conda..."
-        conda_install_nodejs || return 1
-    fi
-
-    hash -r 2>/dev/null || true
-    node_version=$(get_conda_node_version)
-    if [[ -z "$node_version" ]]; then
-        log_error "Node.js is still unavailable in the conda environment after the conda install."
-        return 1
-    fi
-    if ! version_ge "$node_version" "$MIN_NODEJS_VERSION"; then
-        log_error "Node.js is still below the required version: ${node_version} < ${MIN_NODEJS_VERSION}"
-        printf "  ${YELLOW}The conda solver kept an old nodejs. Try: conda install -c conda-forge \"nodejs>=${MIN_NODEJS_VERSION}\" -y${NC}\n"
-        return 1
-    fi
-    log_success "Node.js ready (${node_version})"
-
-    # STEP 2 — npm second, and it must actually RUN, not merely exist: a
-    # stale npm left behind by a Node.js upgrade (or a nodejs build shipped
-    # without npm) is repaired by bootstrapping npm from the official
-    # registry tarball using the environment's node.
-    local conda_npm npm_version node_bin
-    node_bin=$(get_conda_node_path || true)
-    conda_npm=$(get_conda_npm_path || true)
-    npm_version=""
-    if [[ -n "$conda_npm" ]]; then
-        npm_version=$(get_npm_version_from_path "$conda_npm")
-    fi
-
-    if [[ -z "$npm_version" ]]; then
-        if [[ -n "$conda_npm" ]]; then
-            log_warning "npm exists in the conda environment but does not run (broken node/npm pairing)."
-        else
-            log_warning "npm is missing from the conda environment even though Node.js is installed."
-        fi
-        log_warning "Bootstrapping npm with the environment's Node.js..."
-        bootstrap_npm_from_registry "$node_bin" || return 1
-        hash -r 2>/dev/null || true
-        conda_npm=$(get_conda_npm_path || true)
-        npm_version=""
-        if [[ -n "$conda_npm" ]]; then
-            npm_version=$(get_npm_version_from_path "$conda_npm")
-        fi
-        if [[ -z "$npm_version" ]]; then
-            log_error "npm bootstrap completed but npm is still not functional."
-            printf "  ${YELLOW}Manual fallback (inside the conda env): curl -qL https://www.npmjs.com/install.sh | sh${NC}\n"
-            return 1
-        fi
-        log_success "npm bootstrapped (${npm_version})"
-    fi
-
-    # STEP 3 — npm minimum version.
+    # STEP 2 — npm minimum version.
     if version_ge "$npm_version" "$MIN_NPM_VERSION"; then
         printf "${BLUE}[INFO]${NC} npm version %s detected (minimum required: %s)\n" "$npm_version" "$MIN_NPM_VERSION"
         return 0
     fi
 
-    log_warning "npm version $npm_version is below required $MIN_NPM_VERSION. Updating via npm..."
+    log_warning "npm version $npm_version is below required $MIN_NPM_VERSION. Updating via nvm npm (~/.local/bin/npm)..."
     # Pin to a version this node can run. The "latest" tag may resolve to a
     # release whose engines.node excludes this node, and this is the
     # prerequisite chain: a failure here blocks every npm-managed tool.
     local npm_target
     npm_target=$(npm_install_target "")
-    if ! "$conda_npm" install -g "npm@${npm_target}"; then
-        log_error "npm update failed. Please run: npm install -g npm@${npm_target} (within the conda env)"
+    if ! "$_CACHED_NPM_BIN" install -g "npm@${npm_target}"; then
+        log_error "npm update failed. Please run: ~/.local/bin/npm install -g npm@${npm_target}"
         return 1
     fi
 
-    npm_version=$(get_npm_version_from_path "$conda_npm")
+    npm_version=$(get_npm_version_from_path "$_CACHED_NPM_BIN")
     if [[ -n "$npm_version" ]] && version_ge "$npm_version" "$MIN_NPM_VERSION"; then
         log_success "npm updated to version ${npm_version}"
         return 0
@@ -3582,7 +3618,7 @@ check_dependencies() {
         printf "\n"
         printf "Install missing dependencies:\n"
         printf "  ${CYAN}uv${NC}:   ${YELLOW}curl -LsSf https://astral.sh/uv/install.sh | sh${NC}\n"
-        printf "  ${CYAN}npm${NC}:  ${YELLOW}conda install -c conda-forge \"nodejs>=${MIN_NODEJS_VERSION}\" -y${NC}\n"
+        printf "  ${CYAN}npm${NC}:  ${YELLOW}point ~/.local/bin/{node,npm} at an nvm Node.js LTS (>= ${MIN_NODEJS_VERSION}); see the steps printed above${NC}\n"
         printf "  ${CYAN}curl${NC}: ${YELLOW}sudo apt install curl${NC} (Debian/Ubuntu)\n"
         return 1
     fi
@@ -3632,18 +3668,19 @@ ensure_uv_prerequisite() {
 #############################################
 
 check_conda_environment() {
-    # Check if conda is active
+    # Check if conda is active. Not required: npm tools use nvm npm
+    # (~/.local/bin/npm), so the installer also runs with no conda at all.
     local conda_env="${CONDA_DEFAULT_ENV:-}"
     if [[ -n "$conda_env" ]]; then
         # Conda environment is active
         if [[ "$conda_env" == "base" ]]; then
-            log_error "Cannot install tools in the base conda environment."
-            printf "\n${YELLOW}For safety and to avoid conflicts, please create and use a non-base conda environment.${NC}\n\n"
-            printf "To create a new environment:\n"
+            # No longer refused up front. Only the steps that would install INTO
+            # the active conda env (conda install of gh / jq) are skipped here.
+            log_warning "The base conda environment is active."
+            printf "\n${YELLOW}npm tools still install via nvm npm (~/.local/bin/npm), but steps that would conda-install into the active env (gh / jq for moai-adk) are skipped in base.${NC}\n\n"
+            printf "To let the installer add those, use a non-base environment:\n"
             printf "  ${CYAN}conda create -n agentic-tools python=3.11${NC}\n"
             printf "  ${CYAN}conda activate agentic-tools${NC}\n\n"
-            printf "Then run this script again.\n\n"
-            return 1
         else
             printf "${BLUE}[INFO]${NC} Using conda environment: ${CYAN}%s${NC}\n" "$conda_env"
         fi
@@ -3665,6 +3702,14 @@ main() {
     CONDA_CMD=$(resolve_conda_cmd 2>/dev/null || true)
     if [[ -n "$CONDA_CMD" ]]; then
         printf "${BLUE}[INFO]${NC} Conda command resolved: ${CYAN}%s${NC}\n" "$CONDA_CMD"
+    fi
+
+    # Resolve the nvm npm toolchain once, in THIS shell, so the cache and the
+    # PATH change (node dir first) reach every later npm call and probe.
+    if resolve_npm_toolchain; then
+        printf "${BLUE}[INFO]${NC} npm: ${CYAN}%s${NC} (node %s at %s)\n" "$_CACHED_NPM_BIN" "$_CACHED_NODE_VERSION" "$_CACHED_NODE_BIN"
+    else
+        log_warning "nvm npm (~/.local/bin/npm) not usable: ${_NPM_RESOLVE_ERROR}. npm-managed tools will show as Not Installed."
     fi
 
     # Check for curl

@@ -1,6 +1,6 @@
-# Agentic CLI Installer v1.14.6
+# Agentic CLI Installer v1.15.0
 
-**Last Modified:** July 22, 2026
+**Last Modified:** November 5, 2026
 
 An interactive installer that manages multiple AI coding CLI tools from one place. It detects installed versions, fetches latest versions, and lets you install, update, or remove tools in a single run.
 
@@ -9,10 +9,20 @@ An interactive installer that manages multiple AI coding CLI tools from one plac
 ### Prerequisites
 
 - `curl` (required for all installation methods)
-- Active conda environment with Node.js >= 22.9.0 (installed via conda-forge; npm self-updates run inside the env)
+- Linux/WSL: `~/.local/bin/node` and `~/.local/bin/npm` pointing at an nvm-managed Node.js LTS (>= 22.9.0). A conda environment is **not** required for npm tools.
 - `bunx` or `npx` for oh-my-opencode addon (comes with Node/npm)
 
-Note: npm operations use the active conda environment's npm/Node. No uv-managed tools are included.
+Note (Linux/WSL): every npm operation, including npm self-updates, uses `~/.local/bin/npm` run by the node `~/.local/bin/node` points to, whichever conda environment is active (base included). There is no conda or system npm fallback. One-time setup:
+
+```bash
+export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh"
+nvm install --lts && nvm alias default 'lts/*'
+NEW=$(nvm version 'lts/*')
+ln -sfn "$NVM_DIR/versions/node/$NEW/bin/node" ~/.local/bin/node
+ln -sfn "$NVM_DIR/versions/node/$NEW/bin/npm"  ~/.local/bin/npm
+```
+
+Windows (`install_coding_tools.bat`) is unchanged and remains conda-scoped: it uses the active conda environment's npm/Node. No uv-managed tools are included.
 
 ### Installation
 
@@ -59,7 +69,7 @@ cd agentic-cli-installer
 .\install_coding_tools.bat --yes
 ```
 
-Note: Run the Windows installer from an Anaconda Prompt with a non-base conda environment active.
+Note: Run the Windows installer from an Anaconda Prompt with a non-base conda environment active. The `.bat` remains conda-scoped (the v1.15.0 move to the nvm npm applies to Linux/WSL only).
 
 ## Features
 
@@ -85,7 +95,7 @@ Note: Run the Windows installer from an Anaconda Prompt with a non-base conda en
 | [OpenCode AI CLI](https://github.com/opencode-ai/opencode) | `opencode-ai` | npm | `npm install -g opencode-ai` |
 | [OpenCode - oh-my-opencode](https://github.com/opencode-ai/oh-my-opencode) | `oh-my-opencode` | addon | `bunx oh-my-opencode install [--flags]` |
 
-Note: npm installs run using the active conda environment's npm/Node (Windows does not use system npm). No uv-managed tools are included.
+Note: on Linux/WSL, npm installs run through the nvm npm at `~/.local/bin/npm`. After an npm tool is installed or updated, leftover copies of it inside conda environments are listed and can be removed on request (asks `[y/N]`, defaults to No). On Windows, npm installs use the active conda environment's npm/Node (no system npm). No uv-managed tools are included.
 
 ## Usage
 
@@ -144,11 +154,13 @@ The `setup.sh` script provides automatic deployment:
 - Installs `install_coding_tools.sh` to `~/.local/bin/`
 - Installs `auto_install_coding_tools` to `~/.local/bin/`
 - Installs `install_coding_tools.bat` to `/mnt/c/Users/<username>/.local/bin/`
+- Installs `codex_wrapper.sh` as `~/.local/bin/codex`, only when `~/.local/bin/node` resolves to an executable node (otherwise skipped, existing `codex` left as is)
 - Creates backups in `~/.local/bin.backup/`
 
 **Linux/macOS:**
 - Installs `install_coding_tools.sh` to `~/.local/bin/`
 - Installs `auto_install_coding_tools` to `~/.local/bin/`
+- Installs `codex_wrapper.sh` as `~/.local/bin/codex`, only when `~/.local/bin/node` resolves to an executable node
 - Creates backups in `~/.local/bin.backup/`
 
 **Windows:**
@@ -156,7 +168,7 @@ The `setup.sh` script provides automatic deployment:
 
 ## Notes
 
-- If a conda environment is active, the script refuses to run in `base` for safety.
+- The script runs in any conda environment, `base` included, or with no conda at all. In `base` (or with no environment active), only the steps that would `conda install` into that environment (`gh` / `jq` for moai-adk) are skipped, with a warning. (Before v1.15.0 the script refused to run in `base`.)
 - Version checks use network calls; slow or blocked connections may show `Unknown` for latest versions.
 - The deployment script uses `~/.local/bin/` which follows the [XDG Base Directory Specification](https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html).
 
@@ -198,12 +210,21 @@ After successful installation, you should see output similar to:
 Installed scripts:
   Unix:   ~/.local/bin/install_coding_tools.sh
   Auto:   ~/.local/bin/auto_install_coding_tools
+  Codex:  ~/.local/bin/codex (only when the codex wrapper was deployed)
   Windows: /mnt/c/Users/username/.local/bin/install_coding_tools.bat (WSL only)
 
 Backup location: ~/.local/bin.backup
 ```
 
 ## Change Log
+
+### v1.15.0 - November 5, 2026
+
+- **npm tools no longer depend on which conda environment is active (Linux/WSL)**: Codex, OpenCode, the npm row itself, and the npm-based helpers now all go through one npm, `~/.local/bin/npm`, run by the nvm Node that `~/.local/bin/node` points to. The installer, `codex update`, and a plain `npm install -g` therefore all update the same copy, whether you are in `base`, another environment, or none. If that npm is missing or mismatched, the installer says which check failed and prints the nvm setup commands. It never falls back to a conda or system npm.
+- **`base` is allowed**: the installer no longer refuses to start in the base environment. In base it skips only the steps that would `conda install` into that environment (`gh` / `jq`).
+- **Old conda copies are flagged**: after an npm tool is installed or updated, any copy of it still sitting inside a conda environment is listed with its version. You can then remove it with that environment's own npm (asks first, defaults to No, never in `--yes` mode).
+- **`setup.sh` deploys a `codex` wrapper** to `~/.local/bin/codex` that always runs the nvm copy of Codex. It is deployed only when `~/.local/bin/node` is set up, so machines still on the conda layout keep their current `codex`.
+- **Windows is unchanged**: `install_coding_tools.bat` still uses the active conda environment's npm.
 
 ### v1.14.6 - July 22, 2026
 

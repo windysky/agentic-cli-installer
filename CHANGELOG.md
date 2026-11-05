@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.0] - 2026-11-05
+
+### Changed
+
+- **Linux/WSL npm is now conda-independent** (`install_coding_tools.sh`): every npm-managed tool (`@openai/codex`, `opencode-ai`), the `npm` row, and the npm-based helpers (seccomp filter, Playwright CLI, ast-grep) now install, detect, update, and remove through ONE npm — `~/.local/bin/npm` — run by the node that `~/.local/bin/node` resolves to (an nvm-managed Node.js LTS). Whichever conda environment is active, base included, the installer, `codex update`, and a plain `npm install -g` therefore land in the same global prefix. The new resolver (`resolve_npm_toolchain`) requires: `~/.local/bin/node` resolves to an executable node that runs and is >= 22.9.0; `~/.local/bin/npm` is executable and `npm --version` runs; the npm symlink resolves inside that node's install; and `npm prefix -g` equals the node's prefix. There is no conda and no system (`/usr/bin`) npm fallback. On success the node's `bin/` directory is put first on the installer's PATH, so npm's `#!/usr/bin/env node` shebang never picks up a conda env's node. The result is resolved once per run. When a check fails, the installer names it and prints the nvm setup commands.
+- **Engine-aware npm selection uses the resolver's node** instead of the conda env's node, so the `npm` row offers (and installs) the newest npm the nvm node can run. The picker still fails open.
+- **Menu versions for npm tools reflect only the nvm prefix** (`npm list -g` of `~/.local/bin/npm`).
+- **The base conda environment is no longer refused at startup**, and the script also runs with no conda at all. Only the steps that would `conda install` INTO the active environment (the `gh` / `jq` dependencies of moai-adk) are skipped, with a warning, when base is active or no environment is active, because conda would default to base there too.
+- User-facing messages now say "nvm npm (~/.local/bin/npm)" instead of "conda npm".
+
+### Added
+
+- **Leftover conda copies of an npm tool are reported** after it is installed or updated: the installer scans `<conda_root>/envs/*/lib/node_modules/<pkg>` and `<conda_root>/lib/node_modules/<pkg>` and prints each copy's path and version. It then asks `[y/N]` whether to remove the copy with that environment's own npm (`<env>/bin/npm uninstall -g --prefix <env> <pkg>`). The answer defaults to No: nothing is removed in `--yes` mode or on a closed/non-interactive stdin, and when that environment's npm/node cannot run, the installer prints the manual command instead. Skipped silently when conda is absent.
+- **`codex_wrapper.sh`** (new, tracked): the `codex` entry point that runs the one nvm-managed `@openai/codex` through `~/.local/bin/node`, whatever conda env is active. `setup.sh` deploys it to `~/.local/bin/codex`, using the usual copy + backup to `~/.local/bin.backup/`, **only** when `~/.local/bin/node` resolves to an executable node. Otherwise it skips with an info line, so a machine still on the conda layout keeps its codex. The summary lists it when the deployed file matches.
+
+### Removed
+
+- The conda Node.js/npm repair path from the npm flow (v1.14.3): `conda_install_nodejs`, `bootstrap_npm_from_registry`, `get_conda_node_version`, `get_conda_node_path`, `get_conda_npm_path`, and `get_conda_env_bin_dir` (all unreferenced after the change).
+
+### Unchanged
+
+- **Windows**: `install_coding_tools.bat` stays conda-scoped; only its version banner changed. `setup.bat` likewise only had its version bumped. `auto_install_coding_tools` is unchanged.
+
 ## [1.14.6] - 2026-07-22
 
 ### Added

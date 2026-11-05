@@ -3,11 +3,11 @@ setlocal EnableDelayedExpansion
 set "SCRIPT_DIR=%~dp0"
 
 REM ###############################################
-REM Agentic Coders Installer v1.14.6
+REM Agentic Coders Installer v1.15.0
 REM Interactive installer for AI coding CLI tools
 REM Windows version (run in Anaconda Prompt or CMD)
 REM
-REM Recent improvements (v1.7.13-v1.14.6):
+REM Recent improvements (v1.7.13-v1.15.0):
 REM - v1.12.0: Replace retired Gemini CLI with Antigravity CLI (native agy installer);
 REM            purge Gemini CLI entry + oh-my-opencode --gemini auto-detect + static --gemini=no
 REM            (--gemini=no is the documented default; omitting it is safe and Gemini CLI is retired.
@@ -56,6 +56,8 @@ REM   the unfiltered latest tag (EBADENGINE on a non-LTS node).
 REM - v1.14.6: Detect an older moai shadowing the freshly-installed one on PATH. After a
 REM   moai install, report the newest resolvable moai version and, if the PATH winner is an
 REM   older shadowing copy, offer to remove it (consent [y/N], default No, never in --yes mode).
+REM - v1.15.0: Version sync only. Windows npm stays conda-scoped (unchanged); the Linux/WSL
+REM   install_coding_tools.sh moved its npm tools to the nvm npm at ~/.local/bin/npm.
 
 REM Runtime flags (also configurable via env vars):
 REM   --yes, -y       Non-interactive mode (auto-proceed with defaults)
@@ -1704,7 +1706,7 @@ if "%DEBUG%"=="1" (
     cls
 )
 call :print_banner_sep
-echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.14.6%NC%
+echo %CYAN%%BOLD%Agentic Coders CLI Installer%NC% %BOLD%v1.15.0%NC%
 echo Toggle: %CYAN%skip%NC% -^> %GREEN%install%NC%/%CYAN%upgrade%NC% -^> %RED%remove%NC%  Input: 1,3,5  Enter/P=proceed  Q=quit
 call :print_banner_sep
 echo.

@@ -17,7 +17,7 @@
 #   --configure-path    Add ~/.local/bin to PATH in shell config
 #   --force             Skip confirmation prompts
 #
-# Version: 1.14.6
+# Version: 1.15.0
 # License: MIT
 
 set -euo pipefail
@@ -30,6 +30,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_SCRIPT_SH="${SCRIPT_DIR}/install_coding_tools.sh"
 SOURCE_SCRIPT_BAT="${SCRIPT_DIR}/install_coding_tools.bat"
 SOURCE_SCRIPT_AUTO="${SCRIPT_DIR}/auto_install_coding_tools"
+SOURCE_CODEX_WRAPPER="${SCRIPT_DIR}/codex_wrapper.sh"
 TARGET_DIR="${HOME}/.local/bin"
 BACKUP_DIR="${HOME}/.local/bin.backup"
 
@@ -427,6 +428,30 @@ install_windows_script() {
     success "$(basename "$source") installed to Windows filesystem!"
 }
 
+# Deploy codex_wrapper.sh as ~/.local/bin/codex (same copy + backup convention
+# as the installer scripts). The wrapper runs codex through the node that
+# ~/.local/bin/node resolves to, so it is deployed ONLY when that resolves to an
+# executable node; a machine still on the old conda layout keeps its codex.
+# Non-fatal: a failure here never aborts the deployment.
+deploy_codex_wrapper() {
+    if [[ ! -f "$SOURCE_CODEX_WRAPPER" ]]; then
+        info "Codex wrapper not found, skipping: $SOURCE_CODEX_WRAPPER"
+        return 0
+    fi
+
+    local node_real
+    node_real=$(readlink -f "${TARGET_DIR}/node" 2>/dev/null || true)
+    if [[ -z "$node_real" || ! -f "$node_real" || ! -x "$node_real" ]]; then
+        info "Skipping codex wrapper: ${TARGET_DIR}/node does not resolve to an executable node (existing ${TARGET_DIR}/codex left as is)"
+        return 0
+    fi
+
+    info "${TARGET_DIR}/node resolves to: $node_real"
+    install_unix_script "$SOURCE_CODEX_WRAPPER" "${TARGET_DIR}/codex" \
+        || warning "Codex wrapper deployment failed (continuing)"
+    return 0
+}
+
 #######################################
 # PATH Configuration
 #######################################
@@ -649,6 +674,7 @@ main() {
                 echo "  - Copies scripts to ~/.local/bin/"
                 echo "  - Adds ~/.local/bin to PATH in shell config (if not present)"
                 echo "  - Adds CLI convenience aliases (ccdd, claudeD, codexD)"
+                echo "  - Deploys the codex wrapper to ~/.local/bin/codex (only when ~/.local/bin/node resolves to a node)"
                 echo ""
                 echo "Options:"
                 echo "  --configure-path    (Legacy, now runs automatically)"
@@ -709,6 +735,10 @@ main() {
             ;;
     esac
 
+    # Deploy the codex wrapper (only on the nvm layout; non-fatal)
+    echo ""
+    deploy_codex_wrapper
+
     # Configure PATH (always runs, idempotent; non-fatal)
     echo ""
     configure_path || warning "PATH configuration skipped (see above)"
@@ -739,6 +769,11 @@ main() {
     echo "  Unix:   ${TARGET_DIR}/install_coding_tools.sh${installer_version:+  (${installer_version})}"
     if [[ -f "$SOURCE_SCRIPT_AUTO" ]]; then
         echo "  Auto:   ${TARGET_DIR}/auto_install_coding_tools"
+    fi
+    # Listed only when the deployed codex IS this wrapper (skipped/declined -> not listed)
+    if [[ -f "$SOURCE_CODEX_WRAPPER" && -f "${TARGET_DIR}/codex" ]] \
+       && cmp -s "$SOURCE_CODEX_WRAPPER" "${TARGET_DIR}/codex"; then
+        echo "  Codex:  ${TARGET_DIR}/codex"
     fi
     if [[ "$platform" == "wsl" ]] && [[ -f "$SOURCE_SCRIPT_BAT" ]]; then
         local windows_username bat_version
