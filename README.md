@@ -22,6 +22,13 @@ ln -sfn "$NVM_DIR/versions/node/$NEW/bin/node" ~/.local/bin/node
 ln -sfn "$NVM_DIR/versions/node/$NEW/bin/npm"  ~/.local/bin/npm
 ```
 
+**Moving an existing machine to this layout:** `migrate_npm_to_nvm.sh` does the whole move in one run. It installs the latest Node LTS with nvm (carrying the old version's global packages over), re-points `~/.local/bin/{node,npm}`, updates npm, runs `setup.sh --force`, makes sure each managed npm tool has a working nvm copy, offers to remove the leftover conda copies (one `[y/N]` for all, default No), and prints which `codex`/`npm` each kind of shell resolves. Run it in a plain terminal (it asks questions), after `git pull --ff-only`; `--dry-run` shows every change without making it. It is safe to re-run.
+
+```bash
+cd <this repo> && git pull --ff-only && ./migrate_npm_to_nvm.sh --dry-run   # preview
+./migrate_npm_to_nvm.sh                                                     # apply
+```
+
 Windows (`install_coding_tools.bat`) is unchanged and remains conda-scoped: it uses the active conda environment's npm/Node. No uv-managed tools are included.
 
 ### Installation
