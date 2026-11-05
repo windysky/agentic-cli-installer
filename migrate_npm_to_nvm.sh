@@ -217,6 +217,14 @@ for p in "${MANAGED[@]}"; do
     if ! nvm_pkg_ok "$p"; then
         run npmx install -g "$p" || warn "Could not install $p into nvm."
     fi
+    # --reinstall-packages-from carries the OLD version over; bring it to latest.
+    if [[ -d "$NEWPREFIX/lib/node_modules/$p" ]]; then
+        lat=$(npmx view "$p" version 2>/dev/null | tail -n1)
+        cur=$(pkg_version "$NEWPREFIX/lib/node_modules/$p")
+        if [[ -n "$lat" && "$cur" != "$lat" ]]; then
+            run npmx install -g "$p@latest" || warn "Could not update $p $cur -> $lat."
+        fi
+    fi
     if nvm_pkg_ok "$p"; then
         ok "$p: nvm copy $(pkg_version "$NEWPREFIX/lib/node_modules/$p") works"
         for pre in "${copies[@]}"; do RM_PKG+=("$p"); RM_PRE+=("$pre"); done
