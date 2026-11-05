@@ -269,7 +269,11 @@ check() { # $1 label, $2 strict(1)/report(0), rest = command
     local out c v n pf verdict
     # setsid: a child "bash -i" outside the terminal's foreground group would
     # stop itself on SIGTTIN and ignore timeout's SIGTERM (hang). -k: hard kill.
-    out=$(setsid -w timeout -k 5 90 env -i HOME="$HOME" USER="${USER:-}" TERM="${TERM:-xterm}" "$@" 2>/dev/null </dev/null)
+    # PATH is passed in on purpose: every real shell inherits an exported PATH,
+    # and a .bashrc that edits PATH without `export` (path_prepend-style) only
+    # reaches child processes such as npm's `#!/usr/bin/env node` if it was.
+    out=$(setsid -w timeout -k 5 90 env -i HOME="$HOME" USER="${USER:-}" TERM="${TERM:-xterm}" \
+        PATH="/usr/local/bin:/usr/bin:/bin" "$@" 2>/dev/null </dev/null)
     c=$(sed -n 's/^@@codex=//p' <<<"$out"); v=$(sed -n 's/^@@ver=//p' <<<"$out")
     n=$(sed -n 's/^@@npm=//p' <<<"$out");   pf=$(sed -n 's/^@@prefix=//p' <<<"$out")
     if (( DRY_RUN )); then verdict=NOW
