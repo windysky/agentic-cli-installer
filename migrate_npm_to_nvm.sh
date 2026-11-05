@@ -138,9 +138,22 @@ HAVE_NEW=1
 (( HAVE_NEW || DRY_RUN )) || die "nvm reported success but $NEWBIN/node does not exist."
 
 # ---------------------------------------------------------------- 3. links
-say "3. ~/.local/bin/node and npm -> $NEW"
+say "3. ~/.local/bin links -> $NEW"
 mkdir -p "$LBIN"
-for n in node npm; do
+# node, npm and npx always; plus every other ~/.local/bin link that already
+# points into an nvm Node's bin/ (e.g. corepack), so removing an old nvm
+# version can never leave a dangling link behind.
+LINKS=(node npm npx)
+for l in "$LBIN"/*; do
+    [[ -L "$l" ]] || continue
+    [[ "$(readlink "$l")" == "$NVM_DIR"/versions/node/*/bin/* ]] || continue
+    case " ${LINKS[*]} " in *" ${l##*/} "*) ;; *) LINKS+=("${l##*/}") ;; esac
+done
+for n in "${LINKS[@]}"; do
+    if (( HAVE_NEW )) && [[ ! -e "$NEWBIN/$n" ]]; then
+        [[ -L "$LBIN/$n" ]] && warn "$NEW has no $n; $LBIN/$n -> $(readlink "$LBIN/$n") left as is (remove it if unused)"
+        continue
+    fi
     if [[ -e "$NEWBIN/$n" && "$(readlink -f "$LBIN/$n" 2>/dev/null)" == "$(readlink -f "$NEWBIN/$n" 2>/dev/null)" ]]; then
         ok "$LBIN/$n already points at $NEW"; continue
     fi
@@ -243,6 +256,13 @@ if (( ${#RM_PKG[@]} > 0 )); then
 else
     ok "no conda copies to remove"
 fi
+# Empty @scope dirs left behind by removals (rmdir only ever removes empty dirs).
+for pre in "${PREFIXES[@]}"; do
+    for d in "$pre"/lib/node_modules/@*/; do
+        d=${d%/}
+        [[ -d "$d" && -z "$(ls -A "$d" 2>/dev/null)" ]] && run rmdir "$d"
+    done
+done
 for pre in "${PREFIXES[@]}"; do
     for d in "$pre"/lib/node_modules/* "$pre"/lib/node_modules/@*/*; do
         [[ -f "$d/package.json" ]] || continue
@@ -255,6 +275,9 @@ for v in "$NVM_DIR"/versions/node/*/; do
     v=${v%/}; [[ "$v" == "$NEWPREFIX" ]] && continue
     for p in "${MANAGED[@]}"; do
         [[ -d "$v/lib/node_modules/$p" ]] && info "old nvm $(basename "$v") still has $p (off PATH; delete later with: nvm uninstall $(basename "$v"))"
+    done
+    for l in "$LBIN"/*; do
+        [[ -L "$l" && "$(readlink "$l")" == "$v"/* ]] && warn "$l -> $(readlink "$l") still uses old nvm $(basename "$v"); do not uninstall it yet"
     done
 done
 
@@ -292,6 +315,15 @@ done
 [[ -n "$first_env" ]] && check "deactivate+activate $first_env" 0 bash -ic "conda deactivate; conda deactivate; conda activate $first_env >/dev/null 2>&1; $PROBE"
 check "login shell (bash -lc)"     1 bash -lc "$PROBE"
 check "ssh-style (non-interactive)" 1 bash -c ". \"\$HOME/.bashrc\" >/dev/null 2>&1; $PROBE"
+dangling=$(find "$LBIN" -maxdepth 1 -xtype l -lname "$NVM_DIR/*" -printf '%f -> %l\n' 2>/dev/null)
+if [[ -n "$dangling" ]]; then
+    while IFS= read -r d; do
+        if (( DRY_RUN )); then printf '  NOW  dangling link: %s\n' "$d"
+        else printf '  FAIL dangling link: %s\n' "$d"; fails=$((fails+1)); fi
+    done <<<"$dangling"
+else
+    printf '  OK   no dangling ~/.local/bin links into %s\n' "$NVM_DIR"
+fi
 info "expected: codex ${want_ver:-?} from the nvm copy, npm prefix $NEWPREFIX"
 info "NOTE rows are informational: after 'conda deactivate' + 'conda activate X', X's own bin goes in"
 info "front of ~/.local/bin, so that env's npm (if it has one) would be the one 'codex update' uses."
